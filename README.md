@@ -29,6 +29,22 @@ LabelHub 的核心能力包括：
 - 不允许在 schema 中引入任意 JavaScript 函数。
 - 所有接口、状态、错误码、审计动作必须与契约一致。
 
+## AI Coding 规则
+
+本项目允许使用 AI Coding 工具协作，但所有工具必须先阅读：
+
+- [AI_CODING_RULES.md](./AI_CODING_RULES.md)
+
+核心要求：
+
+- 采用 contract-driven 开发。
+- 最高契约是 `labelhub-architecture-contract.md v1.1`。
+- 共享类型唯一来源是 `packages/contracts`。
+- 所有实现必须引用 `@labelhub/contracts`。
+- 禁止重新定义契约类型。
+- 禁止使用 `any`，灵活数据使用 `unknown`。
+- AI 修改代码前必须先输出实现计划，修改后必须总结修改文件、实现内容、运行检查和未解决风险。
+
 ## packages/contracts
 
 共享 TypeScript contracts package 位于：
@@ -120,8 +136,6 @@ docker compose up --build
 - [docs/deployment.md](./docs/deployment.md)
 
 ## 三人协作规则
-
-建议三人按职责拆分：
 
 - 前端负责人：`apps/web`、Designer、Renderer、Owner / Labeler / Reviewer 页面。
 - 后端负责人：`apps/api`、数据库、API、状态机、审计、文件上传。
