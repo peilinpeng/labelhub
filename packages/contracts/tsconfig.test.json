@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": "./.contract-test-dist",
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "examples/**/*.ts"]
+}
