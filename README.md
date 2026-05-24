@@ -75,6 +75,22 @@ npm run test
 
 测试会生成 `packages/contracts/.contract-test-dist`，该目录已被 `.gitignore` 忽略。
 
+## packages/schema-core
+
+动态 Schema 纯 TypeScript 运行时内核位于：
+
+- [packages/schema-core](./packages/schema-core)
+
+它只引用 `@labelhub/contracts`，负责 schema tree 遍历、JsonPath 命名空间校验、Expression 求值、可见性解析、答案归一化、答案校验、schema guard 和演示 schema factory，不包含 React UI、浏览器依赖或后端 service。
+
+运行检查：
+
+```bash
+cd packages/schema-core
+npm run typecheck
+npm run test
+```
+
 ## MSW Mock
 
 前端 Mock 层位于：

@@ -1,0 +1,19 @@
+{
+  "name": "labelhub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LabelHub 数据标注平台",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run -w @labelhub/contracts typecheck && npm run -w @labelhub/schema-core typecheck",
+    "test": "npm run -w @labelhub/contracts test && npm run -w @labelhub/schema-core test",
+    "test:contracts": "npm run -w @labelhub/contracts test",
+    "test:schema-core": "npm run -w @labelhub/schema-core test"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
