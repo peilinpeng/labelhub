@@ -13,7 +13,7 @@ import type {
   SchemaNode,
   ValidationError,
 } from "../schema";
-import type { AnswerPayload, DatasetItemStatus, Submission, SubmissionStatus, TaskStatus } from "../workflow";
+import type { AnswerPayload, DatasetItemStatus, Submission, SubmissionStatus, TaskStatus, WorkflowCommand } from "../workflow";
 
 export interface ContractViolation {
   code: ErrorCode;
@@ -61,6 +61,54 @@ const answerFieldTypes = new Set<string>([
   "upload.image",
   "data.json",
 ]);
+
+const workflowCommands = new Set<string>([
+  "createTask",
+  "publishTask",
+  "pauseTask",
+  "resumeTask",
+  "endTask",
+  "archiveTask",
+  "importItem",
+  "claimItem",
+  "releaseItem",
+  "completeItem",
+  "disableItem",
+  "restoreItem",
+  "claimAssignment",
+  "saveDraft",
+  "submitAssignment",
+  "expireAssignment",
+  "returnAssignment",
+  "acceptAssignment",
+  "cancelAssignment",
+  "enqueueAIReview",
+  "aiReviewPass",
+  "aiReviewReturn",
+  "aiReviewNeedHuman",
+  "aiReviewFailedToHuman",
+  "startAIReviewJob",
+  "markAIReviewSucceeded",
+  "markAIReviewFailed",
+  "retryAIReviewJob",
+  "markAIReviewFailedToHuman",
+  "claimReview",
+  "humanReviewPass",
+  "humanReviewReturn",
+  "humanReviewReject",
+  "finalReviewPass",
+  "finalReviewReturn",
+  "finalReviewReject",
+  "createExportJob",
+  "startExportJob",
+  "markExportSucceeded",
+  "markExportFailed",
+  "cancelExportJob",
+  "createUploadUrl",
+  "markUploadStarted",
+  "confirmUpload",
+  "failUpload",
+] satisfies WorkflowCommand[]);
 
 export function validateSchemaInvariants(schema: unknown): ContractViolation[] {
   const violations: ContractViolation[] = [];
@@ -256,7 +304,7 @@ export function validateRequiredFields(
   return errors;
 }
 
-export function transitionTaskStatus(status: TaskStatus, command: "publishTask" | "pauseTask" | "resumeTask" | "endTask"):
+export function transitionTaskStatus(status: TaskStatus, command: "publishTask" | "pauseTask" | "resumeTask" | "endTask" | "archiveTask"):
   | { ok: true; status: TaskStatus }
   | { ok: false; code: ErrorCode } {
   const transitions: Record<string, TaskStatus> = {
@@ -265,9 +313,27 @@ export function transitionTaskStatus(status: TaskStatus, command: "publishTask" 
     "PAUSED:resumeTask": "PUBLISHED",
     "PUBLISHED:endTask": "ENDED",
     "PAUSED:endTask": "ENDED",
+    "ENDED:archiveTask": "ARCHIVED",
   };
   const next = transitions[`${status}:${command}`];
   return next === undefined ? { ok: false, code: "INVALID_STATE_TRANSITION" } : { ok: true, status: next };
+}
+
+export function taskTransitionAuditAction(command: "createTask" | "publishTask" | "pauseTask" | "resumeTask" | "endTask" | "archiveTask"): AuditAction {
+  switch (command) {
+    case "createTask":
+      return "TASK_CREATED";
+    case "publishTask":
+      return "TASK_PUBLISHED";
+    case "pauseTask":
+      return "TASK_PAUSED";
+    case "resumeTask":
+      return "TASK_RESUMED";
+    case "endTask":
+      return "TASK_ENDED";
+    case "archiveTask":
+      return "TASK_ARCHIVED";
+  }
 }
 
 export function transitionSubmissionStatus(
@@ -308,6 +374,14 @@ export function validateReviewCommand(command: ReviewCommand | { decision?: unkn
 
 export function retryExhaustedTargetStatus(retryCount: number, maxRetries: number): SubmissionStatus | undefined {
   return retryCount >= maxRetries ? "NEEDS_HUMAN_REVIEW" : undefined;
+}
+
+export function aiReviewJobStartAuditAction(): AuditAction {
+  return "AI_REVIEW_STARTED";
+}
+
+export function isWorkflowCommand(command: unknown): command is WorkflowCommand {
+  return typeof command === "string" && workflowCommands.has(command);
 }
 
 export function canEnterExportPool(submission: Pick<Submission, "status">): boolean {
@@ -384,7 +458,11 @@ export function canConfirmUpload(status: FileStatus): boolean {
   return status === "PENDING" || status === "UPLOADING";
 }
 
-export function fileUploadTransitionAuditAction(command: "createUploadUrl" | "markUploadStarted" | "confirmUpload"): AuditAction {
+export function canFailUpload(status: FileStatus): boolean {
+  return status === "PENDING" || status === "UPLOADING";
+}
+
+export function fileUploadTransitionAuditAction(command: "createUploadUrl" | "markUploadStarted" | "confirmUpload" | "failUpload"): AuditAction {
   switch (command) {
     case "createUploadUrl":
       return "FILE_UPLOAD_URL_CREATED";
@@ -392,6 +470,8 @@ export function fileUploadTransitionAuditAction(command: "createUploadUrl" | "ma
       return "FILE_UPLOAD_STARTED";
     case "confirmUpload":
       return "FILE_CONFIRMED";
+    case "failUpload":
+      return "FILE_UPLOAD_FAILED";
   }
 }
 

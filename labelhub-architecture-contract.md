@@ -975,6 +975,9 @@ export interface GenerateSchemaResponse {
 | `pauseTask` | OWNER | PUBLISHED | PAUSED | reason? | TASK_PAUSED | taskId |
 | `resumeTask` | OWNER | PAUSED | PUBLISHED | 无 | TASK_RESUMED | taskId |
 | `endTask` | OWNER | PUBLISHED/PAUSED | ENDED | reason? | TASK_ENDED | taskId |
+| `archiveTask` | OWNER | ENDED | ARCHIVED | reason? | TASK_ARCHIVED | taskId |
+
+`ARCHIVED` 为归档终态或近似终态，workflow-core 第一版只允许 `ENDED -> ARCHIVED`，不得从 `DRAFT`、`PUBLISHED`、`PAUSED` 等状态直接进入 `ARCHIVED`。
 
 ### 18.2 DatasetItem、Assignment、Submission 映射
 
@@ -998,6 +1001,8 @@ export interface GenerateSchemaResponse {
 | `expireAssignment` | SYSTEM | Assignment CLAIMED/DRAFTING | Assignment EXPIRED；DatasetItem AVAILABLE | assignmentId | ASSIGNMENT_EXPIRED | assignmentId |
 
 Reviewer reject 表示本次 submission 不可接受，`Assignment` 取消，`DatasetItem` 回到 `AVAILABLE`。这样同一 item 可以重新进入当前任务领取池，由新的 assignment 重新标注；如果 Owner 判断原始数据本身不可用，应通过数据集管理命令显式置为 `DISABLED`，不得由审核 reject 隐式禁用。
+
+workflow-core 第一版允许定义 DatasetItem 独立生命周期 command：`importItem`、`claimItem`、`releaseItem`、`completeItem`、`disableItem`、`restoreItem`。Review 导致的 DatasetItem / Assignment 变化应优先作为 sideEffects 描述；Assignment 内部 command 只补充 `claimAssignment`、`returnAssignment`、`acceptAssignment`、`cancelAssignment`，不得随意扩展为 API surface。
 
 ### 18.3 Export 状态迁移
 
@@ -1248,6 +1253,7 @@ AI 规则：
 - LLM 调用必须使用结构化输出，`ModelSnapshot.responseFormat` 只能是 `JSON_SCHEMA` 或 `FUNCTION_CALLING`。
 - raw output 可以存文件或日志引用，但必须通过 `rawOutputRef` 可追溯。
 - Job 使用 `submissionId + attemptNo` 作为业务幂等键。
+- `AIReviewJob PENDING -> RUNNING` 表示 worker 开始执行 AI 审核，审计动作为 `AI_REVIEW_STARTED`，不得复用 `AI_REVIEW_ENQUEUED`。
 - 重试耗尽后必须迁移到 `NEEDS_HUMAN_REVIEW`，并将 `AIReviewJob.status` 置为 `FAILED_TO_HUMAN_REVIEW`。
 - AI Review 永远不能修改 answers。
 
@@ -1357,6 +1363,7 @@ export interface ConfirmUploadResponse {
 - `POST /api/v1/files/upload-url` 创建文件记录后，`File.status` 必须为 `PENDING`，审计动作为 `FILE_UPLOAD_URL_CREATED`。
 - `UPLOADING` 表示存储适配器或后端明确收到上传开始信号后的中间状态；第一版如无法可靠观测上传开始，可以保持 `PENDING` 直到 confirm。
 - `POST /api/v1/files/:fileId/confirm` 成功后，`File.status` 必须为 `READY`，审计动作为 `FILE_CONFIRMED`。
+- `failUpload` 只能将 `PENDING` 或 `UPLOADING` 文件置为 `FAILED`，审计动作为 `FILE_UPLOAD_FAILED`。
 - `FILE_UPLOADED` 不得用于表示 upload url 已创建，也不得表示尚未完成的上传；只有存储层能确认对象字节已上传时才可使用。
 
 API：
@@ -1647,6 +1654,7 @@ export type AuditAction =
   | "TASK_PAUSED"
   | "TASK_RESUMED"
   | "TASK_ENDED"
+  | "TASK_ARCHIVED"
   | "SCHEMA_DRAFT_SAVED"
   | "SCHEMA_VERSION_PUBLISHED"
   | "DATASET_IMPORTED"
@@ -1655,6 +1663,7 @@ export type AuditAction =
   | "DRAFT_SAVED"
   | "SUBMISSION_CREATED"
   | "AI_REVIEW_ENQUEUED"
+  | "AI_REVIEW_STARTED"
   | "AI_REVIEW_SUCCEEDED"
   | "AI_REVIEW_FAILED"
   | "AI_REVIEW_FAILED_TO_HUMAN"
@@ -1670,6 +1679,7 @@ export type AuditAction =
   | "EXPORT_CANCELED"
   | "FILE_UPLOAD_URL_CREATED"
   | "FILE_UPLOAD_STARTED"
+  | "FILE_UPLOAD_FAILED"
   | "FILE_UPLOADED"
   | "FILE_CONFIRMED";
 

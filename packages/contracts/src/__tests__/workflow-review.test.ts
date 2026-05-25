@@ -1,13 +1,16 @@
 import { describe, test } from "node:test";
 import { equal } from "node:assert/strict";
-import type { AIReviewResultRecord, AuditAction, LLMCallLog, Submission } from "../index";
+import type { AIReviewResultRecord, AuditAction, LLMCallLog, Submission, WorkflowCommand } from "../index";
 import {
+  aiReviewJobStartAuditAction,
   aiReviewHasPatches,
   canEnterExportPool,
+  isWorkflowCommand,
   isSchemaGenerationLLMCall,
   reviewPassAuditActionForPolicy,
   reviewRejectDatasetItemStatus,
   retryExhaustedTargetStatus,
+  taskTransitionAuditAction,
   transitionSubmissionStatus,
   transitionTaskStatus,
   validateAIReviewResultShape,
@@ -74,12 +77,50 @@ describe("工作流状态迁移", () => {
 
   test("新增 workflow AuditAction 可以被类型引用", () => {
     const actions: AuditAction[] = [
+      "AI_REVIEW_STARTED",
       "FINAL_REVIEW_REQUESTED",
       "FILE_UPLOAD_URL_CREATED",
       "FILE_UPLOAD_STARTED",
+      "FILE_UPLOAD_FAILED",
+      "TASK_ARCHIVED",
     ];
 
+    equal(actions.includes("AI_REVIEW_STARTED"), true);
     equal(actions.includes("FINAL_REVIEW_REQUESTED"), true);
+    equal(actions.includes("FILE_UPLOAD_FAILED"), true);
+  });
+
+  test("archiveTask / TASK_ARCHIVED 闭环可被 workflow-core 引用", () => {
+    const result = transitionTaskStatus("ENDED", "archiveTask");
+
+    equal(result.ok, true);
+    if (result.ok) {
+      equal(result.status, "ARCHIVED");
+    }
+    equal(taskTransitionAuditAction("archiveTask"), "TASK_ARCHIVED");
+    equal(transitionTaskStatus("PUBLISHED", "archiveTask").ok, false);
+  });
+
+  test("新增 command 类型可以被 workflow-core 引用", () => {
+    const commands: WorkflowCommand[] = [
+      "archiveTask",
+      "importItem",
+      "releaseItem",
+      "completeItem",
+      "disableItem",
+      "restoreItem",
+      "claimAssignment",
+      "returnAssignment",
+      "acceptAssignment",
+      "cancelAssignment",
+      "startAIReviewJob",
+    ];
+
+    equal(commands.every((command) => isWorkflowCommand(command)), true);
+    equal(isWorkflowCommand("claimItem"), true);
+    equal(isWorkflowCommand("claimAssignment"), true);
+    equal(isWorkflowCommand("randomString"), false);
+    equal(aiReviewJobStartAuditAction(), "AI_REVIEW_STARTED");
   });
 
   test("HUMAN_REVIEW PASS 进入终审不使用 REVIEW_ACCEPTED", () => {

@@ -3,6 +3,7 @@ import { equal } from "node:assert/strict";
 import type { ExportMapping, FileObject, FileRef } from "../index";
 import {
   canDownloadExportFile,
+  canFailUpload,
   canConfirmUpload,
   canMarkUploadStarted,
   canUseDatasetImportFile,
@@ -59,6 +60,13 @@ describe("文件契约", () => {
     equal(isCreateUploadUrlResult(readyFile), false);
     equal(fileUploadTransitionAuditAction("createUploadUrl"), "FILE_UPLOAD_URL_CREATED");
     equal(fileUploadTransitionAuditAction("confirmUpload"), "FILE_CONFIRMED");
+  });
+
+  test("failUpload 生命周期 PENDING / UPLOADING -> FAILED", () => {
+    equal(canFailUpload("PENDING"), true);
+    equal(canFailUpload("UPLOADING"), true);
+    equal(canFailUpload("READY"), false);
+    equal(fileUploadTransitionAuditAction("failUpload"), "FILE_UPLOAD_FAILED");
   });
 
   test("upload 字段 FileRef.fileId 必须属于当前 assignment 或当前用户", () => {

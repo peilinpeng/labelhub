@@ -96,6 +96,7 @@ export type SubmissionStatus =
 
 export type WorkflowCommand =
   | TaskWorkflowCommand
+  | DatasetItemWorkflowCommand
   | AssignmentWorkflowCommand
   | SubmissionWorkflowCommand
   | AIReviewWorkflowCommand
@@ -108,13 +109,25 @@ export type TaskWorkflowCommand =
   | "publishTask"
   | "pauseTask"
   | "resumeTask"
-  | "endTask";
+  | "endTask"
+  | "archiveTask";
+
+export type DatasetItemWorkflowCommand =
+  | "importItem"
+  | "claimItem"
+  | "releaseItem"
+  | "completeItem"
+  | "disableItem"
+  | "restoreItem";
 
 export type AssignmentWorkflowCommand =
-  | "claimItem"
+  | "claimAssignment"
   | "saveDraft"
   | "submitAssignment"
-  | "expireAssignment";
+  | "expireAssignment"
+  | "returnAssignment"
+  | "acceptAssignment"
+  | "cancelAssignment";
 
 export type SubmissionWorkflowCommand =
   | "enqueueAIReview"

@@ -14,7 +14,8 @@ export type FileStatus = "PENDING" | "UPLOADING" | "READY" | "FAILED" | "DELETED
 export type FileWorkflowCommand =
   | "createUploadUrl"
   | "markUploadStarted"
-  | "confirmUpload";
+  | "confirmUpload"
+  | "failUpload";
 
 export type FileUploadLifecycleRule =
   | {
@@ -34,6 +35,12 @@ export type FileUploadLifecycleRule =
       fromStatus: "PENDING" | "UPLOADING";
       toStatus: "READY";
       auditAction: Extract<AuditAction, "FILE_CONFIRMED">;
+    }
+  | {
+      command: "failUpload";
+      fromStatus: "PENDING" | "UPLOADING";
+      toStatus: "FAILED";
+      auditAction: Extract<AuditAction, "FILE_UPLOAD_FAILED">;
     };
 
 export interface FileObject {
