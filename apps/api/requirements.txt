@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+celery[redis]
+redis
+PyMySQL
+openai
+python-jose[cryptography]
+passlib[bcrypt]
+pandas
+openpyxl
+pydantic-settings
+python-multipart
+python-dotenv
