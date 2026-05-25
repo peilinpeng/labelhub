@@ -1,0 +1,38 @@
+{
+  "name": "@labelhub/schema-designer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LabelHub 动态标注模板设计器",
+  "type": "module",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "dependencies": {
+    "@labelhub/contracts": "file:../contracts",
+    "@labelhub/schema-core": "file:../schema-core",
+    "@labelhub/schema-renderer": "file:../schema-renderer"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^26.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  }
+}

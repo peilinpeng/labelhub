@@ -75,6 +75,58 @@ npm run test
 
 测试会生成 `packages/contracts/.contract-test-dist`，该目录已被 `.gitignore` 忽略。
 
+## packages/schema-core
+
+动态 Schema 纯 TypeScript 运行时内核位于：
+
+- [packages/schema-core](./packages/schema-core)
+
+它只引用 `@labelhub/contracts`，负责 schema tree 遍历、JsonPath 命名空间校验、Expression 求值、可见性解析、答案归一化、答案校验、schema guard 和演示 schema factory，不包含 React UI、浏览器依赖或后端 service。
+
+运行检查：
+
+```bash
+cd packages/schema-core
+npm run typecheck
+npm run test
+```
+
+## packages/schema-renderer
+
+动态 Schema React 渲染层位于：
+
+- [packages/schema-renderer](./packages/schema-renderer)
+
+它引用 `@labelhub/contracts` 和 `@labelhub/schema-core`，负责把 `LabelHubSchema` 渲染为 Labeler 作答、Reviewer 只读、Reviewer diff 和 Designer 预览界面，不包含 Designer 拖拽、后端 service 或 Mock 状态流转。
+
+运行检查：
+
+```bash
+cd packages/schema-renderer
+npm run typecheck
+npm run test
+```
+
+## packages/schema-designer
+
+动态 Schema 设计器位于：
+
+- [packages/schema-designer](./packages/schema-designer)
+
+它引用 `@labelhub/contracts`、`@labelhub/schema-core` 和 `@labelhub/schema-renderer`，负责 Owner 侧模板物料、schema tree 编辑、属性配置、校验面板和实时预览，不接真实 API，也不引入 Formily 或拖拽框架。
+
+运行检查：
+
+```bash
+cd packages/schema-designer
+npm run typecheck
+npm run test
+```
+
+前端页面接入 Owner 设计器、Labeler 渲染器和 Reviewer 只读 / diff 渲染器的说明见：
+
+- [docs/component-integration-guide.md](./docs/component-integration-guide.md)
+
 ## MSW Mock
 
 前端 Mock 层位于：
