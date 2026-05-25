@@ -22,6 +22,7 @@ import app.models.export  # noqa: F401
 import app.models.file  # noqa: F401
 import app.models.audit  # noqa: F401
 import app.models.llm  # noqa: F401
+import app.models.idempotency  # noqa: F401
 from app.database import Base
 
 config = context.config
