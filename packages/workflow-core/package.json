@@ -1,0 +1,23 @@
+{
+  "name": "@labelhub/workflow-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LabelHub 纯 TypeScript 工作流状态机内核",
+  "type": "module",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test src/__tests__/*.test.ts"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@labelhub/contracts": "file:../contracts"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
