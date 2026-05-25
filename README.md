@@ -107,6 +107,22 @@ npm run typecheck
 npm run test
 ```
 
+## packages/schema-designer
+
+动态 Schema 设计器位于：
+
+- [packages/schema-designer](./packages/schema-designer)
+
+它引用 `@labelhub/contracts`、`@labelhub/schema-core` 和 `@labelhub/schema-renderer`，负责 Owner 侧模板物料、schema tree 编辑、属性配置、校验面板和实时预览，不接真实 API，也不引入 Formily 或拖拽框架。
+
+运行检查：
+
+```bash
+cd packages/schema-designer
+npm run typecheck
+npm run test
+```
+
 ## MSW Mock
 
 前端 Mock 层位于：

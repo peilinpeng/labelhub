@@ -8,11 +8,12 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "npm run -w @labelhub/contracts typecheck && npm run -w @labelhub/schema-core typecheck && npm run -w @labelhub/schema-renderer typecheck",
-    "test": "npm run -w @labelhub/contracts test && npm run -w @labelhub/schema-core test && npm run -w @labelhub/schema-renderer test",
+    "typecheck": "npm run -w @labelhub/contracts typecheck && npm run -w @labelhub/schema-core typecheck && npm run -w @labelhub/schema-renderer typecheck && npm run -w @labelhub/schema-designer typecheck",
+    "test": "npm run -w @labelhub/contracts test && npm run -w @labelhub/schema-core test && npm run -w @labelhub/schema-renderer test && npm run -w @labelhub/schema-designer test",
     "test:contracts": "npm run -w @labelhub/contracts test",
     "test:schema-core": "npm run -w @labelhub/schema-core test",
-    "test:schema-renderer": "npm run -w @labelhub/schema-renderer test"
+    "test:schema-renderer": "npm run -w @labelhub/schema-renderer test",
+    "test:schema-designer": "npm run -w @labelhub/schema-designer test"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
