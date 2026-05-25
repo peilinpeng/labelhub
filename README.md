@@ -91,6 +91,22 @@ npm run typecheck
 npm run test
 ```
 
+## packages/schema-renderer
+
+动态 Schema React 渲染层位于：
+
+- [packages/schema-renderer](./packages/schema-renderer)
+
+它引用 `@labelhub/contracts` 和 `@labelhub/schema-core`，负责把 `LabelHubSchema` 渲染为 Labeler 作答、Reviewer 只读、Reviewer diff 和 Designer 预览界面，不包含 Designer 拖拽、后端 service 或 Mock 状态流转。
+
+运行检查：
+
+```bash
+cd packages/schema-renderer
+npm run typecheck
+npm run test
+```
+
 ## MSW Mock
 
 前端 Mock 层位于：
