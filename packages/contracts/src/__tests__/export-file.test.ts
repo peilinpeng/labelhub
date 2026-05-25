@@ -3,9 +3,14 @@ import { equal } from "node:assert/strict";
 import type { ExportMapping, FileObject, FileRef } from "../index";
 import {
   canDownloadExportFile,
+  canConfirmUpload,
+  canMarkUploadStarted,
   canUseDatasetImportFile,
   canUseUploadFileRef,
+  fileUploadTransitionAuditAction,
+  isCreateUploadUrlResult,
   isDefaultExportEligible,
+  isExportAnswerSourceAllowed,
   isExportColumnPathValid,
   isTabularObjectValueTransformValid,
   usesPatchedAnswersExplicitly,
@@ -27,7 +32,7 @@ describe("导出契约", () => {
     equal(isDefaultExportEligible({ status: "AI_PASSED" }), false);
   });
 
-  test("PATCHED_ANSWERS 必须显式配置", () => {
+  test("PATCHED_ANSWERS 未显式允许时应被拒绝", () => {
     const mapping: ExportMapping = {
       schemaVersionId: "sv_1",
       format: "JSONL",
@@ -36,11 +41,26 @@ describe("导出契约", () => {
       columns: [{ header: "类别", sourcePath: "$.answers.newsCategory" }],
     };
 
-    equal(usesPatchedAnswersExplicitly(mapping), true);
+    equal(usesPatchedAnswersExplicitly(mapping), false);
+    equal(isExportAnswerSourceAllowed(mapping), false);
+    equal(isExportAnswerSourceAllowed({ ...mapping, allowPatchedAnswers: true }), true);
   });
 });
 
 describe("文件契约", () => {
+  test("File upload lifecycle 使用 PENDING -> UPLOADING -> READY", () => {
+    const pendingFile = fileObject("file_upload_1", "USER", "usr_1", "DATASET_IMPORT", "PENDING");
+    const readyFile = fileObject("file_upload_2", "USER", "usr_1", "DATASET_IMPORT", "READY");
+
+    equal(isCreateUploadUrlResult(pendingFile), true);
+    equal(canMarkUploadStarted("PENDING"), true);
+    equal(canConfirmUpload("PENDING"), true);
+    equal(canConfirmUpload("UPLOADING"), true);
+    equal(isCreateUploadUrlResult(readyFile), false);
+    equal(fileUploadTransitionAuditAction("createUploadUrl"), "FILE_UPLOAD_URL_CREATED");
+    equal(fileUploadTransitionAuditAction("confirmUpload"), "FILE_CONFIRMED");
+  });
+
   test("upload 字段 FileRef.fileId 必须属于当前 assignment 或当前用户", () => {
     const fileRef: FileRef = {
       fileId: "file_answer_1",

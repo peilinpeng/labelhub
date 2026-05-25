@@ -1,3 +1,4 @@
+import type { AuditAction } from "./audit";
 import type { ID, ISODateTime } from "./global";
 
 export interface FileRef {
@@ -9,6 +10,31 @@ export interface FileRef {
 }
 
 export type FileStatus = "PENDING" | "UPLOADING" | "READY" | "FAILED" | "DELETED";
+
+export type FileWorkflowCommand =
+  | "createUploadUrl"
+  | "markUploadStarted"
+  | "confirmUpload";
+
+export type FileUploadLifecycleRule =
+  | {
+      command: "createUploadUrl";
+      fromStatus?: never;
+      toStatus: "PENDING";
+      auditAction: Extract<AuditAction, "FILE_UPLOAD_URL_CREATED">;
+    }
+  | {
+      command: "markUploadStarted";
+      fromStatus: "PENDING";
+      toStatus: "UPLOADING";
+      auditAction: Extract<AuditAction, "FILE_UPLOAD_STARTED">;
+    }
+  | {
+      command: "confirmUpload";
+      fromStatus: "PENDING" | "UPLOADING";
+      toStatus: "READY";
+      auditAction: Extract<AuditAction, "FILE_CONFIRMED">;
+    };
 
 export interface FileObject {
   id: ID;

@@ -1,8 +1,9 @@
+import type { AuditAction } from "../audit";
 import type { ErrorCode } from "../errors";
 import type { ExportColumn, ExportFormat, ExportMapping } from "../export";
-import type { FileObject, FileRef } from "../file";
+import type { FileObject, FileRef, FileStatus } from "../file";
 import type { LabelHubRuntimeContext, JsonPath } from "../global";
-import type { AIReviewResultRecord, LLMCallLog, ReviewCommand } from "../review";
+import type { AIReviewResultRecord, LLMCallLog, ReviewCommand, ReviewPolicy } from "../review";
 import type {
   BaseFieldNode,
   Expression,
@@ -12,7 +13,7 @@ import type {
   SchemaNode,
   ValidationError,
 } from "../schema";
-import type { AnswerPayload, Submission, SubmissionStatus, TaskStatus } from "../workflow";
+import type { AnswerPayload, DatasetItemStatus, Submission, SubmissionStatus, TaskStatus } from "../workflow";
 
 export interface ContractViolation {
   code: ErrorCode;
@@ -296,7 +297,7 @@ export function transitionSubmissionStatus(
 
 export function validateReviewCommand(command: ReviewCommand | { decision?: unknown; reason?: unknown }): ErrorCode[] {
   const errors: ErrorCode[] = [];
-  if (command.decision === "RETURN" && typeof command.reason !== "string") {
+  if ((command.decision === "RETURN" || command.decision === "REJECT") && typeof command.reason !== "string") {
     errors.push("REVIEW_REASON_REQUIRED");
   }
   if (command.decision === "NEED_HUMAN_REVIEW") {
@@ -351,8 +352,47 @@ export function isDefaultExportEligible(submission: Pick<Submission, "status">):
   return submission.status === "ACCEPTED";
 }
 
-export function usesPatchedAnswersExplicitly(mapping: Pick<ExportMapping, "answerSource">): boolean {
-  return mapping.answerSource === "PATCHED_ANSWERS";
+export function usesPatchedAnswersExplicitly(
+  mapping: Pick<ExportMapping, "answerSource" | "allowPatchedAnswers">,
+): boolean {
+  return mapping.answerSource === "PATCHED_ANSWERS" && mapping.allowPatchedAnswers === true;
+}
+
+export function isExportAnswerSourceAllowed(
+  mapping: Pick<ExportMapping, "answerSource" | "allowPatchedAnswers">,
+): boolean {
+  return mapping.answerSource !== "PATCHED_ANSWERS" || mapping.allowPatchedAnswers === true;
+}
+
+export function reviewPassAuditActionForPolicy(policy: ReviewPolicy): AuditAction {
+  return policy.type === "DOUBLE_REVIEW" ? "FINAL_REVIEW_REQUESTED" : "REVIEW_ACCEPTED";
+}
+
+export function reviewRejectDatasetItemStatus(): DatasetItemStatus {
+  return "AVAILABLE";
+}
+
+export function isCreateUploadUrlResult(file: Pick<FileObject, "status">): boolean {
+  return file.status === "PENDING";
+}
+
+export function canMarkUploadStarted(status: FileStatus): boolean {
+  return status === "PENDING";
+}
+
+export function canConfirmUpload(status: FileStatus): boolean {
+  return status === "PENDING" || status === "UPLOADING";
+}
+
+export function fileUploadTransitionAuditAction(command: "createUploadUrl" | "markUploadStarted" | "confirmUpload"): AuditAction {
+  switch (command) {
+    case "createUploadUrl":
+      return "FILE_UPLOAD_URL_CREATED";
+    case "markUploadStarted":
+      return "FILE_UPLOAD_STARTED";
+    case "confirmUpload":
+      return "FILE_CONFIRMED";
+  }
 }
 
 export function canUseUploadFileRef(

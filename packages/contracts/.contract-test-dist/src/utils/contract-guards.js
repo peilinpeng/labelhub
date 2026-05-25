@@ -21,6 +21,13 @@ exports.isExportColumnPathValid = isExportColumnPathValid;
 exports.isTabularObjectValueTransformValid = isTabularObjectValueTransformValid;
 exports.isDefaultExportEligible = isDefaultExportEligible;
 exports.usesPatchedAnswersExplicitly = usesPatchedAnswersExplicitly;
+exports.isExportAnswerSourceAllowed = isExportAnswerSourceAllowed;
+exports.reviewPassAuditActionForPolicy = reviewPassAuditActionForPolicy;
+exports.reviewRejectDatasetItemStatus = reviewRejectDatasetItemStatus;
+exports.isCreateUploadUrlResult = isCreateUploadUrlResult;
+exports.canMarkUploadStarted = canMarkUploadStarted;
+exports.canConfirmUpload = canConfirmUpload;
+exports.fileUploadTransitionAuditAction = fileUploadTransitionAuditAction;
 exports.canUseUploadFileRef = canUseUploadFileRef;
 exports.canUseDatasetImportFile = canUseDatasetImportFile;
 exports.canDownloadExportFile = canDownloadExportFile;
@@ -254,7 +261,7 @@ function transitionSubmissionStatus(status, command) {
 }
 function validateReviewCommand(command) {
     const errors = [];
-    if (command.decision === "RETURN" && typeof command.reason !== "string") {
+    if ((command.decision === "RETURN" || command.decision === "REJECT") && typeof command.reason !== "string") {
         errors.push("REVIEW_REASON_REQUIRED");
     }
     if (command.decision === "NEED_HUMAN_REVIEW") {
@@ -296,7 +303,35 @@ function isDefaultExportEligible(submission) {
     return submission.status === "ACCEPTED";
 }
 function usesPatchedAnswersExplicitly(mapping) {
-    return mapping.answerSource === "PATCHED_ANSWERS";
+    return mapping.answerSource === "PATCHED_ANSWERS" && mapping.allowPatchedAnswers === true;
+}
+function isExportAnswerSourceAllowed(mapping) {
+    return mapping.answerSource !== "PATCHED_ANSWERS" || mapping.allowPatchedAnswers === true;
+}
+function reviewPassAuditActionForPolicy(policy) {
+    return policy.type === "DOUBLE_REVIEW" ? "FINAL_REVIEW_REQUESTED" : "REVIEW_ACCEPTED";
+}
+function reviewRejectDatasetItemStatus() {
+    return "AVAILABLE";
+}
+function isCreateUploadUrlResult(file) {
+    return file.status === "PENDING";
+}
+function canMarkUploadStarted(status) {
+    return status === "PENDING";
+}
+function canConfirmUpload(status) {
+    return status === "PENDING" || status === "UPLOADING";
+}
+function fileUploadTransitionAuditAction(command) {
+    switch (command) {
+        case "createUploadUrl":
+            return "FILE_UPLOAD_URL_CREATED";
+        case "markUploadStarted":
+            return "FILE_UPLOAD_STARTED";
+        case "confirmUpload":
+            return "FILE_CONFIRMED";
+    }
 }
 function canUseUploadFileRef(fileRef, file, currentAssignmentId, currentUserId) {
     if (fileRef.fileId !== file.id)

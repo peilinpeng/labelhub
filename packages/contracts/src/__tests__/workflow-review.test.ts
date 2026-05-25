@@ -1,10 +1,12 @@
 import { describe, test } from "node:test";
 import { equal } from "node:assert/strict";
-import type { AIReviewResultRecord, LLMCallLog, ReviewCommand, Submission } from "../index";
+import type { AIReviewResultRecord, AuditAction, LLMCallLog, Submission } from "../index";
 import {
   aiReviewHasPatches,
   canEnterExportPool,
   isSchemaGenerationLLMCall,
+  reviewPassAuditActionForPolicy,
+  reviewRejectDatasetItemStatus,
   retryExhaustedTargetStatus,
   transitionSubmissionStatus,
   transitionTaskStatus,
@@ -32,10 +34,20 @@ describe("工作流状态迁移", () => {
   });
 
   test("RETURN 决策必须带 reason", () => {
-    const command: ReviewCommand = {
+    const command = {
       submissionId: "sub_1",
       stage: "HUMAN_REVIEW",
       decision: "RETURN",
+    };
+
+    equal(validateReviewCommand(command).includes("REVIEW_REASON_REQUIRED"), true);
+  });
+
+  test("REJECT 决策必须带 reason", () => {
+    const command = {
+      submissionId: "sub_1",
+      stage: "HUMAN_REVIEW",
+      decision: "REJECT",
     };
 
     equal(validateReviewCommand(command).includes("REVIEW_REASON_REQUIRED"), true);
@@ -58,6 +70,27 @@ describe("工作流状态迁移", () => {
   test("ACCEPTED submission 可以进入 export pool", () => {
     equal(canEnterExportPool({ status: "ACCEPTED" }), true);
     equal(canEnterExportPool({ status: "RETURNED" }), false);
+  });
+
+  test("新增 workflow AuditAction 可以被类型引用", () => {
+    const actions: AuditAction[] = [
+      "FINAL_REVIEW_REQUESTED",
+      "FILE_UPLOAD_URL_CREATED",
+      "FILE_UPLOAD_STARTED",
+    ];
+
+    equal(actions.includes("FINAL_REVIEW_REQUESTED"), true);
+  });
+
+  test("HUMAN_REVIEW PASS 进入终审不使用 REVIEW_ACCEPTED", () => {
+    const action = reviewPassAuditActionForPolicy({ type: "DOUBLE_REVIEW", requireFinalReview: true });
+
+    equal(action, "FINAL_REVIEW_REQUESTED");
+    equal(action === "REVIEW_ACCEPTED", false);
+  });
+
+  test("REJECT 后 DatasetItem 回到 AVAILABLE", () => {
+    equal(reviewRejectDatasetItemStatus(), "AVAILABLE");
   });
 });
 
