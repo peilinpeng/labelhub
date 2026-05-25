@@ -123,6 +123,10 @@ npm run typecheck
 npm run test
 ```
 
+前端页面接入 Owner 设计器、Labeler 渲染器和 Reviewer 只读 / diff 渲染器的说明见：
+
+- [docs/component-integration-guide.md](./docs/component-integration-guide.md)
+
 ## MSW Mock
 
 前端 Mock 层位于：
