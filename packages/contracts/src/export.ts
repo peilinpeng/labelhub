@@ -12,6 +12,7 @@ export interface ExportMapping {
   schemaVersionId: ID;
   format: ExportFormat;
   answerSource: ExportAnswerSource;
+  allowPatchedAnswers?: boolean;
   includeReviewRecords: boolean;
   columns: ExportColumn[];
   filters?: {

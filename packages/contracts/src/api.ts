@@ -163,7 +163,7 @@ export interface ReviewDetailResponse {
   auditLogs: AuditLog[];
 }
 
-export interface ReviewDecisionRequest extends ReviewCommand {}
+export type ReviewDecisionRequest = ReviewCommand;
 
 export interface ReviewDecisionResponse {
   submission: Submission;
