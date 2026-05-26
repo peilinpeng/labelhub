@@ -13,3 +13,5 @@ openpyxl
 pydantic-settings
 python-multipart
 python-dotenv
+passlib[bcrypt]
+email-validator
