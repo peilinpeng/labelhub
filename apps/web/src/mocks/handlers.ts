@@ -76,6 +76,11 @@ export const handlers = [
     return task === undefined ? errorJson("RESOURCE_NOT_FOUND", "任务不存在", 404) : okJson(task);
   }),
 
+http.get("/api/v1/tasks/:taskId", ({ params }) => {
+  const task = getTask(getParam(params as MockParams, "taskId"));
+  return task === undefined ? errorJson("RESOURCE_NOT_FOUND", "任务不存在", 404) : okJson(task);
+}),
+
   http.put("/api/v1/tasks/:taskId/schema/draft", async ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const body = await readJson<SaveSchemaDraftRequest>(request);
@@ -301,7 +306,7 @@ function withIdempotency(request: Request, body: unknown, create: () => MockHand
   const scope = idempotencyScope(request);
   if (scope === undefined) {
     const result = create();
-    return HttpResponse.json(result.body, { status: result.status ?? 200 });
+    return HttpResponse.json(result.body as never, { status: result.status ?? 200 });
   }
   const hash = requestHash(body);
   const existing = idempotencyRecords.get(scope);
@@ -309,7 +314,7 @@ function withIdempotency(request: Request, body: unknown, create: () => MockHand
     if (existing.requestHash !== hash) {
       return errorJson("IDEMPOTENCY_CONFLICT", "相同 Idempotency-Key 对应的 request body 不一致", 409);
     }
-    return HttpResponse.json(existing.response, { status: existing.status });
+    return HttpResponse.json(existing.response as never, { status: existing.status });
   }
   const result = create();
   const status = result.status ?? 200;
@@ -318,7 +323,7 @@ function withIdempotency(request: Request, body: unknown, create: () => MockHand
     response: result.body,
     status,
   });
-  return HttpResponse.json(result.body, { status });
+  return HttpResponse.json(result.body as never, { status });
 }
 
 function validationError(message: string): { code: "VALIDATION_FAILED"; message: string; traceId: string } {

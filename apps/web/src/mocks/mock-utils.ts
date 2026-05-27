@@ -26,7 +26,7 @@ export async function readJson<T>(request: Request): Promise<T> {
 }
 
 export function okJson<T>(body: T, status = 200): Response {
-  return HttpResponse.json(body, { status });
+  return HttpResponse.json(body as never, { status });
 }
 
 export function errorJson(code: ErrorCode, message: string, status = 400, details?: unknown): Response {
