@@ -7,6 +7,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@labelhub/contracts": path.resolve(__dirname, "../../packages/contracts/src/index.ts"),
+      "@labelhub/schema-core": path.resolve(__dirname, "../../packages/schema-core/src/index.ts"),
     },
   },
   build: {

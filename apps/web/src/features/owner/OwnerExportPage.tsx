@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
+import { Badge, Button, Card, Select } from "../../ui/primitives";
 
 interface OwnerExportPageProps {
   role: Role;
@@ -8,237 +9,88 @@ interface OwnerExportPageProps {
 
 export default function OwnerExportPage({ role }: OwnerExportPageProps) {
   const { taskId } = useParams<{ taskId: string }>();
-  const [format, setFormat] = useState("json");
+  const [format, setFormat] = useState("JSONL");
   const [includeMetadata, setIncludeMetadata] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("ACCEPTED");
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
     try {
       setExporting(true);
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      alert(`导出成功！格式: ${format}`);
+      await new Promise((resolve) => setTimeout(resolve, 900));
     } finally {
       setExporting(false);
     }
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <Link to={RoutePath.OWNER_TASKS} style={styles.backLink}>← 返回任务列表</Link>
-        <h2 style={styles.title}>数据导出</h2>
-        <span style={styles.role}>{role}</span>
+    <div className="page-stack">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">导出中心</h2>
+          <p className="page-subtitle">当前角色：{role}。导出配置暂用页面状态展示，后续接入 export workflow。</p>
+        </div>
+        <Link to={RoutePath.OWNER_TASKS} className="lh-button">
+          返回任务列表
+        </Link>
       </div>
 
-      <div style={styles.content}>
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>任务 ID: {taskId}</h3>
-        </div>
-
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>导出格式</h3>
-          <div style={styles.formatOptions}>
-            <button
-              style={{
-                ...styles.formatButton,
-                backgroundColor: format === "json" ? "#4a69bd" : "#f5f7fa",
-                color: format === "json" ? "white" : "#333",
-              }}
-              onClick={() => setFormat("json")}
-            >
-              JSON
-            </button>
-            <button
-              style={{
-                ...styles.formatButton,
-                backgroundColor: format === "csv" ? "#4a69bd" : "#f5f7fa",
-                color: format === "csv" ? "white" : "#333",
-              }}
-              onClick={() => setFormat("csv")}
-            >
-              CSV
-            </button>
-            <button
-              style={{
-                ...styles.formatButton,
-                backgroundColor: format === "parquet" ? "#4a69bd" : "#f5f7fa",
-                color: format === "parquet" ? "white" : "#333",
-              }}
-              onClick={() => setFormat("parquet")}
-            >
-              Parquet
-            </button>
-          </div>
-        </div>
-
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>过滤条件</h3>
-          
-          <div style={styles.formGroup}>
-            <label style={styles.label}>状态过滤</label>
-            <select
-              style={styles.select}
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">全部</option>
-              <option value="approved">已通过</option>
-              <option value="returned">已退回</option>
-              <option value="pending">待审核</option>
-            </select>
-          </div>
-
-          <div style={styles.checkboxRow}>
-            <input
-              type="checkbox"
-              id="includeMetadata"
-              checked={includeMetadata}
-              onChange={(e) => setIncludeMetadata(e.target.checked)}
-              style={styles.checkbox}
-            />
-            <label htmlFor="includeMetadata" style={styles.checkboxLabel}>
-              包含元数据（任务信息、审核记录等）
+      <div className="split-layout">
+        <Card className="soft-panel">
+          <div className="form-stack">
+            <Badge tone="primary">任务 {taskId}</Badge>
+            <label className="field-label">
+              导出格式
+              <Select value={format} onChange={(event) => setFormat(event.target.value)}>
+                <option value="JSON">JSON</option>
+                <option value="JSONL">JSONL</option>
+                <option value="CSV">CSV</option>
+                <option value="EXCEL">EXCEL</option>
+              </Select>
             </label>
+            <label className="field-label">
+              状态过滤
+              <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="ACCEPTED">已通过</option>
+                <option value="RETURNED">已退回</option>
+                <option value="SUBMITTED">已提交</option>
+              </Select>
+            </label>
+            <label className="field-label">
+              <span>
+                <input
+                  type="checkbox"
+                  checked={includeMetadata}
+                  onChange={(event) => setIncludeMetadata(event.target.checked)}
+                />{" "}
+                包含审核记录和任务元数据
+              </span>
+            </label>
+            <Button tone="success" onClick={handleExport} disabled={exporting}>
+              {exporting ? "导出中..." : "开始导出"}
+            </Button>
           </div>
-        </div>
+        </Card>
 
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>导出预览</h3>
-          <div style={styles.previewPanel}>
-            <pre style={styles.previewContent}>
-{`{
+        <Card className="soft-panel">
+          <h3 className="soft-panel__title">导出预览</h3>
+          <div className="inset-well">
+            <pre className="source-json">{`{
   "taskId": "${taskId}",
-  "exportTime": "${new Date().toISOString()}",
   "format": "${format}",
+  "filter": "${statusFilter}",
+  "includeMetadata": ${includeMetadata},
   "records": [
     {
       "itemId": "item_001",
-      "sourcePayload": { ... },
-      "answers": { ... },
-      "status": "approved"
+      "sourcePayload": { "...": "..." },
+      "answers": { "...": "..." }
     }
   ]
-}`}
-            </pre>
+}`}</pre>
           </div>
-        </div>
-
-        <div style={styles.buttonGroup}>
-          <button style={styles.exportButton} onClick={handleExport} disabled={exporting}>
-            {exporting ? "导出中..." : "开始导出"}
-          </button>
-        </div>
+        </Card>
       </div>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    padding: "20px",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "20px",
-  },
-  backLink: {
-    color: "#4a69bd",
-    textDecoration: "none",
-    fontSize: "0.9rem",
-  },
-  title: {
-    fontSize: "1.8rem",
-    color: "#1a1a2e",
-  },
-  role: {
-    backgroundColor: "#4a69bd",
-    color: "white",
-    padding: "5px 15px",
-    borderRadius: "20px",
-    fontSize: "0.9rem",
-  },
-  content: {
-    backgroundColor: "white",
-    borderRadius: "8px",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-    padding: "20px",
-  },
-  section: {
-    marginBottom: "25px",
-    paddingBottom: "20px",
-    borderBottom: "1px solid #eee",
-  },
-  sectionTitle: {
-    fontSize: "1.1rem",
-    marginBottom: "15px",
-    color: "#333",
-  },
-  formatOptions: {
-    display: "flex",
-    gap: "10px",
-  },
-  formatButton: {
-    padding: "10px 25px",
-    borderRadius: "5px",
-    border: "none",
-    cursor: "pointer",
-    fontSize: "1rem",
-  },
-  formGroup: {
-    marginBottom: "15px",
-  },
-  label: {
-    display: "block",
-    marginBottom: "8px",
-    fontSize: "0.9rem",
-    color: "#666",
-  },
-  select: {
-    width: "200px",
-    padding: "10px",
-    border: "1px solid #ddd",
-    borderRadius: "5px",
-    fontSize: "0.9rem",
-  },
-  checkboxRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-  checkbox: {
-    width: "18px",
-    height: "18px",
-  },
-  checkboxLabel: {
-    fontSize: "0.9rem",
-    color: "#333",
-  },
-  previewPanel: {
-    backgroundColor: "#f5f7fa",
-    borderRadius: "5px",
-    padding: "15px",
-    overflowX: "auto",
-  },
-  previewContent: {
-    fontSize: "0.85rem",
-    color: "#333",
-    whiteSpace: "pre-wrap",
-    wordBreak: "break-all",
-  },
-  buttonGroup: {
-    display: "flex",
-    justifyContent: "flex-end",
-  },
-  exportButton: {
-    padding: "12px 40px",
-    backgroundColor: "#4caf50",
-    color: "white",
-    border: "none",
-    borderRadius: "5px",
-    cursor: "pointer",
-    fontSize: "1rem",
-  },
-};

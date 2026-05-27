@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { RoutePath, Role } from "../../app/routes";
-import { getAssignmentContext, saveDraft, submitAssignment, callLLMAssist } from "../../api/labeler";
+import { Link, useParams } from "react-router-dom";
 import { SchemaRenderer } from "@labelhub/schema-renderer";
+import { RoutePath, Role } from "../../app/routes";
+import { callLLMAssist, getAssignmentContext, saveDraft, submitAssignment } from "../../api/labeler";
+import { Badge, Button, Card } from "../../ui/primitives";
 import type {
   AnswerPayload,
   AssignmentContextResponse,
@@ -18,7 +19,7 @@ interface AssignmentPageProps {
 }
 
 export default function AssignmentPage({ role }: AssignmentPageProps) {
-  const { taskId, itemId } = useParams<{ taskId: string; itemId: string }>();
+  const { assignmentId } = useParams<{ assignmentId: string }>();
   const [context, setContext] = useState<AssignmentContextResponse | null>(null);
   const [answers, setAnswers] = useState<AnswerPayload>({});
   const [errors, setErrors] = useState<ValidationError[]>([]);
@@ -29,8 +30,8 @@ export default function AssignmentPage({ role }: AssignmentPageProps) {
     void (async () => {
       try {
         setLoading(true);
-        if (taskId && itemId) {
-          const data = await getAssignmentContext(taskId, itemId);
+        if (assignmentId) {
+          const data = await getAssignmentContext(assignmentId);
           setContext(data);
           setAnswers(data.draft?.answers ?? {});
         }
@@ -40,7 +41,7 @@ export default function AssignmentPage({ role }: AssignmentPageProps) {
         setLoading(false);
       }
     })();
-  }, [taskId, itemId]);
+  }, [assignmentId]);
 
   const runtimeContext: LabelHubRuntimeContext = context
     ? {
@@ -63,7 +64,7 @@ export default function AssignmentPage({ role }: AssignmentPageProps) {
         answers,
         system: {
           actor: {
-            id: "usr_labeler" as const,
+            id: "usr_labeler",
             role: "LABELER",
             displayName: "标注员",
           },
@@ -84,11 +85,10 @@ export default function AssignmentPage({ role }: AssignmentPageProps) {
       };
 
   const handleSaveDraft = async () => {
-    if (!taskId || !itemId) return;
+    if (!assignmentId) return;
     try {
       setSaving(true);
-      await saveDraft(taskId, itemId, { answers, clientRevision: 0 });
-      alert("草稿已保存");
+      await saveDraft(assignmentId, { answers, clientRevision: 0 });
     } catch (e) {
       console.error("Failed to save draft:", e);
     } finally {
@@ -97,14 +97,13 @@ export default function AssignmentPage({ role }: AssignmentPageProps) {
   };
 
   const handleSubmit = async (submitAnswers: AnswerPayload, validation: ValidationResult) => {
-    if (!taskId || !itemId) return;
+    if (!assignmentId) return;
     if (!validation.valid) {
       setErrors(validation.errors);
       return;
     }
     try {
-      await submitAssignment(taskId, itemId, { answers: submitAnswers });
-      alert("提交成功");
+      await submitAssignment(assignmentId, { answers: submitAnswers });
       window.location.href = RoutePath.LABELER_TASKS;
     } catch (e) {
       console.error("Failed to submit:", e);
@@ -112,154 +111,108 @@ export default function AssignmentPage({ role }: AssignmentPageProps) {
   };
 
   const handleLLMAssist = async (
-    _node: LLMAssistNode,
+    node: LLMAssistNode,
     _runtimeCtx: LabelHubRuntimeContext,
-    _currentAnswers: AnswerPayload
+    currentAnswers: AnswerPayload,
   ): Promise<LLMRuntimeResponse> => {
-    if (!taskId || !itemId) {
-      return {
-        output: { summary: "请先选择任务" },
-        suggestedPatch: {},
-        callId: "llm_demo",
-      };
+    if (!assignmentId) {
+      return { output: { summary: "请先选择任务" }, suggestedPatch: {}, callId: "llm_demo" };
     }
     try {
-      return await callLLMAssist(taskId, itemId);
-    } catch (e) {
-      return {
-        output: { summary: "LLM 辅助暂时不可用" },
-        suggestedPatch: {},
-        callId: "llm_demo",
-      };
+      return await callLLMAssist(assignmentId, { nodeId: node.id, answers: currentAnswers });
+    } catch {
+      return { output: { summary: "LLM 辅助暂时不可用" }, suggestedPatch: {}, callId: "llm_demo" };
     }
   };
 
   if (loading) {
-    return <div style={styles.loading}>加载中...</div>;
+    return <Card className="state-panel">加载标注工作台中...</Card>;
   }
 
   if (!context) {
-    return <div style={styles.error}>任务不存在</div>;
+    return <Card className="state-panel danger-text">任务不存在</Card>;
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <Link to={RoutePath.LABELER_TASKS} style={styles.backLink}>← 返回任务市场</Link>
-          <h2 style={styles.title}>标注工作台</h2>
-          <span style={styles.role}>{role}</span>
+    <div className="workspace-layout">
+      <Card className="soft-panel">
+        <h3 className="soft-panel__title">题目导航</h3>
+        <div className="soft-list">
+          {Array.from({ length: 8 }, (_, index) => (
+            <div key={index} className="soft-list-item">
+              #{String(index + 1).padStart(3, "0")} {index === 0 ? "进行中" : index < 3 ? "已提交" : "待标"}
+            </div>
+          ))}
         </div>
-        <div style={styles.actions}>
-          <button style={styles.saveButton} onClick={handleSaveDraft} disabled={saving}>
-            {saving ? "保存中..." : "保存草稿"}
-          </button>
+      </Card>
+
+      <div className="page-stack">
+        <div className="page-header">
+          <div>
+            <h2 className="page-title">{context.task.title}</h2>
+            <p className="page-subtitle">Assignment {context.assignment.id} · 当前角色 {role}</p>
+          </div>
+          <div className="page-actions">
+            <Link to={RoutePath.LABELER_TASKS} className="lh-button">
+              返回市场
+            </Link>
+            <Button onClick={handleSaveDraft} disabled={saving}>
+              {saving ? "保存中..." : "保存草稿"}
+            </Button>
+          </div>
         </div>
+
+        {context.lastReturnReason ? (
+          <Card className="soft-panel">
+            <Badge tone="warning">上一轮被打回</Badge>
+            <p className="page-subtitle">
+              {context.lastReturnReason.comments?.[0]?.message ?? "请根据审核意见修订后重新提交。"}
+            </p>
+          </Card>
+        ) : null}
+
+        <Card className="inset-well">
+          <h3 className="soft-panel__title">原始内容</h3>
+          <pre className="source-json">{JSON.stringify(context.item.sourcePayload, null, 2)}</pre>
+        </Card>
+
+        <Card className="renderer-frame">
+          <SchemaRenderer
+            schema={context.schema}
+            context={runtimeContext}
+            answers={answers}
+            mode="LABELING"
+            readonly={false}
+            errors={errors}
+            onAnswersChange={setAnswers}
+            onSubmit={handleSubmit}
+            onLLMAssist={handleLLMAssist}
+          />
+        </Card>
       </div>
 
-      <div style={styles.content}>
-        <div style={styles.sourcePanel}>
-          <h3 style={styles.sourceTitle}>待标注内容</h3>
-          <pre style={styles.sourceContent}>
-            {JSON.stringify(context.item.sourcePayload, null, 2)}
-          </pre>
+      <Card className="soft-panel">
+        <h3 className="soft-panel__title">我的贡献</h3>
+        <div className="kpi-grid compact-kpis">
+          <Badge tone="primary">已提交 62</Badge>
+          <Badge tone="success">通过 54</Badge>
+          <Badge tone="danger">打回 5</Badge>
         </div>
-
-        <SchemaRenderer
-          schema={context.schema}
-          context={runtimeContext}
-          answers={answers}
-          mode="LABELING"
-          readonly={false}
-          errors={errors}
-          onAnswersChange={setAnswers}
-          onSubmit={handleSubmit}
-          onLLMAssist={handleLLMAssist}
-        />
-      </div>
+        <div className="timeline flow-spaced">
+          <div className="timeline-item">
+            <strong>李雷 · 提交</strong>
+            <span>05-16 14:22</span>
+          </div>
+          <div className="timeline-item">
+            <strong>AI 预审 · 打回</strong>
+            <span>05-16 14:22</span>
+          </div>
+          <div className="timeline-item">
+            <strong>当前 · 修改中</strong>
+            <span>本题草稿</span>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    padding: "20px",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "20px",
-  },
-  headerLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: "15px",
-  },
-  backLink: {
-    color: "#4caf50",
-    textDecoration: "none",
-    fontSize: "0.9rem",
-  },
-  title: {
-    fontSize: "1.8rem",
-    color: "#1a1a2e",
-  },
-  role: {
-    backgroundColor: "#4caf50",
-    color: "white",
-    padding: "5px 15px",
-    borderRadius: "20px",
-    fontSize: "0.9rem",
-  },
-  actions: {
-    display: "flex",
-    gap: "10px",
-  },
-  saveButton: {
-    padding: "10px 20px",
-    backgroundColor: "#3d3d5c",
-    color: "white",
-    border: "none",
-    borderRadius: "5px",
-    cursor: "pointer",
-    fontSize: "0.9rem",
-  },
-  content: {
-    backgroundColor: "white",
-    borderRadius: "8px",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-    padding: "20px",
-  },
-  sourcePanel: {
-    marginBottom: "20px",
-    padding: "15px",
-    backgroundColor: "#f5f7fa",
-    borderRadius: "8px",
-  },
-  sourceTitle: {
-    fontSize: "1rem",
-    marginBottom: "10px",
-    color: "#666",
-  },
-  sourceContent: {
-    whiteSpace: "pre-wrap",
-    wordBreak: "break-all",
-    fontSize: "0.9rem",
-    color: "#333",
-  },
-  loading: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "200px",
-    fontSize: "1.2rem",
-    color: "#666",
-  },
-  error: {
-    backgroundColor: "#ffebee",
-    color: "#c62828",
-    padding: "15px",
-    borderRadius: "5px",
-  },
-};

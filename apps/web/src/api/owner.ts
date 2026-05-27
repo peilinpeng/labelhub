@@ -9,6 +9,9 @@ import type {
   Task,
   PublishTaskRequest,
   PublishTaskResponse,
+  CreateExportJobRequest,
+  CreateExportJobResponse,
+  ExportJob,
 } from "@labelhub/contracts";
 import { apiGet, apiPost, apiPut } from "./client";
 
@@ -18,6 +21,16 @@ export async function fetchServerRegistry(): Promise<ServerComponentRegistryItem
 
 export async function fetchTask(taskId: string): Promise<Task> {
   return apiGet<Task>(`/api/v1/tasks/${taskId}`);
+}
+
+export async function createTask(
+  request: Pick<Task, "title" | "description"> & Partial<Task>
+): Promise<Task> {
+  return apiPost<Task>("/api/v1/tasks", request);
+}
+
+export async function fetchSchemaDraft(taskId: string): Promise<LabelHubSchema> {
+  return apiGet<LabelHubSchema>(`/api/v1/tasks/${taskId}/schema/draft`);
 }
 
 export async function saveSchemaDraft(
@@ -48,4 +61,15 @@ export async function publishTask(taskId: string, request: PublishTaskRequest): 
 
 export async function listTasks(): Promise<Task[]> {
   return apiGet<Task[]>("/api/v1/tasks");
+}
+
+export async function createExportJob(
+  taskId: string,
+  request: CreateExportJobRequest
+): Promise<CreateExportJobResponse> {
+  return apiPost<CreateExportJobResponse>(`/api/v1/tasks/${taskId}/exports`, request);
+}
+
+export async function listExportJobs(taskId: string): Promise<ExportJob[]> {
+  return apiGet<ExportJob[]>(`/api/v1/tasks/${taskId}/exports`);
 }

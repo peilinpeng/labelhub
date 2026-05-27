@@ -61,6 +61,8 @@ import {
 const idempotencyRecords = new Map<string, IdempotencyRecord>();
 
 export const handlers = [
+  http.get("/api/v1/tasks", () => okJson(mockDb.tasks)),
+
   http.post("/api/v1/tasks", async ({ request }) => {
     const body = await readJson<Pick<Parameters<typeof createTask>[0], "title" | "description"> & Partial<Parameters<typeof createTask>[0]>>(request);
     return withIdempotency(request, body, () => {
@@ -76,10 +78,11 @@ export const handlers = [
     return task === undefined ? errorJson("RESOURCE_NOT_FOUND", "任务不存在", 404) : okJson(task);
   }),
 
-http.get("/api/v1/tasks/:taskId", ({ params }) => {
-  const task = getTask(getParam(params as MockParams, "taskId"));
-  return task === undefined ? errorJson("RESOURCE_NOT_FOUND", "任务不存在", 404) : okJson(task);
-}),
+  http.get("/api/v1/tasks/:taskId/schema/draft", ({ params }) => {
+    const taskId = getParam(params as MockParams, "taskId");
+    const draft = mockDb.schemaDrafts.find((item) => item.meta.taskId === taskId);
+    return draft === undefined ? errorJson("RESOURCE_NOT_FOUND", "schema draft 不存在", 404) : okJson(draft);
+  }),
 
   http.put("/api/v1/tasks/:taskId/schema/draft", async ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");

@@ -10,24 +10,78 @@ import LabelerWorkspace from "../features/labeler/LabelerWorkspace";
 import AssignmentPage from "../features/labeler/AssignmentPage";
 import ReviewerWorkspace from "../features/reviewer/ReviewerWorkspace";
 import ReviewDetailPage from "../features/reviewer/ReviewDetailPage";
+import { AppShell, type ShellNavItem } from "../ui/AppShell";
+import { Button, Card } from "../ui/primitives";
+import "../styles.css";
+
+const roleHome: Record<Role, string> = {
+  OWNER: RoutePath.OWNER_TASKS,
+  LABELER: RoutePath.LABELER_TASKS,
+  REVIEWER: RoutePath.REVIEWER_QUEUE,
+};
+
+const shellCopy: Record<Role, { title: string; subtitle: string; navItems: ShellNavItem[] }> = {
+  OWNER: {
+    title: "任务负责人后台",
+    subtitle: "任务管理、模板搭建、发布与交付",
+    navItems: [
+      { label: "任务管理", path: RoutePath.OWNER_TASKS, end: true },
+      { label: "新建任务", path: RoutePath.OWNER_TASKS_NEW },
+      { label: "模板搭建", path: "/owner/tasks/task_news_quality/designer" },
+      { label: "AI 预审规则", path: "/owner/tasks/task_news_quality/ai-config" },
+      { label: "导出中心", path: "/owner/tasks/task_news_quality/export" },
+    ],
+  },
+  LABELER: {
+    title: "标注员工作台",
+    subtitle: "领取任务、填写答案、保存草稿并提交",
+    navItems: [{ label: "任务市场", path: RoutePath.LABELER_TASKS, end: true }],
+  },
+  REVIEWER: {
+    title: "审核与质检",
+    subtitle: "AI 预审队列、人工复核与结果入库",
+    navItems: [{ label: "审核队列", path: RoutePath.REVIEWER_QUEUE, end: true }],
+  },
+};
 
 function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
   return (
-    <div style={styles.container}>
-      <h1 style={styles.title}>LabelHub 数据标注平台</h1>
-      <p style={styles.subtitle}>选择您的角色</p>
-      <div style={styles.buttonContainer}>
-        <button style={styles.button} onClick={() => onSelect("OWNER")}>
-          👑 任务所有者
-        </button>
-        <button style={styles.button} onClick={() => onSelect("LABELER")}>
-          ✏️ 标注员
-        </button>
-        <button style={styles.button} onClick={() => onSelect("REVIEWER")}>
-          🔍 审核员
-        </button>
-      </div>
+    <div className="role-select">
+      <Card className="role-select__card">
+        <h1 className="role-select__title">LabelHub 数据标注平台</h1>
+        <p className="role-select__subtitle">选择一个角色进入 MVP demo flow</p>
+        <div className="role-select__actions">
+          <Button tone="primary" onClick={() => onSelect("OWNER")}>
+            任务所有者
+          </Button>
+          <Button onClick={() => onSelect("LABELER")}>标注员</Button>
+          <Button onClick={() => onSelect("REVIEWER")}>审核员</Button>
+        </div>
+      </Card>
     </div>
+  );
+}
+
+function AppRoutes({ role }: { role: Role }) {
+  return (
+    <Routes>
+      <Route path={RoutePath.HOME} element={<Navigate to={roleHome[role]} />} />
+
+      <Route path={RoutePath.OWNER_TASKS} element={<OwnerWorkspace role={role} />} />
+      <Route path={RoutePath.OWNER_TASKS_NEW} element={<OwnerNewTaskPage role={role} />} />
+      <Route path={RoutePath.OWNER_TASKS_DESIGNER} element={<OwnerSchemaPage role={role} />} />
+      <Route path={RoutePath.OWNER_TASKS_AI_CONFIG} element={<OwnerAIPage role={role} />} />
+      <Route path={RoutePath.OWNER_TASKS_EXPORT} element={<OwnerExportPage role={role} />} />
+
+      <Route path={RoutePath.LABELER_TASKS} element={<LabelerWorkspace role={role} />} />
+      <Route path={RoutePath.LABELER_WORKSPACE} element={<AssignmentPage role={role} />} />
+
+      <Route path={RoutePath.REVIEWER_QUEUE} element={<ReviewerWorkspace role={role} />} />
+      <Route path={RoutePath.REVIEWER_SUBMISSIONS} element={<ReviewDetailPage role={role} />} />
+      <Route path={RoutePath.REVIEWER_SUBMISSIONS_LEGACY} element={<ReviewDetailPage role={role} />} />
+
+      <Route path="*" element={<Navigate to={roleHome[role]} />} />
+    </Routes>
   );
 }
 
@@ -38,121 +92,19 @@ function App() {
     return <RoleSelector onSelect={setRole} />;
   }
 
+  const copy = shellCopy[role];
+
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#f5f7fa" }}>
-      <header style={styles.header}>
-        <div style={styles.headerContent}>
-          <h1 style={styles.headerTitle}>LabelHub</h1>
-          <div style={styles.headerRight}>
-            <span style={styles.roleBadge}>{role}</span>
-            <button style={styles.switchButton} onClick={() => setRole(null)}>
-              切换角色
-            </button>
-          </div>
-        </div>
-      </header>
-      <main style={styles.main}>
-        <Routes>
-          <Route path={RoutePath.HOME} element={<Navigate to={`/${role.toLowerCase()}/tasks`} />} />
-          
-          <Route path={RoutePath.OWNER_TASKS} element={<OwnerWorkspace role={role} />} />
-          <Route path={RoutePath.OWNER_TASKS_NEW} element={<OwnerNewTaskPage role={role} />} />
-          <Route path={RoutePath.OWNER_TASKS_DESIGNER} element={<OwnerSchemaPage role={role} />} />
-          <Route path={RoutePath.OWNER_TASKS_AI_CONFIG} element={<OwnerAIPage role={role} />} />
-          <Route path={RoutePath.OWNER_TASKS_EXPORT} element={<OwnerExportPage role={role} />} />
-          
-          <Route path={RoutePath.LABELER_TASKS} element={<LabelerWorkspace role={role} />} />
-          <Route path={RoutePath.LABELER_WORKSPACE} element={<AssignmentPage role={role} />} />
-          
-          <Route path={RoutePath.REVIEWER_QUEUE} element={<ReviewerWorkspace role={role} />} />
-          <Route path={RoutePath.REVIEWER_SUBMISSIONS} element={<ReviewDetailPage role={role} />} />
-          
-          <Route path="*" element={<Navigate to={`/${role.toLowerCase()}/tasks`} />} />
-        </Routes>
-      </main>
-    </div>
+    <AppShell
+      role={role}
+      title={copy.title}
+      subtitle={copy.subtitle}
+      navItems={copy.navItems}
+      onSwitchRole={() => setRole(null)}
+    >
+      <AppRoutes role={role} />
+    </AppShell>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: "100vh",
-    padding: "20px",
-    backgroundColor: "#f5f7fa",
-  },
-  title: {
-    fontSize: "2.5rem",
-    color: "#1a1a2e",
-    marginBottom: "10px",
-  },
-  subtitle: {
-    fontSize: "1.2rem",
-    color: "#666",
-    marginBottom: "40px",
-  },
-  buttonContainer: {
-    display: "flex",
-    gap: "20px",
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-  button: {
-    padding: "15px 40px",
-    fontSize: "1.1rem",
-    border: "none",
-    borderRadius: "8px",
-    cursor: "pointer",
-    backgroundColor: "#4a69bd",
-    color: "white",
-    transition: "all 0.3s ease",
-    minWidth: "180px",
-  },
-  header: {
-    backgroundColor: "#1a1a2e",
-    color: "white",
-    padding: "15px 20px",
-    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-  },
-  headerContent: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    maxWidth: "1400px",
-    margin: "0 auto",
-  },
-  headerTitle: {
-    fontSize: "1.5rem",
-    fontWeight: "bold",
-  },
-  headerRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: "15px",
-  },
-  roleBadge: {
-    backgroundColor: "#4a69bd",
-    padding: "5px 15px",
-    borderRadius: "20px",
-    fontSize: "0.9rem",
-  },
-  switchButton: {
-    backgroundColor: "#3d3d5c",
-    color: "white",
-    border: "none",
-    padding: "8px 16px",
-    borderRadius: "5px",
-    cursor: "pointer",
-    fontSize: "0.9rem",
-  },
-  main: {
-    maxWidth: "1400px",
-    margin: "0 auto",
-    padding: "20px",
-  },
-};
 
 export default App;

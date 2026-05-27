@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Role } from "../../app/routes";
-import { listMarketplaceTasks, claimTask } from "../../api/labeler";
-import type { Task, ClaimTaskResponse } from "@labelhub/contracts";
+import { claimTask, listMarketplaceTasks } from "../../api/labeler";
+import { Badge, Button, Card, KpiCard } from "../../ui/primitives";
+import type { ClaimTaskResponse, Task } from "@labelhub/contracts";
 
 interface LabelerWorkspaceProps {
   role: Role;
@@ -32,7 +33,7 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
     try {
       setClaimingTaskId(taskId);
       const response: ClaimTaskResponse = await claimTask(taskId, {});
-      window.location.href = `/labeler/workspace/${taskId}/${response.context.item.id}`;
+      window.location.href = `/labeler/workspace/${response.context.assignment.id}`;
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -41,136 +42,60 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
   };
 
   if (loading) {
-    return <div style={styles.loading}>加载中...</div>;
+    return <Card className="state-panel">加载任务市场中...</Card>;
   }
 
   if (error) {
-    return <div style={styles.error}>错误: {error}</div>;
+    return <Card className="state-panel danger-text">错误: {error}</Card>;
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h2 style={styles.title}>任务市场</h2>
-        <span style={styles.role}>{role}</span>
+    <div className="page-stack">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">任务市场</h2>
+          <p className="page-subtitle">当前角色：{role}。领取后进入标注工作台，SchemaRenderer 负责渲染与校验。</p>
+        </div>
       </div>
 
-      <div style={styles.taskGrid}>
+      <div className="kpi-grid">
+        <KpiCard label="可领取任务" value={tasks.length} hint="来自 marketplace mock API" />
+        <KpiCard label="预计单题奖励" value="0.30" hint="元 / accepted item" />
+        <KpiCard label="今日草稿" value="0" hint="保存后由 workflow 更新" />
+      </div>
+
+      <div className="soft-grid">
         {tasks.map((task) => (
-          <div key={task.id} style={styles.taskCard}>
-            <h3 style={styles.taskTitle}>{task.title}</h3>
-            <p style={styles.taskDesc}>{task.description}</p>
-            <div style={styles.taskMeta}>
-              <span style={styles.status}>{task.status}</span>
-              {task.quota && (
-                <span style={styles.quota}>配额: {task.quota.total}</span>
-              )}
+          <Card key={task.id} className="soft-panel" interactive>
+            <div className="form-stack">
+              <div>
+                <div className="page-actions">
+                  <Badge tone="success">{task.status}</Badge>
+                  <Badge tone="primary">{task.distributionStrategy.type}</Badge>
+                </div>
+                <h3 className="task-title">{task.title}</h3>
+                <p className="page-subtitle">{task.description}</p>
+              </div>
+              <div className="inset-well">
+                <div className="meta-line">
+                  <span>配额 {task.quota.total}</span>
+                  <span>每人 {task.quota.perLabeler ?? "-"}</span>
+                  <span>{task.deadlineAt ? `截止 ${new Date(task.deadlineAt).toLocaleDateString()}` : "无截止时间"}</span>
+                </div>
+              </div>
+              <Button
+                tone="success"
+                onClick={() => handleClaimTask(task.id)}
+                disabled={claimingTaskId === task.id}
+              >
+                {claimingTaskId === task.id ? "领取中..." : "领取任务"}
+              </Button>
             </div>
-            <button
-              style={styles.button}
-              onClick={() => handleClaimTask(task.id)}
-              disabled={claimingTaskId === task.id}
-            >
-              {claimingTaskId === task.id ? "领取中..." : "领取任务"}
-            </button>
-          </div>
+          </Card>
         ))}
       </div>
 
-      {tasks.length === 0 && (
-        <div style={styles.empty}>
-          <p>暂无可领取的任务</p>
-        </div>
-      )}
+      {tasks.length === 0 ? <Card className="empty-state">暂无可领取的任务</Card> : null}
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    padding: "20px",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "20px",
-  },
-  title: {
-    fontSize: "1.8rem",
-    color: "#1a1a2e",
-  },
-  role: {
-    backgroundColor: "#4caf50",
-    color: "white",
-    padding: "5px 15px",
-    borderRadius: "20px",
-    fontSize: "0.9rem",
-  },
-  taskGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-    gap: "20px",
-  },
-  taskCard: {
-    backgroundColor: "white",
-    padding: "20px",
-    borderRadius: "8px",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-  },
-  taskTitle: {
-    fontSize: "1.2rem",
-    marginBottom: "10px",
-    color: "#1a1a2e",
-  },
-  taskDesc: {
-    color: "#666",
-    marginBottom: "15px",
-    lineHeight: "1.5",
-  },
-  taskMeta: {
-    display: "flex",
-    gap: "15px",
-    marginBottom: "15px",
-  },
-  status: {
-    backgroundColor: "#e8f5e9",
-    color: "#2e7d32",
-    padding: "3px 10px",
-    borderRadius: "4px",
-    fontSize: "0.8rem",
-  },
-  quota: {
-    color: "#999",
-    fontSize: "0.8rem",
-  },
-  button: {
-    width: "100%",
-    padding: "12px",
-    backgroundColor: "#4caf50",
-    color: "white",
-    border: "none",
-    borderRadius: "5px",
-    cursor: "pointer",
-    fontSize: "1rem",
-  },
-  loading: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "200px",
-    fontSize: "1.2rem",
-    color: "#666",
-  },
-  error: {
-    backgroundColor: "#ffebee",
-    color: "#c62828",
-    padding: "15px",
-    borderRadius: "5px",
-  },
-  empty: {
-    textAlign: "center",
-    padding: "50px",
-    color: "#999",
-  },
-};

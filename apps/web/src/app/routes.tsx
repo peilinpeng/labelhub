@@ -8,10 +8,11 @@ export enum RoutePath {
   OWNER_TASKS_EXPORT = "/owner/tasks/:taskId/export",
   
   LABELER_TASKS = "/labeler/tasks",
-  LABELER_WORKSPACE = "/labeler/workspace/:taskId/:itemId",
+  LABELER_WORKSPACE = "/labeler/workspace/:assignmentId",
   
-  REVIEWER_QUEUE = "/reviewer/queue",
-  REVIEWER_SUBMISSIONS = "/reviewer/submissions/:submissionId",
+  REVIEWER_QUEUE = "/reviewer/items",
+  REVIEWER_SUBMISSIONS = "/reviewer/items/:submissionId",
+  REVIEWER_SUBMISSIONS_LEGACY = "/reviewer/submissions/:submissionId",
 }
 
 export type Role = "OWNER" | "LABELER" | "REVIEWER";

@@ -20,20 +20,23 @@ export async function claimTask(taskId: string, request: ClaimTaskRequest): Prom
   return apiPost<ClaimTaskResponse>(`/api/v1/tasks/${taskId}/claim`, request);
 }
 
-export async function getAssignmentContext(taskId: string, itemId: string): Promise<AssignmentContextResponse> {
-  return apiGet<AssignmentContextResponse>(`/api/v1/tasks/${taskId}/items/${itemId}/context`);
+export async function getAssignmentContext(assignmentId: string): Promise<AssignmentContextResponse> {
+  return apiGet<AssignmentContextResponse>(`/api/v1/assignments/${assignmentId}`);
 }
 
-export async function saveDraft(taskId: string, itemId: string, request: SaveDraftRequest): Promise<SaveDraftResponse> {
-  return apiPut<SaveDraftResponse>(`/api/v1/tasks/${taskId}/items/${itemId}/draft`, request);
+export async function saveDraft(assignmentId: string, request: SaveDraftRequest): Promise<SaveDraftResponse> {
+  return apiPut<SaveDraftResponse>(`/api/v1/assignments/${assignmentId}/draft`, request);
 }
 
-export async function submitAssignment(taskId: string, itemId: string, request: SubmitAssignmentRequest): Promise<SubmitAssignmentResponse> {
-  return apiPost<SubmitAssignmentResponse>(`/api/v1/tasks/${taskId}/items/${itemId}/submit`, request);
+export async function submitAssignment(assignmentId: string, request: SubmitAssignmentRequest): Promise<SubmitAssignmentResponse> {
+  return apiPost<SubmitAssignmentResponse>(`/api/v1/assignments/${assignmentId}/submit`, request);
 }
 
-export async function callLLMAssist(taskId: string, itemId: string): Promise<LLMRuntimeResponse> {
-  return apiPost<LLMRuntimeResponse>(`/api/v1/tasks/${taskId}/items/${itemId}/llm-assist`, {});
+export async function callLLMAssist(
+  assignmentId: string,
+  request: { nodeId: string; answers: Record<string, unknown> }
+): Promise<LLMRuntimeResponse> {
+  return apiPost<LLMRuntimeResponse>(`/api/v1/assignments/${assignmentId}/llm-assist`, request);
 }
 
 export async function listMySubmissions(): Promise<Submission[]> {
