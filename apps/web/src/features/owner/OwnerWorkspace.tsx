@@ -83,7 +83,7 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
         </Link>
       </div>
 
-      <div className="kpi-grid">
+      <div className="kpi-grid owner-kpi-grid">
         <KpiCard label="发布中任务" value={publishedCount} hint="可被标注员领取" />
         <KpiCard label="草稿" value={draftCount} hint="等待模板和数据集" />
         <KpiCard label="总配额" value={totalQuota.toLocaleString()} hint="MVP mock 数据" />
@@ -106,7 +106,7 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
       </Card>
 
       <div className="task-publish-layout">
-        <Card className="soft-panel">
+        <Card className="soft-panel owner-table-card">
           <table className="soft-table">
             <thead>
               <tr>
@@ -120,9 +120,9 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
             </thead>
             <tbody>
               {visibleTasks.map((task) => (
-                <tr key={task.id}>
+                <tr className="owner-task-row" key={task.id}>
                   <td>
-                    <h3 className="task-title">{task.title}</h3>
+                    <h3 className="task-title owner-task-title">{task.title}</h3>
                     <div className="meta-line">
                       <span>{task.id}</span>
                       <span>Owner: {task.ownerId}</span>
@@ -132,8 +132,8 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
                   <td>
                     <Badge tone={statusTone(task.status)}>{task.status}</Badge>
                   </td>
-                  <td>{strategyLabel(task.distributionStrategy)}</td>
-                  <td>{task.quota.total.toLocaleString()}</td>
+                  <td className="owner-table-strong">{strategyLabel(task.distributionStrategy)}</td>
+                  <td className="owner-table-strong">{task.quota.total.toLocaleString()}</td>
                   <td>
                     <div className="soft-progress" aria-label="任务进度">
                       <span className="soft-progress__bar" />
@@ -156,7 +156,7 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
           {visibleTasks.length === 0 ? <div className="empty-state">暂无匹配任务</div> : null}
         </Card>
 
-        <Card className="soft-panel task-publish-panel">
+        <Card className="soft-panel task-publish-panel owner-detail-card">
           <div>
             <Badge tone="primary">发布任务</Badge>
             <h3 className="task-publish-panel__title">
@@ -167,7 +167,7 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
             </p>
           </div>
 
-          <div className="form-stack">
+          <div className="form-stack owner-detail-groups">
             <label className="field-label">
               任务标题
               <Input value={selectedTask?.title ?? ""} readOnly />

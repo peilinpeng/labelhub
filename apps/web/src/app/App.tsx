@@ -11,7 +11,7 @@ import AssignmentPage from "../features/labeler/AssignmentPage";
 import ReviewerWorkspace from "../features/reviewer/ReviewerWorkspace";
 import ReviewDetailPage from "../features/reviewer/ReviewDetailPage";
 import { AppShell, type ShellNavItem } from "../ui/AppShell";
-import { Button, Card } from "../ui/primitives";
+import { Badge, Button, Card } from "../ui/primitives";
 import "../styles.css";
 
 const roleHome: Record<Role, string> = {
@@ -45,20 +45,94 @@ const shellCopy: Record<Role, { title: string; subtitle: string; navItems: Shell
 };
 
 function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
+  const workflowSteps = ["任务发布", "模板配置", "标注台", "AI 预审", "人工审核"];
+  const roleCards: Array<{
+    role: Role;
+    title: string;
+    description: string;
+    tone: "primary" | "success" | "warning";
+  }> = [
+    {
+      role: "OWNER",
+      title: "任务所有者",
+      description: "创建任务、配置模板、发布到任务市场并查看交付结果。",
+      tone: "primary",
+    },
+    {
+      role: "LABELER",
+      title: "标注员",
+      description: "领取任务，依据动态 Schema 完成标注、保存草稿并提交。",
+      tone: "success",
+    },
+    {
+      role: "REVIEWER",
+      title: "审核员",
+      description: "查看 AI 预审结果，执行人工复核、打回或通过入库。",
+      tone: "warning",
+    },
+  ];
+
   return (
-    <div className="role-select">
-      <Card className="role-select__card">
-        <h1 className="role-select__title">LabelHub 数据标注平台</h1>
-        <p className="role-select__subtitle">选择一个角色进入 MVP demo flow</p>
-        <div className="role-select__actions">
-          <Button tone="primary" onClick={() => onSelect("OWNER")}>
-            任务所有者
-          </Button>
-          <Button onClick={() => onSelect("LABELER")}>标注员</Button>
-          <Button onClick={() => onSelect("REVIEWER")}>审核员</Button>
+    <main className="home-page">
+      <section className="home-hero">
+        <div className="home-hero__copy">
+          <Badge tone="primary">MVP Web Shell</Badge>
+          <h1 className="home-hero__title">LabelHub</h1>
+          <p className="home-hero__subtitle">
+            面向动态标注任务的协作工作台：从任务发布、模板配置到标注、AI 预审和人工审核，串起一条可演示的 MVP 流程。
+          </p>
+          <div className="home-hero__actions">
+            <Button tone="primary" onClick={() => onSelect("OWNER")}>
+              进入任务发布
+            </Button>
+            <Button onClick={() => onSelect("LABELER")}>体验标注台</Button>
+          </div>
+        </div>
+        <Card className="home-hero__panel">
+          <div className="home-hero__metric">
+            <span>角色</span>
+            <strong>3</strong>
+          </div>
+          <div className="home-hero__metric">
+            <span>MVP 页面</span>
+            <strong>5</strong>
+          </div>
+          <div className="inset-well">
+            <p className="page-subtitle">
+              当前先以 Soft UI 呈现可运行 Web UI，SchemaDesigner 暂用 placeholder 等待包导出修复。
+            </p>
+          </div>
+        </Card>
+      </section>
+
+      <Card className="workflow-card">
+        <div className="workflow-card__header">
+          <h2>Workflow</h2>
+          <span>任务发布到审核入库</span>
+        </div>
+        <div className="workflow-stepper">
+          {workflowSteps.map((step, index) => (
+            <div className="workflow-step" key={step}>
+              <span className="workflow-step__index">{index + 1}</span>
+              <strong>{step}</strong>
+            </div>
+          ))}
         </div>
       </Card>
-    </div>
+
+      <section className="home-role-grid" aria-label="角色入口">
+        {roleCards.map((card) => (
+          <Card key={card.role} className="home-role-card" interactive>
+            <Badge tone={card.tone}>{card.title}</Badge>
+            <h2>{card.title}</h2>
+            <p>{card.description}</p>
+            <Button tone={card.role === "OWNER" ? "primary" : "default"} onClick={() => onSelect(card.role)}>
+              进入
+            </Button>
+          </Card>
+        ))}
+      </section>
+    </main>
   );
 }
 
