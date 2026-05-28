@@ -15,8 +15,7 @@ from app.routers import auth as auth_router
 
 # 其余路由暂未实现，导入后按需解注释
 from app.routers import tasks
-from app.routers import dataset
-# from app.routers import marketplace, assignments
+from app.routers import dataset, marketplace, assignments
 # from app.routers import ai_review, review, exports, files
 
 app = FastAPI(title="LabelHub API", version="1.0.0")
@@ -32,8 +31,8 @@ register_error_handlers(app)
 app.include_router(auth_router.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(dataset.router, prefix="/api/v1")
-# app.include_router(marketplace.router, prefix="/api/v1")
-# app.include_router(assignments.router, prefix="/api/v1")
+app.include_router(marketplace.router, prefix="/api/v1")
+app.include_router(assignments.router, prefix="/api/v1")
 # app.include_router(ai_review.router, prefix="/api/v1")
 # app.include_router(review.router, prefix="/api/v1")
 # app.include_router(exports.router, prefix="/api/v1")

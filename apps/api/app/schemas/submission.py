@@ -1,4 +1,46 @@
-# Submission 相关 Pydantic 模型，对齐契约第 6.3 节 Submission 与第 23.3 节提交接口。
-# SubmissionStatus 取值：SUBMITTED | AI_REVIEWING | AI_PASSED | NEEDS_HUMAN_REVIEW |
-#   HUMAN_REVIEWING | FINAL_REVIEWING | RETURNED | ACCEPTED | REJECTED。
-# answers 只能包含可提交的 FieldNode.name，不得包含 ShowItem/Container/LLMAssist 节点。
+from datetime import datetime
+from typing import Any
+from pydantic import BaseModel, Field, ConfigDict
+from app.schemas.task import AuditLogSummaryResponse
+from app.schemas.assignment import AssignmentResponse, ValidationResultResponse
+
+
+class SubmissionResponse(BaseModel):
+    id: str
+    assignmentId: str
+    taskId: str
+    itemId: str
+    labelerId: str
+    schemaVersionId: str
+    attemptNo: int
+    answers: dict
+    status: str
+    validationSnapshot: dict
+    createdAt: datetime
+    updatedAt: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_orm(cls, s: Any) -> "SubmissionResponse":
+        return cls(
+            id=s.id, assignmentId=s.assignment_id, taskId=s.task_id,
+            itemId=s.item_id, labelerId=s.labeler_id,
+            schemaVersionId=s.schema_version_id, attemptNo=s.attempt_no,
+            answers=s.answers_json, status=s.status,
+            validationSnapshot=s.validation_json,
+            createdAt=s.created_at, updatedAt=s.updated_at,
+        )
+
+
+class SubmitAssignmentRequest(BaseModel):
+    answers: dict
+    clientRevision: int | None = None
+
+
+class SubmitAssignmentResponse(BaseModel):
+    submission: SubmissionResponse
+    assignment: AssignmentResponse
+    validation: ValidationResultResponse
+    nextStatus: str
+    auditLog: AuditLogSummaryResponse

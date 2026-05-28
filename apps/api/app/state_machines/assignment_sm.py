@@ -1,9 +1,32 @@
-# Assignment 状态机，对应契约第 18.2 节 Assignment 相关迁移。
-# 合法迁移：
-#   claimItem: → CLAIMED（同时 DatasetItem → LOCKED）
-#   saveDraft: CLAIMED/DRAFTING/RETURNED → DRAFTING
-#   submitAssignment: CLAIMED/DRAFTING/RETURNED → SUBMITTED
-#   expireAssignment: CLAIMED/DRAFTING → EXPIRED（同时 DatasetItem → AVAILABLE）
-#   humanReviewReturn: → RETURNED（DatasetItem 保持 LOCKED）
-#   humanReviewPass (SINGLE_REVIEW): → ACCEPTED（DatasetItem → COMPLETED）
-#   humanReviewReject: → CANCELED（DatasetItem → DISABLED）
+from app.middleware.error_handler import InvalidStateTransitionException
+
+_ALLOWED: dict[tuple[str, str], str] = {
+    ("CLAIMED",   "saveDraft"):          "DRAFTING",
+    ("DRAFTING",  "saveDraft"):          "DRAFTING",
+    ("RETURNED",  "saveDraft"):          "DRAFTING",
+    ("CLAIMED",   "submitAssignment"):   "SUBMITTED",
+    ("DRAFTING",  "submitAssignment"):   "SUBMITTED",
+    ("RETURNED",  "submitAssignment"):   "SUBMITTED",
+    ("CLAIMED",   "expireAssignment"):   "EXPIRED",
+    ("DRAFTING",  "expireAssignment"):   "EXPIRED",
+    ("SUBMITTED", "aiReviewReturn"):     "RETURNED",
+    ("SUBMITTED", "humanReviewReturn"):  "RETURNED",
+    ("SUBMITTED", "humanReviewPass"):    "ACCEPTED",
+    ("SUBMITTED", "humanReviewReject"):  "CANCELED",
+    ("SUBMITTED", "finalReviewPass"):    "ACCEPTED",
+    ("SUBMITTED", "finalReviewReturn"):  "RETURNED",
+    ("SUBMITTED", "finalReviewReject"):  "CANCELED",
+}
+
+
+def apply_transition(current_status: str, command: str) -> str:
+    new_status = _ALLOWED.get((current_status, command))
+    if new_status is None:
+        raise InvalidStateTransitionException(
+            f"Assignment 当前状态 {current_status!r} 不支持 {command!r} 命令"
+        )
+    return new_status
+
+
+def get_allowed_commands(current_status: str) -> list[str]:
+    return [cmd for (st, cmd) in _ALLOWED if st == current_status]
