@@ -1,7 +1,23 @@
-# ExportJob 状态机，对应契约第 18.3 节 Export 状态迁移表。
-# 合法迁移：
-#   createExportJob: → PENDING
-#   startExportJob: PENDING → RUNNING
-#   markExportSucceeded: RUNNING → SUCCEEDED（需要 fileId）
-#   markExportFailed: PENDING/RUNNING → FAILED（需要 errorMessage）
-#   cancelExportJob: PENDING/RUNNING → CANCELED（OWNER 角色触发）
+from app.middleware.error_handler import InvalidStateTransitionException
+
+_ALLOWED: dict[tuple[str, str], str] = {
+    ("PENDING", "startExportJob"): "RUNNING",
+    ("RUNNING", "markExportSucceeded"): "SUCCEEDED",
+    ("PENDING", "markExportFailed"): "FAILED",
+    ("RUNNING", "markExportFailed"): "FAILED",
+    ("PENDING", "cancelExportJob"): "CANCELED",
+    ("RUNNING", "cancelExportJob"): "CANCELED",
+}
+
+
+def apply_transition(current_status: str, command: str) -> str:
+    new_status = _ALLOWED.get((current_status, command))
+    if new_status is None:
+        raise InvalidStateTransitionException(
+            f"ExportJob 当前状态 {current_status!r} 不支持 {command!r} 命令"
+        )
+    return new_status
+
+
+def get_allowed_commands(current_status: str) -> list[str]:
+    return [cmd for (st, cmd) in _ALLOWED if st == current_status]

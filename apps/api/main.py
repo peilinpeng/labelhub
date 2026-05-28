@@ -17,7 +17,8 @@ from app.routers import auth as auth_router
 from app.routers import tasks
 from app.routers import dataset, marketplace, assignments
 from app.routers import review
-# from app.routers import ai_review, exports, files
+from app.routers import exports
+# from app.routers import ai_review, files
 
 app = FastAPI(title="LabelHub API", version="1.0.0")
 
@@ -35,8 +36,8 @@ app.include_router(dataset.router, prefix="/api/v1")
 app.include_router(marketplace.router, prefix="/api/v1")
 app.include_router(assignments.router, prefix="/api/v1")
 app.include_router(review.router, prefix="/api/v1")
+app.include_router(exports.router, prefix="/api/v1")
 # app.include_router(ai_review.router, prefix="/api/v1")
-# app.include_router(exports.router, prefix="/api/v1")
 # app.include_router(files.router, prefix="/api/v1")
 
 
