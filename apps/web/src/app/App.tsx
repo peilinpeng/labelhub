@@ -45,92 +45,142 @@ const shellCopy: Record<Role, { title: string; subtitle: string; navItems: Shell
 };
 
 function RoleSelector({ onSelect }: { onSelect: (role: Role) => void }) {
-  const workflowSteps = ["任务发布", "模板配置", "标注台", "AI 预审", "人工审核"];
+  const workflowSteps: Array<{
+    title: string;
+    description: string;
+    role: Role;
+  }> = [
+    { title: "任务发布", description: "创建任务并确认发布信息", role: "OWNER" },
+    { title: "模板配置", description: "进入模板搭建与预览", role: "OWNER" },
+    { title: "标注台", description: "领取任务并提交答案", role: "LABELER" },
+    { title: "AI 预审", description: "查看结构化预审结论", role: "REVIEWER" },
+    { title: "人工审核", description: "复核后通过或打回", role: "REVIEWER" },
+  ];
   const roleCards: Array<{
     role: Role;
     title: string;
     description: string;
+    meta: string;
     tone: "primary" | "success" | "warning";
   }> = [
     {
       role: "OWNER",
       title: "任务所有者",
-      description: "创建任务、配置模板、发布到任务市场并查看交付结果。",
+      description: "创建任务、配置模板、发布任务。",
+      meta: "推荐起点",
       tone: "primary",
     },
     {
       role: "LABELER",
       title: "标注员",
-      description: "领取任务，依据动态 Schema 完成标注、保存草稿并提交。",
+      description: "领取任务、完成标注、提交草稿。",
+      meta: "标注工作台",
       tone: "success",
     },
     {
       role: "REVIEWER",
       title: "审核员",
-      description: "查看 AI 预审结果，执行人工复核、打回或通过入库。",
+      description: "查看 AI 预审、人工复核、通过/打回。",
+      meta: "质检与复核",
       tone: "warning",
     },
   ];
+  const demoMetrics = [
+    { label: "已提交", value: "342" },
+    { label: "AI 预审通过率", value: "84%" },
+    { label: "待人工审核", value: "37" },
+    { label: "可导出数据", value: "289" },
+  ];
 
   return (
-    <main className="home-page">
-      <section className="home-hero">
-        <div className="home-hero__copy">
-          <Badge tone="primary">MVP Web Shell</Badge>
-          <h1 className="home-hero__title">LabelHub</h1>
-          <p className="home-hero__subtitle">
-            面向动态标注任务的协作工作台：从任务发布、模板配置到标注、AI 预审和人工审核，串起一条可演示的 MVP 流程。
+    <main className="control-center">
+      <section className="control-header">
+        <div>
+          <Badge tone="primary">MVP Demo Control Center</Badge>
+          <h1>LabelHub</h1>
+          <p className="control-header__subtitle">AI 数据标注协作工作台</p>
+          <p className="control-header__copy">
+            从任务发布、模板配置到标注、AI 预审和人工审核的 MVP 演示入口。
           </p>
-          <div className="home-hero__actions">
-            <Button tone="primary" onClick={() => onSelect("OWNER")}>
-              进入任务发布
-            </Button>
-            <Button onClick={() => onSelect("LABELER")}>体验标注台</Button>
-          </div>
         </div>
-        <Card className="home-hero__panel">
-          <div className="home-hero__metric">
-            <span>角色</span>
-            <strong>3</strong>
-          </div>
-          <div className="home-hero__metric">
-            <span>MVP 页面</span>
-            <strong>5</strong>
-          </div>
-          <div className="inset-well">
-            <p className="page-subtitle">
-              当前先以 Soft UI 呈现可运行 Web UI，SchemaDesigner 暂用 placeholder 等待包导出修复。
-            </p>
-          </div>
+        <Button tone="primary" onClick={() => onSelect("OWNER")}>
+          从任务发布开始
+        </Button>
+      </section>
+
+      <section className="demo-overview" aria-label="Demo 状态总览">
+        <Card className="demo-kpi-card">
+          <span>角色</span>
+          <strong>3</strong>
+        </Card>
+        <Card className="demo-kpi-card">
+          <span>MVP 页面</span>
+          <strong>5</strong>
+        </Card>
+        <Card className="demo-kpi-card demo-kpi-card--wide">
+          <span>当前任务</span>
+          <strong>新闻质量标注</strong>
+        </Card>
+        <Card className="demo-kpi-card demo-kpi-card--wide">
+          <span>流程状态</span>
+          <strong>AI 预审中 / 待人工审核</strong>
         </Card>
       </section>
 
-      <Card className="workflow-card">
-        <div className="workflow-card__header">
-          <h2>Workflow</h2>
-          <span>任务发布到审核入库</span>
+      <Card className="control-workflow-card">
+        <div className="control-section-heading">
+          <h2>MVP 演示流程</h2>
+          <span>按顺序体验核心路径</span>
         </div>
-        <div className="workflow-stepper">
+        <div className="control-stepper">
           {workflowSteps.map((step, index) => (
-            <div className="workflow-step" key={step}>
-              <span className="workflow-step__index">{index + 1}</span>
-              <strong>{step}</strong>
+            <div className="control-step" key={step.title}>
+              <span className="control-step__index">{index + 1}</span>
+              <div>
+                <strong>{step.title}</strong>
+                <p>{step.description}</p>
+              </div>
+              <Button onClick={() => onSelect(step.role)}>进入</Button>
             </div>
           ))}
         </div>
       </Card>
 
-      <section className="home-role-grid" aria-label="角色入口">
-        {roleCards.map((card) => (
-          <Card key={card.role} className="home-role-card" interactive>
-            <Badge tone={card.tone}>{card.title}</Badge>
-            <h2>{card.title}</h2>
-            <p>{card.description}</p>
-            <Button tone={card.role === "OWNER" ? "primary" : "default"} onClick={() => onSelect(card.role)}>
-              进入
-            </Button>
-          </Card>
-        ))}
+      <section className="control-grid">
+        <div className="role-entry-grid" aria-label="角色入口">
+          {roleCards.map((card) => (
+            <Card
+              key={card.role}
+              className={["role-entry-card", card.role === "OWNER" ? "role-entry-card--recommended" : ""]
+                .filter(Boolean)
+                .join(" ")}
+              interactive
+            >
+              <Badge tone={card.tone}>{card.title}</Badge>
+              <h2>{card.title}</h2>
+              <p>{card.description}</p>
+              <span className="role-entry-card__meta">{card.meta}</span>
+              <Button tone={card.role === "OWNER" ? "primary" : "default"} onClick={() => onSelect(card.role)}>
+                进入
+              </Button>
+            </Card>
+          ))}
+        </div>
+
+        <Card className="demo-data-card">
+          <div className="control-section-heading">
+            <h2>当前 Demo 数据</h2>
+            <span>新闻质量标注</span>
+          </div>
+          <div className="demo-data-list">
+            {demoMetrics.map((metric) => (
+              <div className="demo-data-row" key={metric.label}>
+                <span>{metric.label}</span>
+                <strong>{metric.value}</strong>
+              </div>
+            ))}
+          </div>
+        </Card>
       </section>
     </main>
   );

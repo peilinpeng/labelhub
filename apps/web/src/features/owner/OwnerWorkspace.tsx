@@ -189,7 +189,7 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
             </label>
             <label className="field-label">
               分发策略
-              <div className="page-actions">
+              <div className="task-strategy-row">
                 <Badge tone={selectedTask?.distributionStrategy.type === "FIRST_COME_FIRST_SERVED" ? "primary" : "default"}>
                   先到先得
                 </Badge>

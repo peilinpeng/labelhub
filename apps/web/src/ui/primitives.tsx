@@ -1,5 +1,6 @@
 import type {
   ButtonHTMLAttributes,
+  HTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
@@ -90,5 +91,38 @@ export function AIReviewPanel({ title, children, badge, className = "" }: AIRevi
       </div>
       <div className="lh-ai-panel__body">{children}</div>
     </section>
+  );
+}
+
+interface DataTableProps extends HTMLAttributes<HTMLTableElement> {
+  children: ReactNode;
+}
+
+export function DataTable({ children, className = "", ...props }: DataTableProps) {
+  return (
+    <table className={["lh-data-table", className].filter(Boolean).join(" ")} {...props}>
+      {children}
+    </table>
+  );
+}
+
+interface TimelineProps {
+  items: Array<{
+    title: ReactNode;
+    description?: ReactNode;
+  }>;
+  className?: string;
+}
+
+export function Timeline({ items, className = "" }: TimelineProps) {
+  return (
+    <div className={["lh-timeline", className].filter(Boolean).join(" ")}>
+      {items.map((item, index) => (
+        <div className="lh-timeline__item" key={index}>
+          <strong>{item.title}</strong>
+          {item.description ? <span>{item.description}</span> : null}
+        </div>
+      ))}
+    </div>
   );
 }
