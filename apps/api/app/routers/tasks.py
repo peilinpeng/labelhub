@@ -292,3 +292,185 @@ def get_component_registry(
     仅 OWNER 角色可访问（契约 §23.1），返回静态配置，无 DB 访问，共 19 种 NodeType。
     """
     return _SERVER_REGISTRY
+
+
+# ---------------------------------------------------------------------------
+# 以下为 Task CRUD 与状态迁移路由（契约 §23.1）
+# ---------------------------------------------------------------------------
+
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.middleware.auth import get_current_actor  # require_roles 已导入，不重复
+from app.services import task_domain
+from app.schemas.task import (
+    CreateTaskRequest, CreateTaskResponse,
+    UpdateTaskRequest, TaskResponse,
+    PublishTaskRequest, PublishTaskResponse,
+    PauseTaskRequest, EndTaskRequest, ArchiveTaskRequest,
+    TaskTransitionResponse, AuditLogSummaryResponse,
+)
+
+
+# ── POST /tasks（createTask）──────────────────────────────────────────────────
+
+@router.post(
+    "/tasks",
+    response_model=CreateTaskResponse,
+    status_code=201,
+    summary="创建任务",
+)
+def create_task(
+    body: CreateTaskRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> CreateTaskResponse:
+    """createTask 命令（契约 §18.1）：创建 DRAFT 状态任务，写入 TASK_CREATED audit log。"""
+    task, log = task_domain.create_task(db, actor, body)
+    return CreateTaskResponse(
+        task=TaskResponse.from_orm(task),
+        auditLog=AuditLogSummaryResponse.from_orm_obj(log),
+    )
+
+
+# ── GET /tasks/{task_id}（getTask）───────────────────────────────────────────
+
+@router.get(
+    "/tasks/{task_id}",
+    response_model=TaskResponse,
+    summary="查询任务详情",
+)
+def get_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER", "REVIEWER", "LABELER")),
+) -> TaskResponse:
+    """获取任务详情（契约 §23.1：OWNER/REVIEWER/LABELER 均可访问）。"""
+    task = task_domain.get_task(db, task_id, actor)
+    return TaskResponse.from_orm(task)
+
+
+# ── PATCH /tasks/{task_id}（updateTask，仅 DRAFT）────────────────────────────
+
+@router.patch(
+    "/tasks/{task_id}",
+    response_model=TaskResponse,
+    summary="更新任务（仅 DRAFT 状态）",
+)
+def update_task(
+    task_id: str,
+    body: UpdateTaskRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> TaskResponse:
+    """更新 DRAFT 任务字段（契约 §23.1）。非 DRAFT 状态返回 409。"""
+    task = task_domain.update_task(db, task_id, actor, body)
+    return TaskResponse.from_orm(task)
+
+
+# ── POST /tasks/{task_id}/publish（publishTask）──────────────────────────────
+
+@router.post(
+    "/tasks/{task_id}/publish",
+    response_model=PublishTaskResponse,
+    summary="发布任务",
+)
+def publish_task(
+    task_id: str,
+    body: PublishTaskRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> PublishTaskResponse:
+    """publishTask 命令（契约 §16 / §18.1）：DRAFT → PUBLISHED，校验 schemaVersionId。"""
+    task, log = task_domain.publish_task(db, task_id, actor, body)
+    return PublishTaskResponse(
+        task=TaskResponse.from_orm(task),
+        auditLog=AuditLogSummaryResponse.from_orm_obj(log),
+    )
+
+
+# ── POST /tasks/{task_id}/pause（pauseTask）──────────────────────────────────
+
+@router.post(
+    "/tasks/{task_id}/pause",
+    response_model=TaskTransitionResponse,
+    summary="暂停任务",
+)
+def pause_task(
+    task_id: str,
+    body: PauseTaskRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> TaskTransitionResponse:
+    """pauseTask 命令（契约 §18.1）：PUBLISHED → PAUSED。"""
+    task, log = task_domain.pause_task(db, task_id, actor, body)
+    return TaskTransitionResponse(
+        task=TaskResponse.from_orm(task),
+        auditLog=AuditLogSummaryResponse.from_orm_obj(log),
+    )
+
+
+# ── POST /tasks/{task_id}/resume（resumeTask）────────────────────────────────
+
+@router.post(
+    "/tasks/{task_id}/resume",
+    response_model=TaskTransitionResponse,
+    summary="恢复任务",
+)
+def resume_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> TaskTransitionResponse:
+    """resumeTask 命令（契约 §18.1）：PAUSED → PUBLISHED。"""
+    task, log = task_domain.resume_task(db, task_id, actor)
+    return TaskTransitionResponse(
+        task=TaskResponse.from_orm(task),
+        auditLog=AuditLogSummaryResponse.from_orm_obj(log),
+    )
+
+
+# ── POST /tasks/{task_id}/end（endTask）──────────────────────────────────────
+
+@router.post(
+    "/tasks/{task_id}/end",
+    response_model=TaskTransitionResponse,
+    summary="结束任务",
+)
+def end_task(
+    task_id: str,
+    body: EndTaskRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> TaskTransitionResponse:
+    """endTask 命令（契约 §18.1）：PUBLISHED/PAUSED → ENDED。"""
+    task, log = task_domain.end_task(db, task_id, actor, body)
+    return TaskTransitionResponse(
+        task=TaskResponse.from_orm(task),
+        auditLog=AuditLogSummaryResponse.from_orm_obj(log),
+    )
+
+
+# ── POST /tasks/{task_id}/archive（archiveTask）──────────────────────────────
+# 注意：§23.1 未列出此端点，但 §18.1 定义了 archiveTask 命令，此处提前实现备用
+
+@router.post(
+    "/tasks/{task_id}/archive",
+    response_model=TaskTransitionResponse,
+    summary="归档任务（终态）",
+)
+def archive_task(
+    task_id: str,
+    body: ArchiveTaskRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> TaskTransitionResponse:
+    """
+    archiveTask 命令（契约 §18.1）：ENDED → ARCHIVED（终态）。
+    不得从 DRAFT/PUBLISHED/PAUSED 直接归档（状态机保证）。
+    """
+    task, log = task_domain.archive_task(db, task_id, actor, body)
+    return TaskTransitionResponse(
+        task=TaskResponse.from_orm(task),
+        auditLog=AuditLogSummaryResponse.from_orm_obj(log),
+    )

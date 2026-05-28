@@ -40,3 +40,185 @@ class ServerComponentRegistryItem(BaseModel):
     defaultExportEnabled: bool
     # 是否默认纳入 AI Review 上下文
     defaultAiReviewEnabled: bool
+
+
+# ---------------------------------------------------------------------------
+# 以下为 Task CRUD 与状态迁移相关的 Pydantic 请求/响应模型（契约 §6.1 / §16 / §18.1 / §23.1）
+# ---------------------------------------------------------------------------
+
+from datetime import datetime
+from typing import Annotated, Any  # Literal 已在上方导入，不重复
+from pydantic import ConfigDict, Field  # BaseModel 已在上方导入，不重复
+
+
+# ── 子结构体 ────────────────────────────────────────────────────────────────
+
+class QuotaSchema(BaseModel):
+    """契约 Task.quota"""
+    total: int = Field(..., ge=1, description="总配额")
+    perLabeler: int | None = Field(None, ge=1, description="单 Labeler 最大领取数")
+
+
+class RewardRuleSchema(BaseModel):
+    """契约 Task.rewardRule（可选）"""
+    unit: Literal["PER_ACCEPTED_ITEM", "PER_SUBMISSION", "FIXED"]
+    amount: float = Field(..., ge=0)
+    currency: str | None = None
+
+
+# DistributionStrategy discriminated union
+class FirstComeFirstServedStrategy(BaseModel):
+    type: Literal["FIRST_COME_FIRST_SERVED"]
+
+class AssignmentStrategy(BaseModel):
+    type: Literal["ASSIGNMENT"]
+    assigneeIds: list[str] = Field(..., min_length=1)
+
+class QuotaClaimStrategy(BaseModel):
+    type: Literal["QUOTA_CLAIM"]
+    claimBatchSize: int = Field(..., ge=1)
+
+DistributionStrategySchema = Annotated[
+    FirstComeFirstServedStrategy | AssignmentStrategy | QuotaClaimStrategy,
+    Field(discriminator="type"),
+]
+
+
+# ReviewPolicy discriminated union
+class SingleReviewPolicy(BaseModel):
+    type: Literal["SINGLE_REVIEW"]
+
+class DoubleReviewPolicy(BaseModel):
+    type: Literal["DOUBLE_REVIEW"]
+    requireFinalReview: Literal[True]
+
+ReviewPolicySchema = Annotated[
+    SingleReviewPolicy | DoubleReviewPolicy,
+    Field(discriminator="type"),
+]
+
+
+# ── 审计日志摘要（契约 §25 AuditLogSummary）──────────────────────────────────
+
+class AuditLogSummaryResponse(BaseModel):
+    """契约 §25 AuditLogSummary（响应时使用）"""
+    id: str
+    action: str
+    createdAt: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_orm_obj(cls, log: Any) -> "AuditLogSummaryResponse":
+        return cls(id=log.id, action=log.action, createdAt=log.created_at)
+
+
+# ── Task 响应体（契约 §6.1 Task）─────────────────────────────────────────────
+
+class TaskResponse(BaseModel):
+    """契约 §6.1 Task 完整响应，JSON 字段以原始 dict 透传，camelCase 与契约对齐。"""
+    id: str
+    title: str
+    description: str
+    instructionRichText: dict | None = None
+    tags: list[str]
+    rewardRule: dict | None = None
+    quota: dict
+    deadlineAt: datetime | None = None
+    distributionStrategy: dict
+    reviewPolicy: dict
+    status: str
+    activeSchemaVersionId: str | None = None
+    ownerId: str
+    createdAt: datetime
+    updatedAt: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_orm(cls, t: Any) -> "TaskResponse":
+        """从 Task ORM 对象构造响应，将 snake_case 映射到 camelCase。"""
+        return cls(
+            id=t.id,
+            title=t.title,
+            description=t.description,
+            instructionRichText=t.instruction_rich_text_json,
+            tags=t.tags_json or [],
+            rewardRule=t.reward_rule_json,
+            quota=t.quota_json,
+            deadlineAt=t.deadline_at,
+            distributionStrategy=t.distribution_strategy_json,
+            reviewPolicy=t.review_policy_json,
+            status=t.status,
+            activeSchemaVersionId=t.active_schema_version_id,
+            ownerId=t.owner_id,
+            createdAt=t.created_at,
+            updatedAt=t.updated_at,
+        )
+
+
+# ── 创建任务（POST /tasks）───────────────────────────────────────────────────
+
+class CreateTaskRequest(BaseModel):
+    """createTask 命令入参（契约 §18.1：required title）"""
+    title: str = Field(..., min_length=1, max_length=255)
+    description: str = ""
+    instructionRichText: dict | None = None
+    tags: list[str] = []
+    rewardRule: RewardRuleSchema | None = None
+    quota: QuotaSchema
+    deadlineAt: datetime | None = None
+    distributionStrategy: DistributionStrategySchema
+    reviewPolicy: ReviewPolicySchema
+
+class CreateTaskResponse(BaseModel):
+    task: TaskResponse
+    auditLog: AuditLogSummaryResponse
+
+
+# ── 更新任务（PATCH /tasks/:taskId，仅 DRAFT 状态允许）──────────────────────
+
+class UpdateTaskRequest(BaseModel):
+    """所有字段均可选，仅更新传入的字段，不传的字段保持不变。"""
+    title: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    instructionRichText: dict | None = None
+    tags: list[str] | None = None
+    rewardRule: RewardRuleSchema | None = None
+    quota: QuotaSchema | None = None
+    deadlineAt: datetime | None = None
+    distributionStrategy: DistributionStrategySchema | None = None
+    reviewPolicy: ReviewPolicySchema | None = None
+
+
+# ── 发布任务（POST /tasks/:taskId/publish）──────────────────────────────────
+
+class PublishTaskRequest(BaseModel):
+    """publishTask 命令入参（契约 §16 / §18.1）"""
+    schemaVersionId: str = Field(..., description="待激活的 SchemaVersion ID")
+    reviewConfigId: str | None = Field(None, description="AI 审核配置 ID，可选")
+    reviewDisabledExplicitly: bool = Field(False, description="显式声明不使用 AI 审核")
+
+class PublishTaskResponse(BaseModel):
+    task: TaskResponse
+    auditLog: AuditLogSummaryResponse
+
+
+# ── 暂停/恢复/结束/归档任务（各状态迁移命令）────────────────────────────────
+
+class PauseTaskRequest(BaseModel):
+    reason: str | None = None
+
+class ResumeTaskRequest(BaseModel):
+    pass
+
+class EndTaskRequest(BaseModel):
+    reason: str | None = None
+
+class ArchiveTaskRequest(BaseModel):
+    reason: str | None = None
+
+class TaskTransitionResponse(BaseModel):
+    """pauseTask / resumeTask / endTask / archiveTask 统一响应结构"""
+    task: TaskResponse
+    auditLog: AuditLogSummaryResponse
