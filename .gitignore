@@ -57,3 +57,5 @@ temp/
 ~$*.docx
 ~$*.pptx
 ~$*.xlsx
+__pycache__/
+*.pyc
