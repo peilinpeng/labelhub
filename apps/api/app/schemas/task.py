@@ -222,3 +222,101 @@ class TaskTransitionResponse(BaseModel):
     """pauseTask / resumeTask / endTask / archiveTask 统一响应结构"""
     task: TaskResponse
     auditLog: AuditLogSummaryResponse
+
+
+# ── Schema 相关请求/响应模型（契约 §7 / §16 / §23.1）──────────────────────────
+
+class SchemaValidationResultResponse(BaseModel):
+    """契约 §7 SchemaValidationResult"""
+    valid: bool
+    errors: list[str]
+
+
+class SaveSchemaDraftRequest(BaseModel):
+    """PUT /tasks/{taskId}/schema/draft 请求体"""
+    schema: dict = Field(..., description="完整 LabelHubSchema JSON")
+    baseSchemaDraftRevision: int | None = Field(
+        None,
+        description="并发控制：客户端持有的修订号，传入则校验冲突",
+    )
+
+
+class SaveSchemaDraftResponse(BaseModel):
+    """PUT /tasks/{taskId}/schema/draft 响应体"""
+    schema: dict
+    schemaDraftRevision: int
+    validation: SchemaValidationResultResponse
+    auditLog: AuditLogSummaryResponse
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SchemaDraftResponse(BaseModel):
+    """GET /tasks/{taskId}/schema/draft 响应体"""
+    taskId: str
+    schema: dict
+    schemaDraftRevision: int
+    updatedBy: str
+    updatedAt: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_orm(cls, d: Any) -> "SchemaDraftResponse":
+        return cls(
+            taskId=d.task_id,
+            schema=d.schema_json,
+            schemaDraftRevision=d.schema_draft_revision,
+            updatedBy=d.updated_by,
+            updatedAt=d.updated_at,
+        )
+
+
+class PublishSchemaVersionRequest(BaseModel):
+    """POST /tasks/{taskId}/schema/publish 请求体"""
+    schemaDraftRevision: int = Field(
+        ...,
+        description="发布时必须与当前 draft 修订号一致（并发控制）",
+    )
+
+
+class SchemaVersionResponse(BaseModel):
+    """契约 §7 SchemaVersion 响应体（GET /schema-versions/{id} 使用）"""
+    id: str
+    taskId: str
+    schemaId: str
+    schemaVersionNo: int
+    contractVersion: str
+    schema: dict
+    publishedAt: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_orm(cls, v: Any) -> "SchemaVersionResponse":
+        return cls(
+            id=v.id,
+            taskId=v.task_id,
+            schemaId=v.schema_id,
+            schemaVersionNo=v.schema_version_no,
+            contractVersion=v.contract_version,
+            schema=v.schema_json,
+            publishedAt=v.published_at,
+        )
+
+
+class PublishSchemaVersionResponse(BaseModel):
+    """POST /tasks/{taskId}/schema/publish 响应体"""
+    schemaVersion: SchemaVersionResponse
+    auditLog: AuditLogSummaryResponse
+
+
+class ValidateSchemaRequest(BaseModel):
+    """POST /schema/validate 请求体"""
+    schema: dict = Field(..., description="待校验的 LabelHubSchema JSON")
+
+
+class ValidateSchemaResponse(BaseModel):
+    """POST /schema/validate 响应体"""
+    valid: bool
+    errors: list[str]

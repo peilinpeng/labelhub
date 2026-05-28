@@ -474,3 +474,124 @@ def archive_task(
         task=TaskResponse.from_orm(task),
         auditLog=AuditLogSummaryResponse.from_orm_obj(log),
     )
+
+
+# ---------------------------------------------------------------------------
+# Schema 路由（契约 §23.1）
+# ---------------------------------------------------------------------------
+
+from app.services import schema_domain
+from app.schemas.task import (
+    SaveSchemaDraftRequest, SaveSchemaDraftResponse,
+    SchemaDraftResponse,
+    PublishSchemaVersionRequest, PublishSchemaVersionResponse,
+    SchemaVersionResponse,
+    ValidateSchemaRequest, ValidateSchemaResponse,
+    SchemaValidationResultResponse,
+)
+
+
+# ── PUT /tasks/{task_id}/schema/draft（saveSchemaDraft）──────────────────────
+
+@router.put(
+    "/tasks/{task_id}/schema/draft",
+    response_model=SaveSchemaDraftResponse,
+    summary="保存 Schema 草稿",
+)
+def save_schema_draft(
+    task_id: str,
+    body: SaveSchemaDraftRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> SaveSchemaDraftResponse:
+    """
+    保存（创建或覆盖）Schema 草稿（契约 §23.1）。
+    schemaDraftRevision 每次保存自动递增。
+    传入 baseSchemaDraftRevision 且与当前修订号不一致时返回 409 SCHEMA_DRAFT_CONFLICT。
+    """
+    draft, log = schema_domain.save_schema_draft(db, task_id, actor, body)
+    validation_result = schema_domain.validate_schema(draft.schema_json)
+    return SaveSchemaDraftResponse(
+        schema=draft.schema_json,
+        schemaDraftRevision=draft.schema_draft_revision,
+        validation=SchemaValidationResultResponse(**validation_result),
+        auditLog=AuditLogSummaryResponse.from_orm_obj(log),
+    )
+
+
+# ── GET /tasks/{task_id}/schema/draft（getSchemaDraft）──────────────────────
+
+@router.get(
+    "/tasks/{task_id}/schema/draft",
+    response_model=SchemaDraftResponse,
+    summary="获取当前 Schema 草稿",
+)
+def get_schema_draft(
+    task_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> SchemaDraftResponse:
+    """获取任务当前 Schema 草稿（契约 §23.1）。草稿不存在时返回 404。"""
+    draft = schema_domain.get_schema_draft(db, task_id, actor)
+    return SchemaDraftResponse.from_orm(draft)
+
+
+# ── POST /tasks/{task_id}/schema/publish（publishSchemaVersion）──────────────
+
+@router.post(
+    "/tasks/{task_id}/schema/publish",
+    response_model=PublishSchemaVersionResponse,
+    status_code=201,
+    summary="发布 Schema 版本（不可变快照）",
+)
+def publish_schema_version(
+    task_id: str,
+    body: PublishSchemaVersionRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> PublishSchemaVersionResponse:
+    """
+    将当前 Schema 草稿发布为不可变版本快照（契约 §16 / §23.1）。
+    schemaDraftRevision 不一致时返回 409；草稿校验失败时返回 422。
+    """
+    version, log = schema_domain.publish_schema_version(db, task_id, actor, body)
+    return PublishSchemaVersionResponse(
+        schemaVersion=SchemaVersionResponse.from_orm(version),
+        auditLog=AuditLogSummaryResponse.from_orm_obj(log),
+    )
+
+
+# ── GET /schema-versions/{schema_version_id}（getSchemaVersion）─────────────
+
+@router.get(
+    "/schema-versions/{schema_version_id}",
+    response_model=SchemaVersionResponse,
+    summary="获取 Schema 版本快照",
+)
+def get_schema_version(
+    schema_version_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER", "REVIEWER", "LABELER")),
+) -> SchemaVersionResponse:
+    """获取不可变 Schema 版本快照（契约 §23.1：OWNER/REVIEWER/LABELER 均可访问）。"""
+    version = schema_domain.get_schema_version(db, schema_version_id, actor)
+    return SchemaVersionResponse.from_orm(version)
+
+
+# ── POST /schema/validate（validateSchema）──────────────────────────────────
+
+@router.post(
+    "/schema/validate",
+    response_model=ValidateSchemaResponse,
+    summary="校验 Schema 结构",
+)
+def validate_schema(
+    body: ValidateSchemaRequest,
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> ValidateSchemaResponse:
+    """
+    校验 LabelHubSchema 结构合法性（契约 §23.1）：节点类型、FieldNode name 唯一性。
+    无 DB 访问，纯内存校验，不写 audit log。
+    """
+    result = schema_domain.validate_schema(body.schema)
+    return ValidateSchemaResponse(**result)
