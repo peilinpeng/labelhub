@@ -72,10 +72,10 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
     ? Math.min(100, Math.round((publishedCount / Math.max(1, tasks.length)) * 100))
     : 0;
   const kpis = [
-    { label: "总任务", value: tasks.length.toString(), hint: "覆盖全部任务状态", icon: "总" },
-    { label: "已发布", value: publishedCount.toString(), hint: "可被标注员领取", icon: "发" },
-    { label: "待审核", value: reviewCount.toString(), hint: "需要继续配置或复核", icon: "审" },
-    { label: "可导出", value: exportableCount.toString(), hint: "具备交付数据", icon: "出" },
+    { label: "总任务", value: tasks.length.toString(), hint: "覆盖全部任务状态", icon: "总", tone: "primary" },
+    { label: "已发布", value: publishedCount.toString(), hint: "可被标注员领取", icon: "发", tone: "success" },
+    { label: "待审核", value: reviewCount.toString(), hint: "需要继续配置或复核", icon: "审", tone: "warning" },
+    { label: "可导出", value: exportableCount.toString(), hint: "具备交付数据", icon: "出", tone: "violet" },
   ];
 
   if (loading) {
@@ -88,8 +88,9 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
 
   return (
     <div className="page-stack">
-      <div className="page-header">
+      <div className="page-header owner-page-header">
         <div>
+          <Badge tone="primary">Owner Workspace</Badge>
           <h2 className="page-title">任务管理</h2>
           <p className="page-subtitle">创建、发布、追踪标注任务交付状态</p>
         </div>
@@ -100,7 +101,7 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
 
       <div className="owner-kpi-grid">
         {kpis.map((kpi) => (
-          <Card className="owner-kpi-card" key={kpi.label}>
+          <Card className={`owner-kpi-card owner-kpi-card--${kpi.tone}`} key={kpi.label}>
             <div className="owner-kpi-card__topline">
               <span className="owner-kpi-icon">{kpi.icon}</span>
               <span>{kpi.label}</span>
@@ -112,6 +113,10 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
       </div>
 
       <Card className="filter-bar owner-filter-bar">
+        <div className="owner-filter-label">
+          <strong>筛选</strong>
+          <span>快速定位任务</span>
+        </div>
         <label className="owner-filter-search">
           <span>搜索</span>
           <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索任务名 / ID / 描述" />
@@ -140,6 +145,7 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
             <option value="ALL">全部策略</option>
             <option value="FIRST_COME_FIRST_SERVED">先到先得</option>
             <option value="ASSIGNMENT">指派</option>
+            <option value="QUOTA_CLAIM">配额抢单</option>
           </Select>
         </label>
       </Card>
@@ -151,7 +157,10 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
               <h3>任务列表</h3>
               <p>{visibleTasks.length} 个任务匹配当前筛选</p>
             </div>
-            <span>总配额 {totalQuota.toLocaleString()}</span>
+            <div className="owner-table-summary">
+              <span>总配额</span>
+              <strong>{totalQuota.toLocaleString()}</strong>
+            </div>
           </div>
           <table className="soft-table">
             <thead>
@@ -195,7 +204,9 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
                   </td>
                   <td>
                     <div className="owner-row-actions">
-                      <Button onClick={() => setSelectedTaskId(task.id)}>查看</Button>
+                      <Button onClick={() => setSelectedTaskId(task.id)}>
+                        查看
+                      </Button>
                       <Link to={`/owner/tasks/${task.id}/designer`} className="lh-button">
                         模板
                       </Link>
@@ -214,11 +225,14 @@ export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
         <Card className="soft-panel owner-detail-card">
           <div className="owner-detail-hero">
             <div>
-              <Badge tone={statusTone(selectedTask?.status ?? "DRAFT")}>
-                {selectedTask ? statusLabel(selectedTask.status) : "暂无任务"}
-              </Badge>
+              <div className="owner-detail-kicker">
+                <span>当前任务</span>
+                <Badge tone={statusTone(selectedTask?.status ?? "DRAFT")}>
+                  {selectedTask ? statusLabel(selectedTask.status) : "暂无任务"}
+                </Badge>
+              </div>
               <h3>{selectedTask ? selectedTask.title : "暂无任务"}</h3>
-              <p>当前角色：{role}。发布后进入任务市场，标注员可按分发策略领取。</p>
+              <p>发布后进入任务市场，标注员可按分发策略领取。</p>
             </div>
           </div>
 
