@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { SchemaRenderer } from "@labelhub/schema-renderer";
 import { RoutePath, Role } from "../../app/routes";
 import { callLLMAssist, getAssignmentContext, saveDraft, submitAssignment } from "../../api/labeler";
@@ -20,6 +20,7 @@ interface AssignmentPageProps {
 
 export default function AssignmentPage({ role }: AssignmentPageProps) {
   const { assignmentId } = useParams<{ assignmentId: string }>();
+  const navigate = useNavigate();
   const [context, setContext] = useState<AssignmentContextResponse | null>(null);
   const [answers, setAnswers] = useState<AnswerPayload>({});
   const [errors, setErrors] = useState<ValidationError[]>([]);
@@ -112,7 +113,7 @@ export default function AssignmentPage({ role }: AssignmentPageProps) {
     }
     try {
       await submitAssignment(assignmentId, { answers: submitAnswers });
-      window.location.href = RoutePath.LABELER_TASKS;
+      navigate(RoutePath.LABELER_TASKS);
     } catch (e) {
       console.error("Failed to submit:", e);
     }
@@ -243,7 +244,7 @@ export default function AssignmentPage({ role }: AssignmentPageProps) {
                 {errors.length > 0 ? `${errors.length} 个问题` : "可填写"}
               </Badge>
             </div>
-            <div className="renderer-frame labeler-renderer-frame">
+            <div className="renderer-frame labeler-renderer-frame labeler-schema-renderer-surface">
               <SchemaRenderer
                 schema={context.schema}
                 context={runtimeContext}

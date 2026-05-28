@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { RoutePath, Role } from "./routes";
 import OwnerWorkspace from "../features/owner/OwnerWorkspace";
 import OwnerSchemaPage from "../features/owner/OwnerSchemaPage";
@@ -19,6 +19,13 @@ const roleHome: Record<Role, string> = {
   LABELER: RoutePath.LABELER_TASKS,
   REVIEWER: RoutePath.REVIEWER_QUEUE,
 };
+
+function inferRoleFromPath(pathname: string): Role | null {
+  if (pathname.startsWith("/owner/")) return "OWNER";
+  if (pathname.startsWith("/labeler/")) return "LABELER";
+  if (pathname.startsWith("/reviewer/")) return "REVIEWER";
+  return null;
+}
 
 const shellCopy: Record<Role, { title: string; subtitle: string; navItems: ShellNavItem[] }> = {
   OWNER: {
@@ -210,7 +217,15 @@ function AppRoutes({ role }: { role: Role }) {
 }
 
 function App() {
-  const [role, setRole] = useState<Role | null>(null);
+  const location = useLocation();
+  const [role, setRole] = useState<Role | null>(() => inferRoleFromPath(location.pathname));
+
+  useEffect(() => {
+    const routeRole = inferRoleFromPath(location.pathname);
+    if (routeRole && routeRole !== role) {
+      setRole(routeRole);
+    }
+  }, [location.pathname, role]);
 
   if (role === null) {
     return <RoleSelector onSelect={setRole} />;

@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Role } from "../../app/routes";
 import { claimTask, listMarketplaceTasks } from "../../api/labeler";
@@ -9,6 +10,7 @@ interface LabelerWorkspaceProps {
 }
 
 export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +35,7 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
     try {
       setClaimingTaskId(taskId);
       const response: ClaimTaskResponse = await claimTask(taskId, {});
-      window.location.href = `/labeler/workspace/${response.context.assignment.id}`;
+      navigate(`/labeler/workspace/${response.context.assignment.id}`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
