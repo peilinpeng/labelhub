@@ -975,6 +975,9 @@ export interface GenerateSchemaResponse {
 | `pauseTask` | OWNER | PUBLISHED | PAUSED | reason? | TASK_PAUSED | taskId |
 | `resumeTask` | OWNER | PAUSED | PUBLISHED | 无 | TASK_RESUMED | taskId |
 | `endTask` | OWNER | PUBLISHED/PAUSED | ENDED | reason? | TASK_ENDED | taskId |
+| `archiveTask` | OWNER | ENDED | ARCHIVED | reason? | TASK_ARCHIVED | taskId |
+
+`ARCHIVED` 为归档终态或近似终态，workflow-core 第一版只允许 `ENDED -> ARCHIVED`，不得从 `DRAFT`、`PUBLISHED`、`PAUSED` 等状态直接进入 `ARCHIVED`。
 
 ### 18.2 DatasetItem、Assignment、Submission 映射
 
@@ -989,15 +992,17 @@ export interface GenerateSchemaResponse {
 | `aiReviewNeedHuman` | SYSTEM | Submission AI_REVIEWING | Submission NEEDS_HUMAN_REVIEW | AIReviewResult | AI_REVIEW_SUCCEEDED | jobId |
 | `aiReviewFailedToHuman` | SYSTEM | Submission AI_REVIEWING | Submission NEEDS_HUMAN_REVIEW；AIReviewJob FAILED_TO_HUMAN_REVIEW | failureReason | AI_REVIEW_FAILED_TO_HUMAN | jobId |
 | `claimReview` | REVIEWER | Submission AI_PASSED/NEEDS_HUMAN_REVIEW | Submission HUMAN_REVIEWING | submissionId | REVIEW_CLAIMED | reviewerId + submissionId |
-| `humanReviewPass` | REVIEWER | Submission HUMAN_REVIEWING | SINGLE_REVIEW: ACCEPTED；DOUBLE_REVIEW: FINAL_REVIEWING | stage, decision | REVIEW_ACCEPTED | reviewerId + submissionId + stage |
+| `humanReviewPass` | REVIEWER | Submission HUMAN_REVIEWING | SINGLE_REVIEW: ACCEPTED；DOUBLE_REVIEW: FINAL_REVIEWING | stage, decision | SINGLE_REVIEW: REVIEW_ACCEPTED；DOUBLE_REVIEW: FINAL_REVIEW_REQUESTED | reviewerId + submissionId + stage |
 | `humanReviewReturn` | REVIEWER | Submission HUMAN_REVIEWING | Submission RETURNED；Assignment RETURNED；DatasetItem 保持 LOCKED | reason | REVIEW_RETURNED | reviewerId + submissionId + stage |
-| `humanReviewReject` | REVIEWER | Submission HUMAN_REVIEWING | Submission REJECTED；Assignment CANCELED；DatasetItem DISABLED | reason | REVIEW_REJECTED | reviewerId + submissionId + stage |
+| `humanReviewReject` | REVIEWER | Submission HUMAN_REVIEWING | Submission REJECTED；Assignment CANCELED；DatasetItem AVAILABLE | reason | REVIEW_REJECTED | reviewerId + submissionId + stage |
 | `finalReviewPass` | REVIEWER | Submission FINAL_REVIEWING | Submission ACCEPTED；Assignment ACCEPTED；DatasetItem COMPLETED | stage, decision | REVIEW_ACCEPTED | reviewerId + submissionId + stage |
 | `finalReviewReturn` | REVIEWER | Submission FINAL_REVIEWING | Submission RETURNED；Assignment RETURNED；DatasetItem 保持 LOCKED | reason | REVIEW_RETURNED | reviewerId + submissionId + stage |
-| `finalReviewReject` | REVIEWER | Submission FINAL_REVIEWING | Submission REJECTED；Assignment CANCELED；DatasetItem DISABLED | reason | REVIEW_REJECTED | reviewerId + submissionId + stage |
+| `finalReviewReject` | REVIEWER | Submission FINAL_REVIEWING | Submission REJECTED；Assignment CANCELED；DatasetItem AVAILABLE | reason | REVIEW_REJECTED | reviewerId + submissionId + stage |
 | `expireAssignment` | SYSTEM | Assignment CLAIMED/DRAFTING | Assignment EXPIRED；DatasetItem AVAILABLE | assignmentId | ASSIGNMENT_EXPIRED | assignmentId |
 
-Reviewer reject 时选择 `DatasetItem.DISABLED`，表示该 item 不再进入当前任务可领取池，避免明显问题数据在同一任务中重复流转。Owner 如需重新开放，应通过数据集管理显式处理。
+Reviewer reject 表示本次 submission 不可接受，`Assignment` 取消，`DatasetItem` 回到 `AVAILABLE`。这样同一 item 可以重新进入当前任务领取池，由新的 assignment 重新标注；如果 Owner 判断原始数据本身不可用，应通过数据集管理命令显式置为 `DISABLED`，不得由审核 reject 隐式禁用。
+
+workflow-core 第一版允许定义 DatasetItem 独立生命周期 command：`importItem`、`claimItem`、`releaseItem`、`completeItem`、`disableItem`、`restoreItem`。Review 导致的 DatasetItem / Assignment 变化应优先作为 sideEffects 描述；Assignment 内部 command 只补充 `claimAssignment`、`returnAssignment`、`acceptAssignment`、`cancelAssignment`，不得随意扩展为 API surface。
 
 ### 18.3 Export 状态迁移
 
@@ -1033,14 +1038,32 @@ export interface ReviewPatch {
   reason: string;
 }
 
-export interface ReviewCommand {
+export interface BaseReviewCommand {
   submissionId: ID;
   stage: HumanReviewStage;
-  decision: HumanReviewDecision;
-  reason?: string;
   comments?: ReviewComment[];
   patches?: ReviewPatch[];
 }
+
+export interface ReviewPassCommand extends BaseReviewCommand {
+  decision: "PASS";
+  reason?: string;
+}
+
+export interface ReviewReturnCommand extends BaseReviewCommand {
+  decision: "RETURN";
+  reason: string;
+}
+
+export interface ReviewRejectCommand extends BaseReviewCommand {
+  decision: "REJECT";
+  reason: string;
+}
+
+export type ReviewCommand =
+  | ReviewPassCommand
+  | ReviewReturnCommand
+  | ReviewRejectCommand;
 
 export interface BaseReviewResultRecord {
   id: ID;
@@ -1098,9 +1121,9 @@ Review patch 规则：
 - Reviewer 不直接覆盖 `Submission.answers`。
 - 审核员修订内容保存为 review patches。
 - Export 默认导出 original answers。
-- 如果任务配置允许 reviewer patches 覆盖导出，`ExportMapping.answerSource` 必须显式选择 `PATCHED_ANSWERS`。
+- 如果任务配置允许 reviewer patches 覆盖导出，`ExportMapping.answerSource` 必须显式选择 `PATCHED_ANSWERS`，且 `ExportMapping.allowPatchedAnswers` 必须为 `true`。
 - 所有 patches 必须写入 `review_results` 和 `audit_logs`。
-- `RETURN` 必须带 `reason`。
+- `RETURN` 和 `REJECT` 必须带 `reason`。
 - patches 不能绕过 schema validation。
 
 ```mermaid
@@ -1230,6 +1253,7 @@ AI 规则：
 - LLM 调用必须使用结构化输出，`ModelSnapshot.responseFormat` 只能是 `JSON_SCHEMA` 或 `FUNCTION_CALLING`。
 - raw output 可以存文件或日志引用，但必须通过 `rawOutputRef` 可追溯。
 - Job 使用 `submissionId + attemptNo` 作为业务幂等键。
+- `AIReviewJob PENDING -> RUNNING` 表示 worker 开始执行 AI 审核，审计动作为 `AI_REVIEW_STARTED`，不得复用 `AI_REVIEW_ENQUEUED`。
 - 重试耗尽后必须迁移到 `NEEDS_HUMAN_REVIEW`，并将 `AIReviewJob.status` 置为 `FAILED_TO_HUMAN_REVIEW`。
 - AI Review 永远不能修改 answers。
 
@@ -1246,6 +1270,7 @@ export interface ExportMapping {
   schemaVersionId: ID;
   format: ExportFormat;
   answerSource: ExportAnswerSource;
+  allowPatchedAnswers?: boolean;
   includeReviewRecords: boolean;
   columns: ExportColumn[];
   filters?: {
@@ -1285,7 +1310,8 @@ export interface ExportJob {
 - `acceptedOnly` 与 `submissionStatus` 同时存在时，`acceptedOnly: true` 优先，等价于只允许 `ACCEPTED`。
 - CSV/Excel 遇到对象值必须显式 transform，不允许输出 `[object Object]`。
 - JSONL 每行对应一条 submission，结构必须包含 item、answers、review、meta。
-- `PATCHED_ANSWERS` 只有在任务配置允许 reviewer patches 覆盖导出时才能使用。
+- 默认使用 `ORIGINAL_ANSWERS`。
+- `PATCHED_ANSWERS` 只有在 `allowPatchedAnswers: true` 时才能使用；未显式允许时，workflow guard 必须拒绝创建导出任务。
 - `ExportColumn.sourcePath` 必须使用统一 RuntimeContext 命名空间。
 
 ## 22. 文件上传契约
@@ -1331,6 +1357,14 @@ export interface ConfirmUploadResponse {
   file: FileObject;
 }
 ```
+
+文件生命周期规则：
+
+- `POST /api/v1/files/upload-url` 创建文件记录后，`File.status` 必须为 `PENDING`，审计动作为 `FILE_UPLOAD_URL_CREATED`。
+- `UPLOADING` 表示存储适配器或后端明确收到上传开始信号后的中间状态；第一版如无法可靠观测上传开始，可以保持 `PENDING` 直到 confirm。
+- `POST /api/v1/files/:fileId/confirm` 成功后，`File.status` 必须为 `READY`，审计动作为 `FILE_CONFIRMED`。
+- `failUpload` 只能将 `PENDING` 或 `UPLOADING` 文件置为 `FAILED`，审计动作为 `FILE_UPLOAD_FAILED`。
+- `FILE_UPLOADED` 不得用于表示 upload url 已创建，也不得表示尚未完成的上传；只有存储层能确认对象字节已上传时才可使用。
 
 API：
 
@@ -1620,6 +1654,7 @@ export type AuditAction =
   | "TASK_PAUSED"
   | "TASK_RESUMED"
   | "TASK_ENDED"
+  | "TASK_ARCHIVED"
   | "SCHEMA_DRAFT_SAVED"
   | "SCHEMA_VERSION_PUBLISHED"
   | "DATASET_IMPORTED"
@@ -1628,10 +1663,12 @@ export type AuditAction =
   | "DRAFT_SAVED"
   | "SUBMISSION_CREATED"
   | "AI_REVIEW_ENQUEUED"
+  | "AI_REVIEW_STARTED"
   | "AI_REVIEW_SUCCEEDED"
   | "AI_REVIEW_FAILED"
   | "AI_REVIEW_FAILED_TO_HUMAN"
   | "REVIEW_CLAIMED"
+  | "FINAL_REVIEW_REQUESTED"
   | "REVIEW_RETURNED"
   | "REVIEW_ACCEPTED"
   | "REVIEW_REJECTED"
@@ -1640,6 +1677,9 @@ export type AuditAction =
   | "EXPORT_SUCCEEDED"
   | "EXPORT_FAILED"
   | "EXPORT_CANCELED"
+  | "FILE_UPLOAD_URL_CREATED"
+  | "FILE_UPLOAD_STARTED"
+  | "FILE_UPLOAD_FAILED"
   | "FILE_UPLOADED"
   | "FILE_CONFIRMED";
 
@@ -1813,8 +1853,9 @@ export interface AuditLogSummary {
 - 所有状态迁移必须通过 command 执行。
 - 所有关键 command 必须写入 audit log。
 - AI Review 永远不能直接修改 answers。
-- `RETURN` 决策必须带 reason。
+- `RETURN` 和 `REJECT` 决策必须带 reason。
 - Export 默认只导出 `ACCEPTED` submission。
+- Export 默认使用 `ORIGINAL_ANSWERS`；`PATCHED_ANSWERS` 必须显式设置 `allowPatchedAnswers: true`。
 - CSV/Excel 导出对象值必须显式 transform。
 - upload 字段中的 `fileId` 必须属于当前 assignment 或当前用户。
 - 所有写接口必须支持 `Idempotency-Key`。
