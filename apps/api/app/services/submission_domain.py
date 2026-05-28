@@ -17,17 +17,39 @@ from app.state_machines.submission_sm import apply_transition
 
 
 def _enqueue_ai_review(db: Session, submission: Submission, actor_id: str) -> tuple:
+    """
+    真实实现：
+    1. 过渡 Submission → AI_REVIEWING
+    2. 查找 ReviewConfig，创建 AIReviewJob
+    3. 写 AI_REVIEW_ENQUEUED audit log
+    4. commit 后发送 Celery 任务（commit 先于 send，防止任务到达时 Job 未入库）
+    """
+    from app.models.review import ReviewConfig
+    from app.services.review_domain import create_ai_review_job
+
     apply_transition(submission.status, "enqueueAIReview")
     submission.status = "AI_REVIEWING"
+
+    review_config = (
+        db.query(ReviewConfig)
+        .filter_by(task_id=submission.task_id)
+        .first()
+    )
+
+    job = None
+    if review_config and review_config.enabled:
+        job = create_ai_review_job(db, submission, review_config)
+
     log = write_audit_log(
         db,
         entity_type="SUBMISSION",
         entity_id=submission.id,
         action="AI_REVIEW_ENQUEUED",
         actor_id=actor_id,
+        after={"jobId": job.id if job else None},
     )
-    # TODO: celery_app.send_task("tasks.ai_review", args=[submission.id])
-    return (submission, log)
+
+    return (submission, log, job)
 
 
 def submit_assignment(db: Session, assignment_id: str, actor: object, req: object) -> tuple:
@@ -80,12 +102,21 @@ def submit_assignment(db: Session, assignment_id: str, actor: object, req: objec
         after={"attemptNo": attempt_no, "validationValid": validation["valid"]},
     )
 
-    submission, _ = _enqueue_ai_review(db, submission, actor.id)
+    submission, _, job = _enqueue_ai_review(db, submission, actor.id)
 
     db.commit()
     db.refresh(submission)
     db.refresh(assignment)
     db.refresh(submit_log)
+
+    if job is not None:
+        from app.worker.celery_app import celery_app
+        celery_app.send_task(
+            "app.worker.ai_review_worker.run_ai_review",
+            args=[job.id],
+            queue="ai_review",
+        )
+
     return (submission, assignment, submit_log)
 
 
