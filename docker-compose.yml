@@ -22,18 +22,18 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: labelhub-api
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: ${DATABASE_URL:-mysql://labelhub:labelhub@mysql:3306/labelhub}
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
+      DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
+      DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      DOUBAO_MODEL: ${DOUBAO_MODEL:-}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
       FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
       LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
     ports:
       - "${API_PORT:-3000}:3000"
     volumes:
       - .:/workspace
-      - api_node_modules:/workspace/apps/api/node_modules
       - file_storage:/workspace/.storage/files
     depends_on:
       mysql:
@@ -46,27 +46,23 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     container_name: labelhub-worker
+    working_dir: /workspace/apps/api
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: ${DATABASE_URL:-mysql://labelhub:labelhub@mysql:3306/labelhub}
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
+      DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
+      DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      DOUBAO_MODEL: ${DOUBAO_MODEL:-}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
       FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
       LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
     command: >
-      sh -lc "if [ -f apps/api/package.json ]; then
-        cd apps/api &&
-        npm install &&
-        if npm run | grep -q 'worker'; then npm run worker; else
-          node -e \"console.log('LabelHub worker 占位进程：等待接入 AI Review / Export 队列。'); setInterval(() => {}, 3600000)\";
-        fi;
-      else
-        node -e \"console.log('LabelHub worker 占位进程：apps/api 尚未实现，Docker 环境保持可启动。'); setInterval(() => {}, 3600000)\";
-      fi"
+      celery -A app.worker.celery_app.celery_app worker
+      --queues=ai_review,export
+      --loglevel=info
+      --concurrency=2
     volumes:
       - .:/workspace
-      - api_node_modules:/workspace/apps/api/node_modules
       - file_storage:/workspace/.storage/files
     depends_on:
       mysql:
@@ -83,7 +79,7 @@ services:
       - tools
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: ${DATABASE_URL:-mysql://labelhub:labelhub@mysql:3306/labelhub}
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     command: >
       sh -lc "if [ -f package.json ] || [ -f apps/api/package.json ]; then
