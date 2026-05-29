@@ -172,3 +172,49 @@ class ReviewDetailResponse(BaseModel):
     aiResult: ReviewResultResponse | None = None
     history: list[ReviewResultResponse]
     auditLogs: list[AuditLogSummary]
+
+
+# ---------------------------------------------------------------------------
+# ReviewConfig Schemas（追加，不修改上方现有 schema）
+# ---------------------------------------------------------------------------
+
+class ReviewConfigResponse(BaseModel):
+    id: str
+    taskId: str
+    enabled: bool
+    modelPolicyId: str
+    promptTemplate: str
+    dimensions: list
+    thresholds: dict
+    conclusionMapping: dict
+    maxRetries: int
+    createdAt: datetime
+    updatedAt: datetime
+
+    @classmethod
+    def from_orm(cls, config) -> "ReviewConfigResponse":
+        return cls(
+            id=config.id,
+            taskId=config.task_id,
+            enabled=config.enabled,
+            modelPolicyId=config.model_policy_id,
+            promptTemplate=config.prompt_template,
+            dimensions=config.dimensions_json,
+            thresholds=config.thresholds_json,
+            conclusionMapping=config.conclusion_mapping_json,
+            maxRetries=config.max_retries,
+            createdAt=config.created_at,
+            updatedAt=config.updated_at,
+        )
+
+
+class CreateReviewConfigResponse(BaseModel):
+    reviewConfig: ReviewConfigResponse
+
+
+class GetReviewConfigResponse(BaseModel):
+    reviewConfig: ReviewConfigResponse
+
+
+class UpdateReviewConfigResponse(BaseModel):
+    reviewConfig: ReviewConfigResponse

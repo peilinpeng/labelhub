@@ -143,3 +143,64 @@ def batch_decision(
                 error=r["error"],
             ))
     return BatchReviewResponse(results=results)
+
+
+# ---------------------------------------------------------------------------
+# ReviewConfig CRUD（追加，不修改上方现有路由）
+# ---------------------------------------------------------------------------
+
+from app.services.review_domain import (
+    CreateReviewConfigRequest,
+    UpdateReviewConfigRequest,
+)
+from app.schemas.review import (
+    ReviewConfigResponse,
+    CreateReviewConfigResponse,
+    GetReviewConfigResponse,
+    UpdateReviewConfigResponse,
+)
+
+
+@router.post(
+    "/tasks/{task_id}/review-config",
+    response_model=CreateReviewConfigResponse,
+    status_code=201,
+    summary="创建任务 AI 审核配置（每个任务最多一份）",
+)
+def create_review_config(
+    task_id: str,
+    req: CreateReviewConfigRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER", "ADMIN")),
+) -> CreateReviewConfigResponse:
+    config = review_domain.create_review_config(db, task_id, actor, req)
+    return CreateReviewConfigResponse(reviewConfig=ReviewConfigResponse.from_orm(config))
+
+
+@router.get(
+    "/tasks/{task_id}/review-config",
+    response_model=GetReviewConfigResponse,
+    summary="获取任务 AI 审核配置",
+)
+def get_review_config(
+    task_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER", "ADMIN", "REVIEWER")),
+) -> GetReviewConfigResponse:
+    config = review_domain.get_review_config(db, task_id, actor)
+    return GetReviewConfigResponse(reviewConfig=ReviewConfigResponse.from_orm(config))
+
+
+@router.put(
+    "/tasks/{task_id}/review-config",
+    response_model=UpdateReviewConfigResponse,
+    summary="更新任务 AI 审核配置（部分更新，字段均为可选）",
+)
+def update_review_config(
+    task_id: str,
+    req: UpdateReviewConfigRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER", "ADMIN")),
+) -> UpdateReviewConfigResponse:
+    config = review_domain.update_review_config(db, task_id, actor, req)
+    return UpdateReviewConfigResponse(reviewConfig=ReviewConfigResponse.from_orm(config))
