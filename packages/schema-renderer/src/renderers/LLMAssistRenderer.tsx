@@ -1,4 +1,4 @@
-import type { AnswerPayload, LLMAssistNode, LLMRuntimeResponse } from "@labelhub/contracts";
+import type { LLMAssistNode, LLMRuntimeResponse } from "@labelhub/contracts";
 import { normalizeAnswers } from "@labelhub/schema-core";
 import { useState } from "react";
 import type { RenderNodeContext } from "../types";

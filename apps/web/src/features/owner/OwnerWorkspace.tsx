@@ -28,7 +28,7 @@ function statusLabel(status: Task["status"]): string {
   return "已结束";
 }
 
-export default function OwnerWorkspace({ role }: OwnerWorkspaceProps) {
+export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");

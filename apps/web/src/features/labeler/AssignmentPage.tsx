@@ -18,7 +18,7 @@ interface AssignmentPageProps {
   role: Role;
 }
 
-export default function AssignmentPage({ role }: AssignmentPageProps) {
+export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const { assignmentId } = useParams<{ assignmentId: string }>();
   const navigate = useNavigate();
   const [context, setContext] = useState<AssignmentContextResponse | null>(null);
