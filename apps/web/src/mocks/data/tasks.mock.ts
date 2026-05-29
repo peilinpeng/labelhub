@@ -26,10 +26,36 @@ export const tasksMock: Task[] = [
     reviewPolicy: {
       type: "SINGLE_REVIEW",
     },
-    status: "DRAFT",
+    status: "PUBLISHED",
     activeSchemaVersionId: "sv_news_quality_1",
     ownerId: "usr_owner",
     createdAt: "2026-05-24T00:00:00.000Z",
     updatedAt: "2026-05-24T00:00:00.000Z",
+  },
+  {
+    id: "task_product_title",
+    title: "商品标题清洗 v3",
+    description: "清洗电商商品标题，抽取主类目和卖点关键词。",
+    tags: ["电商", "文本清洗", "中文"],
+    rewardRule: {
+      unit: "PER_ACCEPTED_ITEM",
+      amount: 0.3,
+      currency: "CNY",
+    },
+    quota: {
+      total: 5000,
+      perLabeler: 60,
+    },
+    deadlineAt: "2026-06-01T23:59:59.000Z",
+    distributionStrategy: {
+      type: "FIRST_COME_FIRST_SERVED",
+    },
+    reviewPolicy: {
+      type: "SINGLE_REVIEW",
+    },
+    status: "DRAFT",
+    ownerId: "usr_owner",
+    createdAt: "2026-05-26T09:00:00.000Z",
+    updatedAt: "2026-05-26T09:00:00.000Z",
   },
 ];

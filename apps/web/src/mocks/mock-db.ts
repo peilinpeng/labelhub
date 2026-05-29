@@ -260,6 +260,18 @@ export function importDataset(taskId: string, fileId: string): ImportDatasetResp
 export function claimTask(taskId: string): ClaimTaskResponse | undefined {
   const task = getTask(taskId);
   if (task === undefined || task.status !== "PUBLISHED" || task.activeSchemaVersionId === undefined) return undefined;
+  const existingAssignment = mockDb.assignments.find(
+    (candidate) =>
+      candidate.taskId === taskId &&
+      candidate.labelerId === "usr_labeler" &&
+      ["CLAIMED", "DRAFTING", "RETURNED"].includes(candidate.status),
+  );
+  if (existingAssignment !== undefined) {
+    return {
+      context: buildAssignmentContext(existingAssignment),
+      auditLog: audit("ASSIGNMENT_CLAIMED"),
+    };
+  }
   const item = mockDb.datasetItems.find((candidate) => candidate.taskId === taskId && candidate.status === "AVAILABLE");
   const schemaVersion = mockDb.schemaVersions.find((candidate) => candidate.id === task.activeSchemaVersionId);
   if (item === undefined || schemaVersion === undefined) return undefined;
