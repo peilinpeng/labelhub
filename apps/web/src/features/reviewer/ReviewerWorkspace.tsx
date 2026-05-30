@@ -2,21 +2,21 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Role } from "../../app/routes";
 import { listReviewQueue } from "../../api/reviewer";
+import type { ReviewQueueItem } from "../../api/reviewer";
 import { Badge, Card } from "../../ui/primitives";
-import type { Submission } from "@labelhub/contracts";
 
 interface ReviewerWorkspaceProps {
   role: Role;
 }
 
-function statusTone(status: Submission["status"]): "success" | "warning" | "danger" | "default" {
+function statusTone(status: ReviewQueueItem["submission"]["status"]): "success" | "warning" | "danger" | "default" {
   if (status === "AI_PASSED" || status === "ACCEPTED") return "success";
   if (status === "NEEDS_HUMAN_REVIEW" || status === "HUMAN_REVIEWING") return "warning";
   if (status === "REJECTED" || status === "RETURNED") return "danger";
   return "default";
 }
 
-function statusLabel(status: Submission["status"]): string {
+function statusLabel(status: ReviewQueueItem["submission"]["status"]): string {
   if (status === "AI_PASSED") return "AI 通过";
   if (status === "NEEDS_HUMAN_REVIEW") return "需人工复核";
   if (status === "ACCEPTED") return "已通过";
@@ -26,7 +26,7 @@ function statusLabel(status: Submission["status"]): string {
 }
 
 export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [submissions, setSubmissions] = useState<ReviewQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,12 +53,13 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
     return <Card className="state-panel danger-text">错误: {error}</Card>;
   }
 
-  const needsReviewCount = submissions.filter((item) => item.status === "NEEDS_HUMAN_REVIEW").length;
-  const aiPassedCount = submissions.filter((item) => item.status === "AI_PASSED" || item.status === "ACCEPTED").length;
-  const aiReturnedCount = submissions.filter((item) => item.status === "RETURNED" || item.status === "REJECTED").length;
+  const needsReviewCount = submissions.filter((item) => item.submission.status === "NEEDS_HUMAN_REVIEW").length;
+  const aiPassedCount = submissions.filter((item) => item.submission.status === "AI_PASSED" || item.submission.status === "ACCEPTED").length;
+  const aiReturnedCount = submissions.filter((item) => item.submission.status === "RETURNED" || item.submission.status === "REJECTED").length;
+  // validationSnapshot は SubmissionSummary に含まれないため AI スコアは固定値で代替
   const avgScore = submissions.length
     ? Math.round(
-        submissions.reduce((sum, submission) => sum + (submission.validationSnapshot.valid ? 91 : 62), 0) /
+        submissions.reduce((sum, item) => sum + (item.aiDecision === "PASS" ? 91 : 62), 0) /
           submissions.length,
       )
     : 0;
@@ -67,7 +68,7 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
     ["AI 通过", aiPassedCount],
     ["AI 打回", aiReturnedCount],
     ["需要人工复核", needsReviewCount],
-    ["已通过", submissions.filter((item) => item.status === "ACCEPTED").length],
+    ["已通过", submissions.filter((item) => item.submission.status === "ACCEPTED").length],
     ["已打回", aiReturnedCount],
   ];
   const kpis = [
@@ -116,7 +117,7 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           <div className="reviewer-table-header">
             <div>
               <h3>审核队列</h3>
-              <p>{submissions.length} 条提交等待处理或抽检</p>
+              <p>{submissions.length} 条记录等待处理或抽检</p>
             </div>
             <Badge tone="warning">AI 预审后</Badge>
           </div>
@@ -134,15 +135,16 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
               </tr>
             </thead>
             <tbody>
-              {submissions.map((submission) => {
-                const score = submission.validationSnapshot.valid ? 91 : 62;
+              {submissions.map((item) => {
+                const { submission } = item;
+                const score = item.aiDecision === "PASS" ? 91 : 62;
                 return (
                   <tr key={submission.id}>
                     <td>
                       <strong className="reviewer-submission-id">{submission.id}</strong>
                       <span className="reviewer-attempt">Attempt #{submission.attemptNo}</span>
                     </td>
-                    <td className="owner-table-strong">{submission.taskId}</td>
+                    <td className="owner-table-strong">{item.taskTitle || submission.taskId}</td>
                     <td>{submission.labelerId}</td>
                     <td>
                       <Badge tone={statusTone(submission.status)}>{statusLabel(submission.status)}</Badge>

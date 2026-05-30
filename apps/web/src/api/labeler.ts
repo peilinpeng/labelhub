@@ -13,7 +13,10 @@ import type {
 import { apiGet, apiPost, apiPut } from "./client";
 
 export async function listMarketplaceTasks(): Promise<Task[]> {
-  return apiGet<Task[]>("/api/v1/marketplace/tasks");
+  const res = await apiGet<{ items: Task[]; total: number; page: number; pageSize: number }>(
+    "/api/v1/marketplace/tasks"
+  );
+  return res.items;
 }
 
 export async function claimTask(taskId: string, request: ClaimTaskRequest): Promise<ClaimTaskResponse> {
