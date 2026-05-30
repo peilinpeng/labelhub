@@ -204,7 +204,7 @@ def submit_review_decision(
                 sub_command = "humanReviewPassDouble"
                 asn_command = None
                 item_new_status = None
-                audit_action = "REVIEW_ACCEPTED"
+                audit_action = "FINAL_REVIEW_REQUESTED"
             else:
                 sub_command = "humanReviewPassSingle"
                 asn_command = "humanReviewPass"
@@ -218,7 +218,7 @@ def submit_review_decision(
         else:  # REJECT
             sub_command = "humanReviewReject"
             asn_command = "humanReviewReject"
-            item_new_status = "DISABLED"
+            item_new_status = "AVAILABLE"
             audit_action = "REVIEW_REJECTED"
     else:  # FINAL_REVIEW
         if req.decision == "PASS":
@@ -234,7 +234,7 @@ def submit_review_decision(
         else:  # REJECT
             sub_command = "finalReviewReject"
             asn_command = "finalReviewReject"
-            item_new_status = "DISABLED"
+            item_new_status = "AVAILABLE"
             audit_action = "REVIEW_REJECTED"
 
     new_sub_status = sub_apply_transition(submission.status, sub_command)
@@ -250,8 +250,6 @@ def submit_review_decision(
         elif item_new_status == "AVAILABLE":
             item.status = "AVAILABLE"
             item.current_assignment_id = None
-        elif item_new_status == "DISABLED":
-            item.status = "DISABLED"
 
     result_json_payload = {
         "decision": req.decision,

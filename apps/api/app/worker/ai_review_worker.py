@@ -146,7 +146,7 @@ def _execute_review(db, job_id: str) -> None:
         db,
         entity_type="SUBMISSION",
         entity_id=submission.id,
-        action="AI_REVIEW_ENQUEUED",
+        action="AI_REVIEW_STARTED",
         actor_id=system_actor_id,
         after={"jobId": job.id, "retryCount": job.retry_count},
     )
