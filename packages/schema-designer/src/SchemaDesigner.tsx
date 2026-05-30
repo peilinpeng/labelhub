@@ -45,9 +45,14 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
   };
 
   return (
-    <>
+    <div className="schema-designer">
       {props.onPublishRequest !== undefined ? (
-        <button disabled={readonly || !state.validationResult.valid} type="button" onClick={() => void props.onPublishRequest?.(props.schema)}>
+        <button
+          className="schema-designer__publish"
+          disabled={readonly || !state.validationResult.valid}
+          type="button"
+          onClick={() => void props.onPublishRequest?.(props.schema)}
+        >
           请求发布
         </button>
       ) : null}
@@ -95,7 +100,7 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
       }
       validation={<ValidationPanel localErrors={state.localErrors} validationResult={state.validationResult} />}
       />
-    </>
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
+import { createTask } from "../../api/owner";
 import { Button, Card, Input, Textarea } from "../../ui/primitives";
 
 interface OwnerNewTaskPageProps {
@@ -20,12 +21,11 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
     }
     try {
       setLoading(true);
-      const mockTask = {
-        id: `task_${Date.now()}`,
-        title,
-        description,
-      };
-      navigate(`/owner/tasks/${mockTask.id}/designer`);
+      const task = await createTask({
+        title: title.trim(),
+        description: description.trim(),
+      });
+      navigate(`/owner/tasks/${task.id}/designer`);
     } finally {
       setLoading(false);
     }

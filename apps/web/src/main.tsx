@@ -9,7 +9,12 @@ async function bootstrap() {
     serviceWorker: {
       url: "/mockServiceWorker.js",
     },
-    onUnhandledRequest: "bypass",
+    onUnhandledRequest(request, print) {
+      const url = new URL(request.url);
+      if (url.pathname.startsWith("/api/")) {
+        print.error();
+      }
+    },
   });
 
   ReactDOM.createRoot(document.getElementById("root")!).render(

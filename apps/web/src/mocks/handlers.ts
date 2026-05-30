@@ -32,6 +32,7 @@ import {
   generateSchema,
   getAssignmentContext,
   getReviewDetail,
+  getSchemaDraft,
   getTask,
   importDataset,
   listMarketplaceTasks,
@@ -80,17 +81,16 @@ export const handlers = [
 
   http.get("/api/v1/tasks/:taskId/schema/draft", ({ params }) => {
     const taskId = getParam(params as MockParams, "taskId");
-    const draft = mockDb.schemaDrafts.find((item) => item.meta.taskId === taskId);
+    const draft = getSchemaDraft(taskId);
     return draft === undefined ? errorJson("RESOURCE_NOT_FOUND", "schema draft 不存在", 404) : okJson(draft);
   }),
 
   http.put("/api/v1/tasks/:taskId/schema/draft", async ({ request, params }) => {
-    const taskId = getParam(params as MockParams, "taskId");
-    const body = await readJson<SaveSchemaDraftRequest>(request);
-    return withIdempotency(request, body, () => {
-      const response = saveSchemaDraft(taskId, body.schema);
-      return { body: response };
-    });
+    return handleSaveSchemaDraftRequest(request, params as MockParams);
+  }),
+
+  http.put("*/api/v1/tasks/:taskId/schema/draft", async ({ request, params }) => {
+    return handleSaveSchemaDraftRequest(request, params as MockParams);
   }),
 
   http.post("/api/v1/schema/validate", async ({ request }) => {
@@ -298,6 +298,10 @@ export const handlers = [
       return { body: response };
     });
   }),
+
+  http.get(/\/(owner|labeler|reviewer)(\/.*)?$/, async ({ request }) => {
+    return handleAppRouteRequest(request);
+  }),
 ];
 
 interface MockHandlerResult {
@@ -344,4 +348,30 @@ function apiErrorBody(code: Parameters<typeof errorJson>[0], message: string, de
     details,
     traceId: `trace_${Date.now()}`,
   };
+}
+
+async function handleSaveSchemaDraftRequest(request: Request, params: MockParams): Promise<Response> {
+  const taskId = getParam(params, "taskId");
+  const body = await readJson<SaveSchemaDraftRequest>(request);
+  return withIdempotency(request, body, () => {
+    const response = saveSchemaDraft(taskId, body.schema);
+    return { body: response };
+  });
+}
+
+async function handleAppRouteRequest(request: Request): Promise<Response | undefined> {
+  const accept = request.headers.get("accept") ?? "";
+  if (!accept.includes("text/html")) {
+    return undefined;
+  }
+
+  const url = new URL(request.url);
+  const response = await fetch(`${url.origin}/`);
+  const html = await response.text();
+  return new HttpResponse(html, {
+    status: response.status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+    },
+  });
 }

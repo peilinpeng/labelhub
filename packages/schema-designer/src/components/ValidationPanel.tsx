@@ -9,11 +9,17 @@ export function ValidationPanel({ validationResult, localErrors }: ValidationPan
   const errors = [...validationResult.errors, ...localErrors];
 
   return (
-    <section aria-label="Schema 校验">
-      <h2>Schema 校验</h2>
-      {errors.length === 0 ? <p>当前 schema 校验通过</p> : null}
+    <section aria-label="Schema 校验" className="schema-designer-panel schema-designer-validation">
+      <div className="schema-designer-panel__header">
+        <div>
+          <h2>Schema 校验</h2>
+          <p>发布前规则检查</p>
+        </div>
+        <span>{errors.length === 0 ? "通过" : errors.length}</span>
+      </div>
+      {errors.length === 0 ? <p className="schema-designer-valid">当前 schema 校验通过</p> : null}
       {errors.length > 0 ? (
-        <ul>
+        <ul className="schema-designer-error-list">
           {errors.map((error, index) => (
             <li key={`${error.code}-${error.nodeId ?? "schema"}-${error.path}-${index}`}>
               <strong>{error.code}</strong>

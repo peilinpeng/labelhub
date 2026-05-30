@@ -11,8 +11,14 @@ export function PropertyPanel({ schema, node, readonly, localErrors, onNodePatch
   const onPatch = (patch: Partial<SchemaNode>) => onNodePatch(node.id, patch);
 
   return (
-    <section aria-label="属性面板">
-      <h2>属性面板</h2>
+    <section aria-label="属性面板" className="schema-designer-panel schema-designer-properties">
+      <div className="schema-designer-panel__header">
+        <div>
+          <h2>属性面板</h2>
+          <p>{node.title}</p>
+        </div>
+        <span>{node.kind}</span>
+      </div>
       <BaseNodePanel node={node} readonly={readonly} onLocalErrors={onLocalErrors} onPatch={onPatch} />
       {node.kind === "FIELD" ? (
         <>
@@ -32,7 +38,7 @@ export function PropertyPanel({ schema, node, readonly, localErrors, onNodePatch
         <ContainerPropertyPanel node={node} readonly={readonly} onLocalErrors={onLocalErrors} onPatch={onPatch} />
       ) : null}
       {localErrors.length > 0 ? (
-        <ul>
+        <ul className="schema-designer-error-list">
           {localErrors.map((error, index) => (
             <li key={`${error.path}-${index}`} role="alert">
               {error.message}
@@ -40,16 +46,21 @@ export function PropertyPanel({ schema, node, readonly, localErrors, onNodePatch
           ))}
         </ul>
       ) : null}
-      <div>当前 schema：{schema.meta.name}</div>
+      <div className="schema-designer-schema-name">当前 schema：{schema.meta.name}</div>
     </section>
   );
 }
 
 export function EmptyPropertyPanel() {
   return (
-    <section aria-label="属性面板">
-      <h2>属性面板</h2>
-      <p>请选择一个节点。</p>
+    <section aria-label="属性面板" className="schema-designer-panel schema-designer-properties">
+      <div className="schema-designer-panel__header">
+        <div>
+          <h2>属性面板</h2>
+          <p>编辑节点标题、字段名、校验与绑定</p>
+        </div>
+      </div>
+      <p className="schema-designer-empty">请选择一个节点。</p>
     </section>
   );
 }
