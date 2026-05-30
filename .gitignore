@@ -59,3 +59,6 @@ temp/
 ~$*.xlsx
 __pycache__/
 *.pyc
+
+# Python virtual environments
+.venv/
