@@ -595,3 +595,25 @@ def validate_schema(
     """
     result = schema_domain.validate_schema(body.schema)
     return ValidateSchemaResponse(**result)
+
+
+@router.get(
+    "/tasks",
+    summary="获取任务列表（OWNER）",
+)
+def list_tasks(
+    page: int = 1,
+    pageSize: int = 20,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER", "ADMIN")),
+):
+    from app.models.task import Task
+    query = db.query(Task).filter(Task.owner_id == actor.id)
+    total = query.count()
+    tasks = query.order_by(Task.created_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
+    return {
+        "tasks": [TaskResponse.from_orm(t) for t in tasks],
+        "total": total,
+        "page": page,
+        "pageSize": pageSize,
+    }

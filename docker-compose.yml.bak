@@ -1,0 +1,134 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: labelhub-web
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000/api/v1}
+      VITE_ENABLE_MSW: ${VITE_ENABLE_MSW:-true}
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - .:/workspace
+      - web_node_modules:/workspace/apps/web/node_modules
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: labelhub-api
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
+      DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      DOUBAO_MODEL: ${DOUBAO_MODEL:-}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
+      FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
+      LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      - .:/workspace
+      - file_storage:/workspace/.storage/files
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: labelhub-worker
+    working_dir: /workspace/apps/api
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
+      DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      DOUBAO_MODEL: ${DOUBAO_MODEL:-}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
+      FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
+      LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
+    command: >
+      celery -A app.worker.celery_app.celery_app worker
+      --queues=ai_review,export
+      --loglevel=info
+      --concurrency=2
+    volumes:
+      - .:/workspace
+      - file_storage:/workspace/.storage/files
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  seed:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: labelhub-seed
+    profiles:
+      - tools
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: ${DATABASE_URL:-mysql://labelhub:labelhub@mysql:3306/labelhub}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    command: >
+      sh -lc "if [ -f package.json ] || [ -f apps/api/package.json ]; then
+        echo 'TODO: 接入真实 ORM 后执行 scripts/seed-demo-data.ts 写入数据库。';
+      else
+        echo '当前仓库尚无可执行 TypeScript runtime，seed demo data 脚本已生成在 scripts/seed-demo-data.ts。';
+      fi"
+    volumes:
+      - .:/workspace
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8
+    container_name: labelhub-mysql
+    environment:
+      MYSQL_DATABASE: labelhub
+      MYSQL_USER: labelhub
+      MYSQL_PASSWORD: labelhub
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: labelhub-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql_data:
+  redis_data:
+  file_storage:
+  web_node_modules:
+  api_node_modules:

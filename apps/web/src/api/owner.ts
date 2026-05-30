@@ -24,9 +24,13 @@ export async function fetchTask(taskId: string): Promise<Task> {
 }
 
 export async function createTask(
-  request: Pick<Task, "title" | "description"> & Partial<Task>
+  request: Pick<Task, "title" | "quota" | "distributionStrategy" | "reviewPolicy"> & {
+    description?: string;
+    tags?: string[];
+  }
 ): Promise<Task> {
-  return apiPost<Task>("/api/v1/tasks", request);
+  const res = await apiPost<{ task: Task; auditLog: unknown }>("/api/v1/tasks", request);
+  return res.task;
 }
 
 export async function fetchSchemaDraft(taskId: string): Promise<LabelHubSchema> {
@@ -60,7 +64,8 @@ export async function publishTask(taskId: string, request: PublishTaskRequest): 
 }
 
 export async function listTasks(): Promise<Task[]> {
-  return apiGet<Task[]>("/api/v1/tasks");
+  const res = await apiGet<{ tasks: Task[]; total: number; page: number; pageSize: number }>("/api/v1/tasks");
+  return res.tasks;
 }
 
 export async function createExportJob(

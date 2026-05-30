@@ -13,6 +13,7 @@ import ReviewDetailPage from "../features/reviewer/ReviewDetailPage";
 import { AppShell, type ShellNavItem } from "../ui/AppShell";
 import { Badge, Button, Card } from "../ui/primitives";
 import "../styles.css";
+import { loginForRole } from "../api/client";
 
 const roleHome: Record<Role, string> = {
   OWNER: RoutePath.OWNER_TASKS,
@@ -25,6 +26,12 @@ function inferRoleFromPath(pathname: string): Role | null {
   if (pathname.startsWith("/labeler/")) return "LABELER";
   if (pathname.startsWith("/reviewer/")) return "REVIEWER";
   return null;
+}
+
+// 仅在 localStorage 已有 token 时才从 URL 恢复角色（session 续期），否则强制走登录流程
+function inferRoleFromPathIfAuthenticated(pathname: string): Role | null {
+  if (!localStorage.getItem("labelhub_token")) return null;
+  return inferRoleFromPath(pathname);
 }
 
 const shellCopy: Record<Role, { title: string; subtitle: string; navItems: ShellNavItem[] }> = {
@@ -218,7 +225,8 @@ function AppRoutes({ role }: { role: Role }) {
 
 function App() {
   const location = useLocation();
-  const [role, setRole] = useState<Role | null>(() => inferRoleFromPath(location.pathname));
+  // 修复：初始化时检查 token，无 token 则强制走 RoleSelector 登录流程
+  const [role, setRole] = useState<Role | null>(() => inferRoleFromPathIfAuthenticated(location.pathname));
 
   useEffect(() => {
     const routeRole = inferRoleFromPath(location.pathname);
@@ -228,7 +236,19 @@ function App() {
   }, [location.pathname, role]);
 
   if (role === null) {
-    return <RoleSelector onSelect={setRole} />;
+    return (
+      <RoleSelector
+        onSelect={async (r) => {
+          // 修复：捕获登录异常，失败时提示用户，不调用 setRole
+          try {
+            await loginForRole(r);
+            setRole(r);
+          } catch (e) {
+            alert(`登录失败：${e instanceof Error ? e.message : "网络错误，请检查后端是否运行在 localhost:3000"}`);
+          }
+        }}
+      />
+    );
   }
 
   const copy = shellCopy[role];
