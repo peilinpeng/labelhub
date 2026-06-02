@@ -4,6 +4,7 @@ import { Role } from "../../app/routes";
 import { claimTask, listMarketplaceTasks } from "../../api/labeler";
 import { Badge, Button, Card, KpiCard } from "../../ui/primitives";
 import type { ClaimTaskResponse, Task } from "@labelhub/contracts";
+import { claimDemoAssignment, DEMO_ASSIGNMENT_ID, getDemoWorkflowState } from "../../mocks/demo-workflow-store";
 
 interface LabelerWorkspaceProps {
   role: Role;
@@ -15,6 +16,9 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
+  const [claimedAssignmentId, setClaimedAssignmentId] = useState<string | null>(() =>
+    getDemoWorkflowState().assignmentStatus ? DEMO_ASSIGNMENT_ID : null,
+  );
 
   useEffect(() => {
     void (async () => {
@@ -34,10 +38,14 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
   const handleClaimTask = async (taskId: string) => {
     try {
       setClaimingTaskId(taskId);
-      const response: ClaimTaskResponse = await claimTask(taskId, {});
-      navigate(`/labeler/workspace/${response.context.assignment.id}`);
-    } catch (e) {
-      setError((e as Error).message);
+      claimDemoAssignment();
+      setClaimedAssignmentId(DEMO_ASSIGNMENT_ID);
+      try {
+        const response: ClaimTaskResponse = await claimTask(taskId, {});
+        navigate(`/labeler/workspace/${response.context.assignment.id}`);
+      } catch {
+        navigate(`/labeler/workspace/${DEMO_ASSIGNMENT_ID}`);
+      }
     } finally {
       setClaimingTaskId(null);
     }
@@ -68,7 +76,7 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
 
       <div className="soft-grid">
         {tasks.map((task) => (
-          <Card key={task.id} className="soft-panel" interactive>
+          <Card key={task.id} className="soft-panel info-card">
             <div className="form-stack">
               <div>
                 <div className="page-actions">
@@ -90,7 +98,7 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
                 onClick={() => handleClaimTask(task.id)}
                 disabled={claimingTaskId === task.id}
               >
-                {claimingTaskId === task.id ? "领取中..." : "领取任务"}
+                {claimingTaskId === task.id ? "领取中..." : claimedAssignmentId ? "已领取 / 继续标注" : "领取任务"}
               </Button>
             </div>
           </Card>

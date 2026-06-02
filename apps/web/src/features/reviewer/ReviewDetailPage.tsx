@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { SchemaRenderer } from "@labelhub/schema-renderer";
 import { RoutePath, Role } from "../../app/routes";
 import { claimReview, decideReview, getReviewDetail } from "../../api/reviewer";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
+import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { AIReviewPanel, Badge, Button, Card, Textarea } from "../../ui/primitives";
+import { applyDemoSubmissionState, reviewDemoSubmission } from "../../mocks/demo-workflow-store";
 import type {
   LabelHubRuntimeContext,
   ReviewDecisionRequest,
@@ -17,6 +20,7 @@ interface ReviewDetailPageProps {
 
 export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const { submissionId } = useParams<{ submissionId: string }>();
+  const navigate = useNavigate();
   const [detail, setDetail] = useState<ReviewDetailResponse | null>(null);
   const [mode, setMode] = useState<"REVIEW_READONLY" | "REVIEW_DIFF">("REVIEW_READONLY");
   const [patches, setPatches] = useState<ReviewPatch[]>([]);
@@ -24,6 +28,8 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
   const [deciding, setDeciding] = useState(false);
+  const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
+  const [pendingDecision, setPendingDecision] = useState<"PASS" | "RETURN" | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -31,7 +37,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         setLoading(true);
         if (submissionId) {
           const data = await getReviewDetail(submissionId);
-          setDetail(data);
+          setDetail({ ...data, submission: applyDemoSubmissionState(data.submission) });
           setPatches(data.history.flatMap((item) => ("patches" in item && item.patches ? item.patches : [])));
         }
       } catch (e) {
@@ -116,14 +122,44 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         decision === "PASS"
           ? { ...base, decision }
           : { ...base, decision, reason: comments || "需要人工复核" };
-      await decideReview(submissionId, request);
-      window.location.href = RoutePath.REVIEWER_QUEUE;
+      reviewDemoSubmission(decision);
+      setDecisionMessage(decision === "PASS" ? "审核通过，结果已入库。" : "审核已打回，等待标注员修订。");
+      void decideReview(submissionId, request).catch(() => undefined);
+      window.setTimeout(() => navigate(RoutePath.REVIEWER_QUEUE), 650);
     } catch (e) {
       console.error("Failed to make decision:", e);
     } finally {
       setDeciding(false);
     }
   };
+
+  const requestDecision = (decision: "PASS" | "RETURN") => {
+    const suppressKey = decision === "PASS" ? CONFIRM_KEYS.approve : CONFIRM_KEYS.return;
+    if (shouldSuppressConfirm(suppressKey)) {
+      void handleDecision(decision);
+      return;
+    }
+    setPendingDecision(decision);
+  };
+
+  const decisionConfirmCopy =
+    pendingDecision === "PASS"
+      ? {
+          title: "确认审核通过？",
+          description: "通过后该提交将进入可导出数据。",
+          confirmText: "通过",
+          suppressLabel: "本次会话不再提醒审核通过确认",
+          tone: "primary" as const,
+          suppressKey: CONFIRM_KEYS.approve,
+        }
+      : {
+          title: "确认打回提交？",
+          description: "打回后标注员需要重新修改并提交。",
+          confirmText: "打回",
+          suppressLabel: "本次会话不再提醒打回确认",
+          tone: "danger" as const,
+          suppressKey: CONFIRM_KEYS.return,
+        };
 
   if (loading) {
     return <Card className="state-panel">加载审核详情中...</Card>;
@@ -218,14 +254,15 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               onChange={(event) => setComments(event.target.value)}
             />
           </label>
+          {decisionMessage ? <Badge tone="success">{decisionMessage}</Badge> : null}
           <div className="decision-grid">
-            <Button tone="danger" onClick={() => handleDecision("RETURN")} disabled={deciding}>
+            <Button tone="danger" onClick={() => requestDecision("RETURN")} disabled={deciding}>
               打回
             </Button>
             <Button onClick={() => handleDecision("REJECT")} disabled={deciding}>
               拒绝
             </Button>
-            <Button tone="success" onClick={() => handleDecision("PASS")} disabled={deciding}>
+            <Button tone="success" onClick={() => requestDecision("PASS")} disabled={deciding}>
               通过入库
             </Button>
           </div>
@@ -249,6 +286,28 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
           ) : null}
         </div>
       </Card>
+
+      <ConfirmDialog
+        open={pendingDecision !== null}
+        title={decisionConfirmCopy.title}
+        description={decisionConfirmCopy.description}
+        confirmText={decisionConfirmCopy.confirmText}
+        cancelText="取消"
+        tone={decisionConfirmCopy.tone}
+        suppressLabel={decisionConfirmCopy.suppressLabel}
+        onCancel={() => setPendingDecision(null)}
+        onConfirm={(suppress) => {
+          const decision = pendingDecision;
+          if (!decision) {
+            return;
+          }
+          if (suppress) {
+            suppressConfirmForSession(decisionConfirmCopy.suppressKey);
+          }
+          setPendingDecision(null);
+          void handleDecision(decision);
+        }}
+      />
     </div>
   );
 }

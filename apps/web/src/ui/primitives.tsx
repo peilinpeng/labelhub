@@ -67,7 +67,7 @@ interface KpiCardProps {
 
 export function KpiCard({ label, value, hint }: KpiCardProps) {
   return (
-    <Card className="lh-kpi-card">
+    <Card className="lh-kpi-card info-card">
       <span className="lh-kpi-card__label">{label}</span>
       <strong className="lh-kpi-card__value">{value}</strong>
       {hint ? <span className="lh-kpi-card__hint">{hint}</span> : null}

@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { SchemaRenderer } from "@labelhub/schema-renderer";
 import { RoutePath, Role } from "../../app/routes";
-import { callLLMAssist, getAssignmentContext, saveDraft, submitAssignment } from "../../api/labeler";
+import { callLLMAssist, getAssignmentContext, saveDraft } from "../../api/labeler";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
+import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { AIReviewPanel, Badge, Button, Card } from "../../ui/primitives";
+import { submitDemoAssignment } from "../../mocks/demo-workflow-store";
 import type {
   AnswerPayload,
   AssignmentContextResponse,
@@ -26,6 +29,9 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [pendingSubmitAnswers, setPendingSubmitAnswers] = useState<AnswerPayload | null>(null);
   const itemNav = Array.from({ length: 20 }, (_, index) => {
     const status = index === 2 ? "Current" : index < 2 ? "Submitted" : index === 5 ? "Returned" : "Draft";
     return {
@@ -111,12 +117,22 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       setErrors(validation.errors);
       return;
     }
-    try {
-      await submitAssignment(assignmentId, { answers: submitAnswers });
-      navigate(RoutePath.LABELER_TASKS);
-    } catch (e) {
-      console.error("Failed to submit:", e);
+    requestDemoSubmit(submitAnswers);
+  };
+
+  const confirmDemoSubmit = (submitAnswers: AnswerPayload = answers) => {
+    submitDemoAssignment(submitAnswers);
+    setSubmitNotice("提交成功，已进入 Reviewer 审核队列。");
+    window.setTimeout(() => navigate(RoutePath.REVIEWER_QUEUE), 650);
+  };
+
+  const requestDemoSubmit = (submitAnswers: AnswerPayload = answers) => {
+    if (shouldSuppressConfirm(CONFIRM_KEYS.submit)) {
+      confirmDemoSubmit(submitAnswers);
+      return;
     }
+    setPendingSubmitAnswers(submitAnswers);
+    setSubmitConfirmOpen(true);
   };
 
   const handleLLMAssist = async (
@@ -159,7 +175,9 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           <Button onClick={handleSaveDraft} disabled={saving}>
             {saving ? "保存中..." : "保存草稿"}
           </Button>
-          <Button tone="primary">提交标注</Button>
+          <Button tone="primary" onClick={() => requestDemoSubmit()}>
+            提交标注
+          </Button>
         </div>
       </div>
 
@@ -221,6 +239,13 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
             </Card>
           ) : null}
 
+          {submitNotice ? (
+            <Card className="labeler-return-card">
+              <Badge tone="success">提交成功</Badge>
+              <p>{submitNotice}</p>
+            </Card>
+          ) : null}
+
           <Card className="labeler-source-card">
             <div className="labeler-card-heading">
               <div>
@@ -263,7 +288,9 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
               <Button onClick={handleSaveDraft} disabled={saving}>
                 保存草稿
               </Button>
-              <Button tone="primary">提交标注</Button>
+              <Button tone="primary" onClick={() => requestDemoSubmit()}>
+                提交标注
+              </Button>
             </div>
           </Card>
         </main>
@@ -334,6 +361,27 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           </Link>
         </aside>
       </div>
+
+      <ConfirmDialog
+        open={submitConfirmOpen}
+        title="确认提交标注？"
+        description="提交后将进入 AI 预审与人工审核流程。"
+        confirmText="提交标注"
+        cancelText="继续编辑"
+        suppressLabel="本次会话不再提醒提交确认"
+        onCancel={() => {
+          setSubmitConfirmOpen(false);
+          setPendingSubmitAnswers(null);
+        }}
+        onConfirm={(suppress) => {
+          if (suppress) {
+            suppressConfirmForSession(CONFIRM_KEYS.submit);
+          }
+          setSubmitConfirmOpen(false);
+          confirmDemoSubmit(pendingSubmitAnswers ?? answers);
+          setPendingSubmitAnswers(null);
+        }}
+      />
     </div>
   );
 }

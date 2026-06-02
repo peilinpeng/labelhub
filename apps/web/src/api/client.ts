@@ -9,10 +9,14 @@ const ROLE_CREDENTIALS: Record<string, { email: string; password: string }> = {
 export async function loginForRole(role: string): Promise<void> {
   const creds = ROLE_CREDENTIALS[role];
   if (!creds) return;
+  await loginWithCredentials(role, creds.email, creds.password);
+}
+
+export async function loginWithCredentials(role: string, email: string, password: string): Promise<void> {
   const res = await fetch("/api/v1/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(creds),
+    body: JSON.stringify({ email, password }),
   });
   if (res.ok) {
     const data = await res.json();
@@ -23,7 +27,11 @@ export async function loginForRole(role: string): Promise<void> {
     try {
       const err = await res.json() as ApiError;
       if (err?.message) message = err.message;
-    } catch { /* ignore json parse error */ }
+    } catch {
+      if (res.status >= 500) {
+        message = "登录服务未连接，请确认后端 API 已在 localhost:3000 运行。";
+      }
+    }
     throw new Error(message);
   }
 }

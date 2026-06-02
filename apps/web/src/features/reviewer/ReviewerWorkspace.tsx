@@ -4,6 +4,11 @@ import { Role } from "../../app/routes";
 import { listReviewQueue } from "../../api/reviewer";
 import type { ReviewQueueItem } from "../../api/reviewer";
 import { Badge, Card } from "../../ui/primitives";
+import {
+  applyDemoSubmissionState,
+  DEMO_SUBMISSION_ID,
+  getDemoSubmissionFallback,
+} from "../../mocks/demo-workflow-store";
 
 interface ReviewerWorkspaceProps {
   role: Role;
@@ -29,13 +34,18 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
   const [submissions, setSubmissions] = useState<ReviewQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
 
   useEffect(() => {
     void (async () => {
       try {
         setLoading(true);
         const data = await listReviewQueue();
-        setSubmissions(data);
+        const withDemoState = data.map(applyDemoSubmissionState);
+        const nextSubmissions = withDemoState.some((submission) => submission.id === DEMO_SUBMISSION_ID)
+          ? withDemoState
+          : [getDemoSubmissionFallback(), ...withDemoState];
+        setSubmissions(nextSubmissions);
         setError(null);
       } catch (e) {
         setError((e as Error).message);
@@ -77,6 +87,15 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
     { label: "AI 打回", value: aiReturnedCount.toString(), hint: "高风险或不合规", tone: "danger" },
     { label: "平均 AI 分数", value: `${avgScore}`, hint: "基于预审快照估算", tone: "primary" },
   ];
+  const filteredSubmissions = submissions.filter((item) => {
+    const status = item.submission.status;
+    if (activeTabIndex === 1) return status === "AI_PASSED" || status === "ACCEPTED";
+    if (activeTabIndex === 2) return status === "RETURNED" || status === "REJECTED";
+    if (activeTabIndex === 3) return status === "NEEDS_HUMAN_REVIEW" || status === "HUMAN_REVIEWING";
+    if (activeTabIndex === 4) return status === "ACCEPTED";
+    if (activeTabIndex === 5) return status === "RETURNED" || status === "REJECTED";
+    return true;
+  });
 
   return (
     <div className="reviewer-workbench page-stack">
@@ -104,7 +123,14 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
       <Card className="reviewer-tabs-card">
         <div className="reviewer-tabs" role="tablist" aria-label="审核状态筛选">
           {tabs.map(([label, count], index) => (
-            <button className={index === 0 ? "reviewer-tab reviewer-tab--active" : "reviewer-tab"} key={label} type="button">
+            <button
+              className={activeTabIndex === index ? "reviewer-tab reviewer-tab--active" : "reviewer-tab"}
+              key={label}
+              type="button"
+              role="tab"
+              aria-selected={activeTabIndex === index}
+              onClick={() => setActiveTabIndex(index)}
+            >
               <span>{label}</span>
               <strong>{count}</strong>
             </button>
@@ -117,7 +143,7 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           <div className="reviewer-table-header">
             <div>
               <h3>审核队列</h3>
-              <p>{submissions.length} 条记录等待处理或抽检</p>
+              <p>{filteredSubmissions.length} 条记录等待处理或抽检</p>
             </div>
             <Badge tone="warning">AI 预审后</Badge>
           </div>
@@ -135,7 +161,7 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
               </tr>
             </thead>
             <tbody>
-              {submissions.map((item) => {
+              {filteredSubmissions.map((item) => {
                 const { submission } = item;
                 const score = item.aiDecision === "PASS" ? 91 : 62;
                 return (
@@ -173,14 +199,14 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
               })}
             </tbody>
           </table>
-          {submissions.length === 0 ? <div className="empty-state">暂无待审核提交</div> : null}
+          {filteredSubmissions.length === 0 ? <div className="empty-state">暂无待审核提交</div> : null}
         </Card>
 
         <aside className="reviewer-summary-panel">
           <Card className="reviewer-summary-card">
             <div className="reviewer-summary-heading">
               <h3>当前筛选结果</h3>
-              <Badge tone="primary">{submissions.length} 条</Badge>
+              <Badge tone="primary">{filteredSubmissions.length} 条</Badge>
             </div>
             <div className="reviewer-summary-list">
               <div>

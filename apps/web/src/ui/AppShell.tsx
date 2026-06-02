@@ -66,7 +66,7 @@ export function AppShell({ role, title, subtitle, navItems, onSwitchRole, childr
           <div className="app-topbar__right">
             <Badge tone="primary">{roleLabel[role]}</Badge>
             <Button tone="ghost" onClick={onSwitchRole}>
-              切换角色
+              切换账号
             </Button>
           </div>
         </header>
