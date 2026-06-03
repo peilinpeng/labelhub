@@ -1,25 +1,97 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { SchemaDesigner } from "@labelhub/schema-designer";
-import { createNewsQualitySchema } from "@labelhub/schema-core";
-import { RoutePath, Role } from "../../app/routes";
-import { fetchSchemaDraft, fetchServerRegistry, fetchTask, saveSchemaDraft } from "../../api/owner";
-import { tasksMock } from "../../mocks/data/tasks.mock";
-import { ConfirmDialog } from "../../ui/ConfirmDialog";
-import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
-import { Badge, Button, Card } from "../../ui/primitives";
+import { collectFieldNodes, createDefaultNode, flattenNodes } from "@labelhub/schema-core";
 import type {
+  FieldNode,
   ID,
   LabelHubRuntimeContext,
   LabelHubSchema,
+  NodeType,
+  SchemaNode,
   SchemaValidationResult,
   ServerComponentRegistryItem,
   Task,
 } from "@labelhub/contracts";
+import { RoutePath, Role } from "../../app/routes";
+import { fetchSchemaDraft, fetchServerRegistry, fetchTask, publishSchema, publishTask, saveSchemaDraft } from "../../api/owner";
+import { tasksMock } from "../../mocks/data/tasks.mock";
+import { findLocalTaskById } from "../../mocks/local-task-store";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
+import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
+import { Badge, Button, Card } from "../../ui/primitives";
+import { localServerComponentRegistry } from "./localComponentRegistry";
+import { createSchemaFromPreset, schemaPresetSummaries } from "./schemaPresetLibrary";
 
 interface OwnerSchemaPageProps {
   role: Role;
 }
+
+interface QuickMaterial {
+  type: NodeType;
+  label: string;
+  description: string;
+  icon: string;
+}
+
+type ConditionOperator = "eq" | "ne" | "contains" | "empty" | "notEmpty";
+type ConditionAction = "show" | "hide" | "disable";
+type VisualValidationType = "required" | "minLength" | "maxLength" | "numberRange" | "regex";
+
+interface ConditionRuleDraft {
+  id: string;
+  targetField: string;
+  conditionField: string;
+  operator: ConditionOperator;
+  value: string;
+  action: ConditionAction;
+}
+
+interface ValidationRuleDraft {
+  id: string;
+  targetField: string;
+  type: VisualValidationType;
+  value: string;
+  message: string;
+}
+
+const quickMaterials: QuickMaterial[] = [
+  { type: "input.text", label: "单行输入", description: "基础短文本采集", icon: "Aa" },
+  { type: "input.textarea", label: "多行文本", description: "长文本答案", icon: "Tx" },
+  { type: "input.richtext", label: "富文本", description: "长文本带格式", icon: "R" },
+  { type: "choice.radio", label: "单选", description: "枚举类标注", icon: "O" },
+  { type: "choice.checkbox", label: "多选", description: "多枚举选择", icon: "Ck" },
+  { type: "choice.tags", label: "标签选择", description: "多标签标注", icon: "#" },
+  { type: "upload.file", label: "文件上传", description: "多媒体素材", icon: "Up" },
+  { type: "upload.image", label: "图片上传", description: "图片素材", icon: "Img" },
+  { type: "data.json", label: "JSON 编辑器", description: "结构化数据", icon: "{}" },
+  { type: "llm.assist", label: "LLM 交互组件", description: "模型建议/预填", icon: "AI" },
+  { type: "show.text", label: "展示文本", description: "原始数据展示", icon: "Show" },
+  { type: "container.group", label: "分组容器", description: "组织字段", icon: "Grp" },
+  { type: "container.tabs", label: "多 Tab 布局", description: "分 Tab 组织内容", icon: "Tab" },
+];
+
+const conditionOperatorLabels: Record<ConditionOperator, string> = {
+  eq: "等于",
+  ne: "不等于",
+  contains: "包含",
+  empty: "为空",
+  notEmpty: "不为空",
+};
+
+const conditionActionLabels: Record<ConditionAction, string> = {
+  show: "显示",
+  hide: "隐藏",
+  disable: "禁用",
+};
+
+const validationTypeLabels: Record<VisualValidationType, string> = {
+  required: "必填",
+  minLength: "最小长度",
+  maxLength: "最大长度",
+  numberRange: "数字范围",
+  regex: "正则表达式",
+};
 
 function taskDescription(task: Task): string {
   const description = task.description?.trim();
@@ -29,19 +101,29 @@ function taskDescription(task: Task): string {
   return description;
 }
 
+function schemaRevisionLabel(schema: LabelHubSchema): string {
+  return `r${schema.schemaDraftRevision ?? schema.schemaVersionNo ?? 1}`;
+}
+
 export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
-  const [serverRegistry, setServerRegistry] = useState<ServerComponentRegistryItem[]>([]);
+  const [serverRegistry, setServerRegistry] = useState<ServerComponentRegistryItem[]>(localServerComponentRegistry);
   const [schema, setSchema] = useState<LabelHubSchema>(() => createFallbackSchema(taskId));
-  const [task, setTask] = useState<Task | undefined>(() => tasksMock.find((item) => item.id === taskId));
+  const [task, setTask] = useState<Task | undefined>(() => findLocalTaskById(taskId) ?? tasksMock.find((item) => item.id === taskId));
   const [validation, setValidation] = useState<SchemaValidationResult | undefined>();
-  const [statusMessage, setStatusMessage] = useState("正在加载模板设计器");
+  const [statusMessage, setStatusMessage] = useState("正在加载模板编辑器");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishNotice, setPublishNotice] = useState<string | null>(null);
   const [previewExpanded, setPreviewExpanded] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [activePresetId, setActivePresetId] = useState(() => presetIdForTask(taskId));
+  const [dropActive, setDropActive] = useState(false);
+  const [conditionRules, setConditionRules] = useState<ConditionRuleDraft[]>([]);
+  const [validationRules, setValidationRules] = useState<ValidationRuleDraft[]>([]);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [selectedMaterialLabel, setSelectedMaterialLabel] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,39 +138,36 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           fetchSchemaDraft(currentTaskId),
         ]);
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
-        if (registryResult.status === "fulfilled") {
+        if (registryResult.status === "fulfilled" && registryResult.value.length > 0) {
           setServerRegistry(registryResult.value);
-        }
-
-        const resolvedTask = taskResult.status === "fulfilled"
-          ? taskResult.value
-          : tasksMock.find((item) => item.id === currentTaskId);
-
-        if (resolvedTask) {
-          setTask(resolvedTask);
         } else {
-          setTask(undefined);
+          setServerRegistry(localServerComponentRegistry);
         }
+
+        const resolvedTask =
+          taskResult.status === "fulfilled"
+            ? taskResult.value
+            : findLocalTaskById(currentTaskId) ?? tasksMock.find((item) => item.id === currentTaskId);
+        setTask(resolvedTask);
 
         if (draftResult.status === "fulfilled") {
-          setSchema(draftResult.value);
+          setSchema(ensureNewsQualityPreviewFields(draftResult.value));
+          setActivePresetId(presetIdForSchema(draftResult.value));
           setStatusMessage("已加载模板草稿");
         } else {
-          setSchema(createFallbackSchema(currentTaskId, resolvedTask?.title));
-          setStatusMessage("未找到模板草稿，已载入本地模板");
+          const fallbackSchema = createFallbackSchema(currentTaskId, resolvedTask?.title);
+          setSchema(fallbackSchema);
+          setActivePresetId(presetIdForSchema(fallbackSchema));
+          setStatusMessage("已加载本地模板");
         }
       } catch (error) {
         if (!cancelled) {
-          setStatusMessage(error instanceof Error ? error.message : "模板设计器加载失败");
+          setStatusMessage(error instanceof Error ? error.message : "模板编辑器加载失败");
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     })();
 
@@ -98,9 +177,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   }, [taskId]);
 
   useEffect(() => {
-    if (!previewExpanded) {
-      return;
-    }
+    if (!previewExpanded) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -112,8 +189,20 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewExpanded]);
 
+  useEffect(() => {
+    if (!selectedMaterialLabel) return;
+
+    const timer = window.setTimeout(() => {
+      replaceInspectorSubtitle(selectedMaterialLabel);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [schema, selectedMaterialLabel]);
+
   const sampleContext = useMemo(() => createSampleContext(schema, task, role), [role, schema, task]);
-  const templateTitle = task ? `${task.title} 模板` : schema.meta.name;
+  const fieldNodes = useMemo(() => collectFieldNodes(schema), [schema]);
+  const templateTitle = schema.meta.name;
+  const registrySourceLabel = serverRegistry === localServerComponentRegistry ? "本地组件库" : "服务端组件库";
 
   const handleSaveDraft = async (): Promise<void> => {
     const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
@@ -127,22 +216,53 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       setValidation(response.validation);
       setStatusMessage(`草稿已保存，版本 ${response.schemaDraftRevision}`);
       setPublishNotice("模板草稿已保存。");
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? `保存失败：${error.message}` : "保存失败");
-      setPublishNotice("草稿已保留在当前页面，请确认后端服务状态。");
+    } catch {
+      setStatusMessage("后端暂不可用，当前模板保留在页面中。");
+      setPublishNotice("后端暂不可用，当前修改已保留在本页，可继续预览和发布演示。");
     } finally {
       setSaving(false);
     }
   };
 
-  const confirmPublish = () => {
+  const exportSchemaJson = () => {
+    const fileName = `${schema.meta.name || "labelhub-schema"}.json`;
+    const blob = new Blob([JSON.stringify(schema, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setPublishNotice("Schema JSON 已导出。");
+  };
+
+  const confirmPublish = async () => {
+    const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
+    try {
+      setSaving(true);
+      await saveSchemaDraft(currentTaskId, {
+        schema,
+        baseSchemaDraftRevision: schema.schemaDraftRevision,
+      });
+      const published = await publishSchema(currentTaskId);
+      const schemaVersionId =
+        published.schemaVersion && typeof published.schemaVersion === "object" && "id" in published.schemaVersion
+          ? String((published.schemaVersion as { id: unknown }).id)
+          : schema.schemaVersionId;
+      await publishTask(currentTaskId, { schemaVersionId: schemaVersionId as ID });
+      setPublishNotice("发布成功，任务已进入任务市场。");
+    } catch (error) {
+      console.warn("Backend publish unavailable, using local workflow fallback:", error);
+    } finally {
+      setSaving(false);
+    }
     setPublishNotice("发布成功，任务已回到任务管理列表。");
     window.setTimeout(() => navigate(RoutePath.OWNER_TASKS), 650);
   };
 
   const handlePublish = () => {
     if (shouldSuppressConfirm(CONFIRM_KEYS.publish)) {
-      confirmPublish();
+      void confirmPublish();
       return;
     }
     setPublishConfirmOpen(true);
@@ -152,7 +272,70 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     const target = event.target;
     if (target instanceof HTMLElement && target.closest(".schema-designer-preview__surface")) {
       setPreviewExpanded(true);
+      return;
     }
+
+    if (!(target instanceof HTMLElement)) return;
+
+    const nodeCard = target.closest(".schema-node-card");
+    const materialLabel = nodeCard ? getMaterialLabelFromNodeCard(nodeCard) : null;
+    const directControl = target.closest("button, a, input, textarea, select, label");
+    if (directControl) {
+      if (directControl.textContent?.trim().includes("选择") && materialLabel) {
+        setSelectedMaterialLabel(materialLabel);
+        window.setTimeout(() => replaceInspectorSubtitle(materialLabel), 0);
+      }
+      return;
+    }
+
+    if (!nodeCard) return;
+
+    const selectButton = Array.from(nodeCard.querySelectorAll("button")).find((button) =>
+      button.textContent?.trim().includes("选择"),
+    );
+    if (materialLabel) {
+      setSelectedMaterialLabel(materialLabel);
+      window.setTimeout(() => replaceInspectorSubtitle(materialLabel), 0);
+    }
+    selectButton?.click();
+  };
+
+  const handleLoadPreset = (preset: (typeof schemaPresetSummaries)[number]) => {
+    const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
+    const taskTitle = task?.title ?? "当前任务";
+    setActivePresetId(preset.id);
+    setSchema(ensureNewsQualityPreviewFields(createSchemaFromPreset(preset.id, currentTaskId, taskTitle)));
+    setValidation(undefined);
+    setStatusMessage(`已加载「${preset.title}」预设模板`);
+    setPublishNotice(`已将「${preset.title}」加载到当前任务「${taskTitle}」下，可继续在画布中调整字段。`);
+  };
+
+  const handleCanvasDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (event.dataTransfer.types.includes("application/x-labelhub-node-type")) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      setDropActive(true);
+    }
+  };
+
+  const handleCanvasDrop = (event: DragEvent<HTMLDivElement>) => {
+    const type = event.dataTransfer.getData("application/x-labelhub-node-type") as NodeType;
+    if (!type) return;
+
+    event.preventDefault();
+    setDropActive(false);
+    const material = quickMaterials.find((item) => item.type === type);
+    setSchema((current) => appendNodeToRoot(current, type));
+    setValidation(undefined);
+    setStatusMessage(`已拖拽添加「${material?.label ?? type}」到画布`);
+  };
+
+  const addConditionRule = () => {
+    setConditionRules((current) => [...current, createConditionRule(fieldNodes)]);
+  };
+
+  const addValidationRule = () => {
+    setValidationRules((current) => [...current, createValidationRule(fieldNodes)]);
   };
 
   if (loading) {
@@ -164,70 +347,278 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   }
 
   return (
-    <div className={`page-stack schema-workbench-page${previewExpanded ? " schema-preview-expanded" : ""}`}>
-      <div className="page-header schema-workbench-header">
+    <div className={`page-stack schema-workbench-page schema-builder-page${previewExpanded ? " schema-preview-expanded" : ""}`}>
+      <Card className="schema-builder-toolbar">
         <div>
-          <Badge tone="primary">模板配置</Badge>
-          <h2 className="page-title">模板配置</h2>
-          <p className="page-subtitle">为当前任务配置动态标注 Schema，并预览标注员填写效果</p>
-          <div className="meta-line">
-            <Badge tone="default">Task {task.id}</Badge>
-            <span>{templateTitle}</span>
-            <span>{taskDescription(task)}</span>
-            <span>{statusMessage}</span>
-            <Badge tone={validation?.valid === false ? "danger" : "success"}>
-              {validation?.valid === false ? "校验未通过" : `组件库 ${serverRegistry.length} 项`}
-            </Badge>
+          <div className="schema-builder-breadcrumb">
+            <Link to={RoutePath.OWNER_TASKS}>任务负责人后台</Link>
+            <span>/</span>
+            <span>模板搭建</span>
+            <span>/</span>
+            <strong>{task.title}</strong>
           </div>
+          <h2>
+            模板搭建器 <span>(Designer)</span>
+          </h2>
+          <p>Schema 与渲染解耦：左侧组件库，中间画布，右侧属性与预览。</p>
         </div>
-        <div className="schema-workbench-actions">
-          <Button type="button" disabled={saving} onClick={() => void handleSaveDraft()}>
-            {saving ? "保存中..." : "保存草稿"}
-          </Button>
+        <div className="schema-builder-toolbar__actions">
           <Button type="button" onClick={() => navigate("/labeler/workspace/asn_1001")}>
-            预览标注台
+            预览
           </Button>
-          <Button type="button" tone="primary" onClick={handlePublish}>
-            发布任务
+          <Button type="button" onClick={exportSchemaJson}>
+            导出 Schema JSON
+          </Button>
+          <Button type="button" tone="primary" disabled={saving} onClick={handlePublish}>
+            保存并发布版本 {schemaRevisionLabel(schema)}
           </Button>
         </div>
+      </Card>
+
+      <div className="schema-builder-statusbar">
+        <Badge tone="primary">当前版本 {schemaRevisionLabel(schema)}</Badge>
+        <Badge tone="default">绑定任务 {task.id}</Badge>
+        <Badge tone="success">
+          {registrySourceLabel} {serverRegistry.length} 项
+        </Badge>
+        <span>{statusMessage}</span>
       </div>
 
       {publishNotice ? (
-        <Card className="labeler-return-card">
+        <Card className="labeler-return-card schema-builder-notice">
           <Badge tone="success">已更新</Badge>
           <p>{publishNotice}</p>
         </Card>
       ) : null}
 
-      <Card className="schema-designer-shell">
-        <div className="schema-canvas-header">
+      <Card className="schema-preset-panel schema-preset-panel--compact">
+        <div className="schema-preset-heading">
+          <div>
+            <h3>常用预设模板</h3>
+            <p>选择一个起点加载到当前任务，任务归属不变，后续仍可在 Schema 画布中继续编辑。</p>
+          </div>
+          <Badge tone="primary">可直接加载</Badge>
+        </div>
+        <div className="schema-preset-grid schema-preset-grid--compact">
+          {schemaPresetSummaries.map((preset) => (
+            <button
+              className={["schema-preset-card", activePresetId === preset.id ? "schema-preset-card--active" : ""]
+                .filter(Boolean)
+                .join(" ")}
+              key={preset.id}
+              type="button"
+              onClick={() => handleLoadPreset(preset)}
+            >
+              <span>{activePresetId === preset.id ? "当前模板" : "预设模板"}</span>
+              <strong>{preset.title}</strong>
+              <small>{preset.description}</small>
+              <em>{preset.fields}</em>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <section className="schema-visual-config">
+        <Card className="schema-config-card">
+          <div className="schema-config-heading">
+            <div>
+              <h3>字段配置</h3>
+              <p>当前模板中可参与条件和校验的字段。</p>
+            </div>
+            <Badge tone="default">{fieldNodes.length} 个字段</Badge>
+          </div>
+          {fieldNodes.length > 0 ? (
+            <div className="schema-field-config-list">
+              {fieldNodes.map((field) => (
+                <div className="schema-field-config-row" key={field.id}>
+                  <strong>{field.title}</strong>
+                  <span>{field.name}</span>
+                  <Badge tone={field.required ? "warning" : "default"}>{field.required ? "必填" : "可选"}</Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="schema-config-empty">暂无可配置字段。请先从物料区添加输入或选择类字段。</p>
+          )}
+        </Card>
+
+        <Card className="schema-config-card">
+          <div className="schema-config-heading">
+            <div>
+              <h3>条件显示</h3>
+              <p>用表单规则控制字段显示、隐藏或禁用。</p>
+            </div>
+            <Button type="button" onClick={addConditionRule} disabled={fieldNodes.length === 0}>
+              新增规则
+            </Button>
+          </div>
+          {conditionRules.length > 0 ? (
+            <div className="schema-rule-list">
+              {conditionRules.map((rule, index) => (
+                <div className="schema-rule-card" key={rule.id}>
+                  <div className="schema-rule-card__title">
+                    <strong>条件规则 {index + 1}</strong>
+                    <button type="button" onClick={() => setConditionRules((current) => current.filter((item) => item.id !== rule.id))}>
+                      删除
+                    </button>
+                  </div>
+                  <div className="schema-rule-grid schema-rule-grid--condition">
+                    <SelectField label="目标字段" value={rule.targetField} options={fieldNodes} onChange={(value) => updateConditionRule(setConditionRules, rule.id, { targetField: value })} />
+                    <SelectField label="条件字段" value={rule.conditionField} options={fieldNodes} onChange={(value) => updateConditionRule(setConditionRules, rule.id, { conditionField: value })} />
+                    <label>
+                      判断关系
+                      <select value={rule.operator} onChange={(event) => updateConditionRule(setConditionRules, rule.id, { operator: event.target.value as ConditionOperator })}>
+                        {Object.entries(conditionOperatorLabels).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      条件值
+                      <input
+                        disabled={rule.operator === "empty" || rule.operator === "notEmpty"}
+                        value={rule.value}
+                        onChange={(event) => updateConditionRule(setConditionRules, rule.id, { value: event.target.value })}
+                        placeholder="例如 pass"
+                      />
+                    </label>
+                    <label>
+                      动作
+                      <select value={rule.action} onChange={(event) => updateConditionRule(setConditionRules, rule.id, { action: event.target.value as ConditionAction })}>
+                        {Object.entries(conditionActionLabels).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="schema-config-empty">暂无条件规则。可以添加规则，例如“当质量判断等于需要修改时，显示修改建议”。</p>
+          )}
+        </Card>
+
+        <Card className="schema-config-card">
+          <div className="schema-config-heading">
+            <div>
+              <h3>校验规则</h3>
+              <p>用清晰的控件配置必填、长度和格式要求。</p>
+            </div>
+            <Button type="button" onClick={addValidationRule} disabled={fieldNodes.length === 0}>
+              新增规则
+            </Button>
+          </div>
+          {validationRules.length > 0 ? (
+            <div className="schema-rule-list">
+              {validationRules.map((rule, index) => (
+                <div className="schema-rule-card" key={rule.id}>
+                  <div className="schema-rule-card__title">
+                    <strong>校验规则 {index + 1}</strong>
+                    <button type="button" onClick={() => setValidationRules((current) => current.filter((item) => item.id !== rule.id))}>
+                      删除
+                    </button>
+                  </div>
+                  <div className="schema-rule-grid">
+                    <SelectField label="目标字段" value={rule.targetField} options={fieldNodes} onChange={(value) => updateValidationRule(setValidationRules, rule.id, { targetField: value })} />
+                    <label>
+                      校验类型
+                      <select value={rule.type} onChange={(event) => updateValidationRule(setValidationRules, rule.id, { type: event.target.value as VisualValidationType })}>
+                        {Object.entries(validationTypeLabels).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      参数值
+                      <input
+                        disabled={rule.type === "required"}
+                        value={rule.value}
+                        onChange={(event) => updateValidationRule(setValidationRules, rule.id, { value: event.target.value })}
+                        placeholder={rule.type === "numberRange" ? "例如 1-100" : "例如 10"}
+                      />
+                    </label>
+                    <label>
+                      错误提示文案
+                      <input
+                        value={rule.message}
+                        onChange={(event) => updateValidationRule(setValidationRules, rule.id, { message: event.target.value })}
+                        placeholder="请输入错误提示"
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="schema-config-empty">暂无校验规则。可以添加规则，例如“摘要最少 10 个字”。</p>
+          )}
+        </Card>
+
+        <Card className="schema-config-card">
+          <div className="schema-config-heading">
+            <div>
+              <h3>表单预览</h3>
+              <p>右侧实时预览会使用同一份 SchemaRenderer 渲染当前模板。</p>
+            </div>
+            <Button type="button" onClick={() => setPreviewExpanded(true)}>
+              放大预览
+            </Button>
+          </div>
+          <div className="schema-preview-summary">
+            <div><strong>{schema.root.children.length}</strong><span>画布节点</span></div>
+            <div><strong>{conditionRules.length}</strong><span>条件规则</span></div>
+            <div><strong>{validationRules.length}</strong><span>校验规则</span></div>
+          </div>
+        </Card>
+
+        <Card className="schema-config-card schema-config-card--wide">
+          <details open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
+            <summary>高级 JSON 配置 / 查看 JSON</summary>
+            <textarea
+              readOnly
+              value={JSON.stringify({ schema, visualRules: { conditionRules, validationRules } }, null, 2)}
+            />
+          </details>
+        </Card>
+      </section>
+
+      <Card className="schema-designer-shell schema-designer-shell--builder">
+        <div className="schema-canvas-header schema-canvas-header--compact">
           <div>
             <Badge tone="primary">Task {task.id}</Badge>
             <h3>{templateTitle}</h3>
             <p>{taskDescription(task)}</p>
           </div>
-          <Link to={RoutePath.OWNER_TASKS} className="lh-button">
-            返回任务
-          </Link>
+          <div className="schema-canvas-header__actions">
+            <Button type="button" disabled={saving} onClick={() => void handleSaveDraft()}>
+              {saving ? "保存中..." : "保存草稿"}
+            </Button>
+            <Link to={RoutePath.OWNER_TASKS} className="lh-button">
+              返回任务
+            </Link>
+          </div>
         </div>
 
         {previewExpanded ? (
           <>
-            <button
-              type="button"
-              className="schema-preview-backdrop"
-              aria-label="关闭预览"
-              onClick={() => setPreviewExpanded(false)}
-            />
+            <button type="button" className="schema-preview-backdrop" aria-label="关闭预览" onClick={() => setPreviewExpanded(false)} />
             <button type="button" className="schema-preview-close" onClick={() => setPreviewExpanded(false)}>
               关闭预览
             </button>
           </>
         ) : null}
 
-        <div className="schema-canvas" onClick={handleDesignerCanvasClick}>
+        <div
+          className={`schema-canvas schema-canvas--builder${dropActive ? " schema-canvas--drop-active" : ""}`}
+          onClick={handleDesignerCanvasClick}
+          onDragLeave={() => setDropActive(false)}
+          onDragOver={handleCanvasDragOver}
+          onDrop={handleCanvasDrop}
+        >
+          {dropActive ? <div className="schema-canvas-drop-hint">释放后添加到当前模板画布</div> : null}
           <SchemaDesigner
+            key={schema.schemaId}
             schema={schema}
             serverRegistry={serverRegistry}
             sampleContext={sampleContext}
@@ -246,29 +637,174 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         suppressLabel="本次会话不再提醒发布确认"
         onCancel={() => setPublishConfirmOpen(false)}
         onConfirm={(suppress) => {
-          if (suppress) {
-            suppressConfirmForSession(CONFIRM_KEYS.publish);
-          }
+          if (suppress) suppressConfirmForSession(CONFIRM_KEYS.publish);
           setPublishConfirmOpen(false);
-          confirmPublish();
+          void confirmPublish();
         }}
       />
     </div>
   );
 }
 
-function createFallbackSchema(taskId: string | undefined, taskTitle?: string): LabelHubSchema {
-  const schema = createNewsQualitySchema();
-  const resolvedTaskId = resolveTaskId(taskId, schema.meta.taskId);
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: FieldNode[];
+  onChange(value: string): void;
+}) {
+  return (
+    <label>
+      {label}
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((field) => (
+          <option key={field.id} value={field.name}>
+            {field.title} ({field.name})
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function isShowItemNode(node: SchemaNode): node is ShowItemNode {
+  return node.kind === "SHOW_ITEM";
+}
+
+function getMaterialLabelFromNodeCard(nodeCard: Element): string | null {
+  const text = nodeCard.textContent ?? "";
+  const material = quickMaterials.find((item) => text.includes(item.type));
+  return material?.label ?? null;
+}
+
+function replaceInspectorSubtitle(materialLabel: string): void {
+  const subtitle = document.querySelector<HTMLParagraphElement>(
+    ".schema-builder-page .schema-designer-layout__inspector .schema-designer-panel__header p",
+  );
+  if (subtitle) {
+    subtitle.textContent = materialLabel;
+  }
+
+  const badge = document.querySelector<HTMLSpanElement>(
+    ".schema-builder-page .schema-designer-layout__inspector .schema-designer-panel__header > span",
+  );
+  if (badge && badge.textContent?.trim() === "SHOW_ITEM") {
+    badge.textContent = materialLabel;
+  }
+}
+
+function createConditionRule(fields: FieldNode[]): ConditionRuleDraft {
+  const firstField = fields[0]?.name ?? "";
+  const secondField = fields[1]?.name ?? firstField;
+  return {
+    id: `condition_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    targetField: secondField,
+    conditionField: firstField,
+    operator: "eq",
+    value: "",
+    action: "show",
+  };
+}
+
+function createValidationRule(fields: FieldNode[]): ValidationRuleDraft {
+  return {
+    id: `validation_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    targetField: fields[0]?.name ?? "",
+    type: "required",
+    value: "",
+    message: "请完成该字段",
+  };
+}
+
+function updateConditionRule(
+  setRules: Dispatch<SetStateAction<ConditionRuleDraft[]>>,
+  id: string,
+  patch: Partial<ConditionRuleDraft>,
+) {
+  setRules((current) => current.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)));
+}
+
+function updateValidationRule(
+  setRules: Dispatch<SetStateAction<ValidationRuleDraft[]>>,
+  id: string,
+  patch: Partial<ValidationRuleDraft>,
+) {
+  setRules((current) => current.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)));
+}
+
+function ensureNewsQualityPreviewFields(schema: LabelHubSchema): LabelHubSchema {
+  const isNewsTemplate =
+    schema.meta.taskId === "task_news_quality" ||
+    schema.meta.name.includes("新闻") ||
+    schema.root.title?.includes("新闻");
+
+  if (!isNewsTemplate) return schema;
+
+  let changed = false;
+  const children = schema.root.children.map((node) => {
+    if (node.kind !== "FIELD" || node.name !== "rewriteSuggestion") return node;
+
+    changed = true;
+    return {
+      ...node,
+      id: node.id || ("rewrite_suggestion" as ID),
+      title: node.title || "修改建议",
+      type: "input.textarea",
+      required: true,
+      minRows: "minRows" in node ? node.minRows : 3,
+      validations: [{ type: "required", message: "请填写修改建议" }],
+    } as FieldNode;
+  });
+
+  const hasRewriteSuggestion = children.some((node) => node.kind === "FIELD" && node.name === "rewriteSuggestion");
+  if (!hasRewriteSuggestion) {
+    changed = true;
+    children.splice(Math.max(children.length - 1, 0), 0, createRewriteSuggestionNode());
+  }
+
+  if (!changed) return schema;
+
   return {
     ...schema,
-    meta: {
-      ...schema.meta,
-      name: taskTitle ? `${taskTitle} 模板` : schema.meta.name,
-      taskId: resolvedTaskId,
-      updatedAt: new Date().toISOString(),
+    root: {
+      ...schema.root,
+      children,
     },
   };
+}
+
+function createRewriteSuggestionNode(): SchemaNode {
+  return {
+    id: "rewrite_suggestion" as ID,
+    kind: "FIELD",
+    type: "input.textarea",
+    name: "rewriteSuggestion",
+    title: "修改建议",
+    required: true,
+    minRows: 3,
+    validations: [{ type: "required", message: "请填写修改建议" }],
+  } as FieldNode;
+}
+
+function createFallbackSchema(taskId: string | undefined, taskTitle?: string): LabelHubSchema {
+  const resolvedTaskId = resolveTaskId(taskId, "task_news_quality" as ID);
+  const presetId = presetIdForTask(resolvedTaskId);
+  return ensureNewsQualityPreviewFields(createSchemaFromPreset(presetId, resolvedTaskId, taskTitle ?? "当前任务"));
+}
+
+function presetIdForTask(taskId: string | undefined): string {
+  if (taskId === "task_product_title") return "product_title";
+  if (taskId === "task_news_quality") return "news_quality";
+  return schemaPresetSummaries[0].id;
+}
+
+function presetIdForSchema(schema: LabelHubSchema): string {
+  const matchedPreset = schemaPresetSummaries.find((preset) => schema.meta.name.includes(preset.title));
+  return matchedPreset?.id ?? presetIdForTask(schema.meta.taskId);
 }
 
 function createSampleContext(schema: LabelHubSchema, task: Task | undefined, role: Role): LabelHubRuntimeContext {
@@ -296,11 +832,7 @@ function createSampleContext(schema: LabelHubSchema, task: Task | undefined, rol
     },
     answers: {},
     system: {
-      actor: {
-        id: "usr_owner",
-        role,
-        displayName: "Owner",
-      },
+      actor: { id: "usr_owner", role, displayName: "Owner" },
       role,
       now: new Date().toISOString(),
     },
@@ -309,4 +841,54 @@ function createSampleContext(schema: LabelHubSchema, task: Task | undefined, rol
 
 function resolveTaskId(taskId: string | undefined, fallbackTaskId: ID): ID {
   return (taskId ?? fallbackTaskId) as ID;
+}
+
+function appendNodeToRoot(schema: LabelHubSchema, type: NodeType): LabelHubSchema {
+  const node = prepareNodeForAppsWebInsert(schema, createDefaultNode(type));
+  return {
+    ...schema,
+    meta: { ...schema.meta, updatedAt: new Date().toISOString() },
+    root: { ...schema.root, children: [...schema.root.children, node] },
+  };
+}
+
+function prepareNodeForAppsWebInsert(schema: LabelHubSchema, node: SchemaNode): SchemaNode {
+  const usedNodeIds = new Set(flattenNodes(schema).map((item) => item.id));
+  const usedFieldNames = new Set(collectFieldNodes(schema).map((field) => field.name));
+  return withUniqueIdentity(cloneValue(node), usedNodeIds, usedFieldNames);
+}
+
+function withUniqueIdentity(node: SchemaNode, usedNodeIds: Set<string>, usedFieldNames: Set<string>): SchemaNode {
+  const id = uniqueValue(node.id, usedNodeIds);
+  usedNodeIds.add(id);
+
+  if (node.kind === "FIELD") {
+    const name = uniqueValue(node.name, usedFieldNames);
+    usedFieldNames.add(name);
+    return { ...node, id, name } as FieldNode;
+  }
+
+  if (node.kind === "CONTAINER") {
+    return {
+      ...node,
+      id,
+      children: node.children.map((child) => withUniqueIdentity(child, usedNodeIds, usedFieldNames)),
+    };
+  }
+
+  return { ...node, id };
+}
+
+function uniqueValue(base: string, used: Set<string>): string {
+  if (!used.has(base)) return base;
+
+  let index = 2;
+  while (used.has(`${base}_${index}`)) {
+    index += 1;
+  }
+  return `${base}_${index}`;
+}
+
+function cloneValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }

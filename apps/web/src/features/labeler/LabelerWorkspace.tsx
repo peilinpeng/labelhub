@@ -5,6 +5,8 @@ import { claimTask, listMarketplaceTasks } from "../../api/labeler";
 import { Badge, Button, Card, KpiCard } from "../../ui/primitives";
 import type { ClaimTaskResponse, Task } from "@labelhub/contracts";
 import { claimDemoAssignment, DEMO_ASSIGNMENT_ID, getDemoWorkflowState } from "../../mocks/demo-workflow-store";
+import { tasksMock } from "../../mocks/data/tasks.mock";
+import { listLocalTasks } from "../../mocks/local-task-store";
 
 interface LabelerWorkspaceProps {
   role: Role;
@@ -14,7 +16,7 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
   const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
   const [claimedAssignmentId, setClaimedAssignmentId] = useState<string | null>(() =>
     getDemoWorkflowState().assignmentStatus ? DEMO_ASSIGNMENT_ID : null,
@@ -26,9 +28,10 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
         setLoading(true);
         const data = await listMarketplaceTasks();
         setTasks(data);
-        setError(null);
+        setOfflineNotice(null);
       } catch (e) {
-        setError((e as Error).message);
+        setTasks(getLocalMarketplaceTasks());
+        setOfflineNotice(`后端 API 暂不可用，当前显示本地任务数据。${(e as Error).message}`);
       } finally {
         setLoading(false);
       }
@@ -55,22 +58,25 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
     return <Card className="state-panel">加载任务市场中...</Card>;
   }
 
-  if (error) {
-    return <Card className="state-panel danger-text">错误: {error}</Card>;
-  }
-
   return (
     <div className="page-stack">
       <div className="page-header">
         <div>
           <h2 className="page-title">任务市场</h2>
-          <p className="page-subtitle">当前角色：{role}。领取后进入标注工作台，SchemaRenderer 负责渲染与校验。</p>
+          <p className="page-subtitle">当前角色：{role}。领取任务后进入标注工作台，填写答案并提交审核。</p>
         </div>
       </div>
 
+      {offlineNotice ? (
+        <Card className="labeler-return-card">
+          <Badge tone="warning">离线模式</Badge>
+          <p>{offlineNotice}</p>
+        </Card>
+      ) : null}
+
       <div className="kpi-grid">
-        <KpiCard label="可领取任务" value={tasks.length} hint="来自 marketplace mock API" />
-        <KpiCard label="预计单题奖励" value="0.30" hint="元 / accepted item" />
+        <KpiCard label="可领取任务" value={tasks.length} hint={offlineNotice ? "来自本地任务数据" : "来自任务市场"} />
+        <KpiCard label="预计单题奖励" value="0.30" hint="元 / 通过 item" />
         <KpiCard label="今日草稿" value="0" hint="保存后由 workflow 更新" />
       </div>
 
@@ -108,4 +114,14 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
       {tasks.length === 0 ? <Card className="empty-state">暂无可领取的任务</Card> : null}
     </div>
   );
+}
+
+function getLocalMarketplaceTasks(): Task[] {
+  const byId = new Map<string, Task>();
+  [...listLocalTasks(), ...tasksMock].forEach((task) => {
+    if (task.status === "PUBLISHED") {
+      byId.set(task.id, task);
+    }
+  });
+  return Array.from(byId.values());
 }

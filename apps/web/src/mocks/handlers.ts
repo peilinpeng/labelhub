@@ -35,6 +35,7 @@ import {
   getSchemaDraft,
   getTask,
   importDataset,
+  listAssignmentDatasetItems,
   listMarketplaceTasks,
   listMySubmissions,
   listReviewQueue,
@@ -191,6 +192,11 @@ export const handlers = [
   http.get("/api/v1/assignments/:assignmentId", ({ params }) => {
     const context = getAssignmentContext(getParam(params as MockParams, "assignmentId"));
     return context === undefined ? errorJson("RESOURCE_NOT_FOUND", "作答上下文不存在", 404) : okJson(context);
+  }),
+
+  http.get("/api/v1/assignments/:assignmentId/items", ({ params }) => {
+    const items = listAssignmentDatasetItems(getParam(params as MockParams, "assignmentId"));
+    return okJson({ items });
   }),
 
   http.put("/api/v1/assignments/:assignmentId/draft", async ({ request, params }) => {

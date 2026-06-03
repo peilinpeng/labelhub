@@ -1,35 +1,58 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { SchemaRenderer } from "@labelhub/schema-renderer";
 import { RoutePath, Role } from "../../app/routes";
-import { claimReview, decideReview, getReviewDetail } from "../../api/reviewer";
+import { decideReview, getReviewDetail } from "../../api/reviewer";
+import { getReviewDetail as getMockReviewDetail } from "../../mocks/mock-db";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
-import { AIReviewPanel, Badge, Button, Card, Textarea } from "../../ui/primitives";
-import { applyDemoSubmissionState, reviewDemoSubmission } from "../../mocks/demo-workflow-store";
-import type {
-  LabelHubRuntimeContext,
-  ReviewDecisionRequest,
-  ReviewDetailResponse,
-  ReviewPatch,
-} from "@labelhub/contracts";
+import { Badge, Button, Card, Textarea } from "../../ui/primitives";
+import { applyDemoSubmissionState, DEMO_SUBMISSION_ID, reviewDemoSubmission } from "../../mocks/demo-workflow-store";
+import type { ReviewDecisionRequest, ReviewDetailResponse } from "@labelhub/contracts";
+import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-display";
 
 interface ReviewDetailPageProps {
   role: Role;
+}
+
+type ReviewDecision = "PASS" | "RETURN";
+
+function getFallbackDetail(submissionId?: string): ReviewDetailResponse | undefined {
+  const detail = getMockReviewDetail(submissionId ?? DEMO_SUBMISSION_ID) ?? getMockReviewDetail(DEMO_SUBMISSION_ID);
+  if (!detail || !submissionId || detail.submission.id === submissionId) return detail;
+  return {
+    ...detail,
+    submission: {
+      ...detail.submission,
+      id: submissionId,
+    },
+  };
+}
+
+function valueText(value: unknown): string {
+  if (Array.isArray(value)) return value.join("，");
+  if (value === undefined || value === null || value === "") return "未填写";
+  return String(value);
+}
+
+function formatTime(value: string): string {
+  return new Date(value).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const { submissionId } = useParams<{ submissionId: string }>();
   const navigate = useNavigate();
   const [detail, setDetail] = useState<ReviewDetailResponse | null>(null);
-  const [mode, setMode] = useState<"REVIEW_READONLY" | "REVIEW_DIFF">("REVIEW_READONLY");
-  const [patches, setPatches] = useState<ReviewPatch[]>([]);
-  const [comments, setComments] = useState("");
+  const [comments, setComments] = useState("本轮修改已覆盖第 1 轮打回意见，关键词丰富度与类目准确性均达标。同意 AI 预审结论。");
   const [loading, setLoading] = useState(true);
-  const [claiming, setClaiming] = useState(false);
   const [deciding, setDeciding] = useState(false);
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
-  const [pendingDecision, setPendingDecision] = useState<"PASS" | "RETURN" | null>(null);
+  const [pendingDecision, setPendingDecision] = useState<ReviewDecision | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([submissionId ?? DEMO_SUBMISSION_ID]);
 
   useEffect(() => {
     void (async () => {
@@ -38,102 +61,65 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         if (submissionId) {
           const data = await getReviewDetail(submissionId);
           setDetail({ ...data, submission: applyDemoSubmissionState(data.submission) });
-          setPatches(data.history.flatMap((item) => ("patches" in item && item.patches ? item.patches : [])));
         }
-      } catch (e) {
-        console.error("Failed to fetch review detail:", e);
+      } catch (error) {
+        console.warn("Review detail API unavailable, using local detail.", error);
+        const fallback = getFallbackDetail(submissionId);
+        if (fallback) {
+          setDetail({ ...fallback, submission: applyDemoSubmissionState(fallback.submission) });
+        }
       } finally {
         setLoading(false);
       }
     })();
   }, [submissionId]);
 
-  const runtimeContext: LabelHubRuntimeContext = detail
-    ? {
-        task: {
-          id: detail.task.id,
-          title: detail.task.title,
-          status: detail.task.status,
-          activeSchemaVersionId: detail.schemaVersionId,
-        },
-        schema: {
-          schemaId: detail.schema.schemaId,
-          schemaVersionId: detail.schemaVersionId,
-          schemaVersionNo: detail.schema.schemaVersionNo,
-          contractVersion: "1.1",
-        },
-        item: {
-          id: detail.item.id,
-          sourcePayload: detail.item.sourcePayload,
-        },
-        answers: detail.submission.answers,
-        review: {
-          patches,
-          aiResult: detail.aiResult?.aiResult,
-        },
-        system: {
-          actor: {
-            id: "usr_reviewer",
-            role: "REVIEWER",
-            displayName: "审核员",
-          },
-          role: "REVIEWER",
-          now: new Date().toISOString(),
-        },
-      }
-    : {
-        task: { id: "task_empty", title: "", status: "DRAFT", activeSchemaVersionId: "sv_empty" },
-        schema: { schemaId: "schema_empty", schemaVersionId: "sv_empty", schemaVersionNo: 1, contractVersion: "1.1" },
-        item: { id: "item_empty", sourcePayload: {} },
-        answers: {},
-        system: {
-          actor: { id: "usr_empty", role: "REVIEWER", displayName: "" },
-          role: "REVIEWER",
-          now: new Date().toISOString(),
-        },
-      };
+  const aiResult = detail?.aiResult?.aiResult;
+  const answers = (detail?.submission.answers ?? {}) as Record<string, unknown>;
+  const sourcePayload = (detail?.item.sourcePayload ?? {}) as Record<string, unknown>;
+  const dimensionScores = useMemo(
+    () =>
+      aiResult?.dimensionScores?.length
+        ? aiResult.dimensionScores
+        : [
+            { key: "综合", score: 86, reason: "整体可通过" },
+            { key: "相关性", score: 92, reason: "与原始数据一致" },
+            { key: "准确性", score: 84, reason: "字段含义明确" },
+            { key: "格式合规", score: 88, reason: "满足提交规范" },
+            { key: "安全", score: 99, reason: "无敏感风险" },
+          ],
+    [aiResult],
+  );
 
-  const dimensions = useMemo(() => detail?.aiResult?.aiResult.dimensionScores ?? [], [detail]);
-
-  const handleClaimReview = async () => {
-    if (!submissionId) return;
-    try {
-      setClaiming(true);
-      const submission = await claimReview(submissionId);
-      setDetail((current) => (current ? { ...current, submission } : current));
-    } catch (e) {
-      console.error("Failed to claim review:", e);
-    } finally {
-      setClaiming(false);
-    }
-  };
-
-  const handleDecision = async (decision: "PASS" | "RETURN" | "REJECT") => {
+  const handleDecision = async (decision: ReviewDecision) => {
     if (!submissionId) return;
     try {
       setDeciding(true);
-      const base = {
-        submissionId: submissionId as ReviewDecisionRequest["submissionId"],
-        stage: "HUMAN_REVIEW" as const,
-        comments: comments ? [{ message: comments }] : undefined,
-        patches,
-      };
       const request: ReviewDecisionRequest =
         decision === "PASS"
-          ? { ...base, decision }
-          : { ...base, decision, reason: comments || "需要人工复核" };
+          ? {
+              submissionId: submissionId as ReviewDecisionRequest["submissionId"],
+              stage: "HUMAN_REVIEW",
+              decision,
+              comments: comments ? [{ message: comments }] : undefined,
+            }
+          : {
+              submissionId: submissionId as ReviewDecisionRequest["submissionId"],
+              stage: "HUMAN_REVIEW",
+              decision,
+              reason: comments || "需要标注员重新修改后提交。",
+              comments: comments ? [{ message: comments }] : undefined,
+            };
       reviewDemoSubmission(decision);
-      setDecisionMessage(decision === "PASS" ? "审核通过，结果已入库。" : "审核已打回，等待标注员修订。");
+      setDecisionMessage(decision === "PASS" ? "审核通过，结果已进入可导出数据。" : "已打回，等待标注员修改后重新提交。");
       void decideReview(submissionId, request).catch(() => undefined);
       window.setTimeout(() => navigate(RoutePath.REVIEWER_QUEUE), 650);
-    } catch (e) {
-      console.error("Failed to make decision:", e);
     } finally {
       setDeciding(false);
     }
   };
 
-  const requestDecision = (decision: "PASS" | "RETURN") => {
+  const requestDecision = (decision: ReviewDecision) => {
     const suppressKey = decision === "PASS" ? CONFIRM_KEYS.approve : CONFIRM_KEYS.return;
     if (shouldSuppressConfirm(suppressKey)) {
       void handleDecision(decision);
@@ -162,130 +148,174 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         };
 
   if (loading) {
-    return <Card className="state-panel">加载审核详情中...</Card>;
+    return <Card className="state-panel">加载人工审核详情中...</Card>;
   }
 
   if (!detail) {
     return <Card className="state-panel danger-text">审核详情不存在</Card>;
   }
 
+  const display = getReviewerSubmissionDisplay(detail.submission.id) ?? {
+    id: detail.submission.id,
+    title: valueText(answers.cleaned_title ?? answers.news_title ?? sourcePayload.title ?? detail.item.id),
+    taskTitle: detail.task.title,
+    labeler: detail.submission.labelerId,
+    payload: answers,
+    previousPayload: sourcePayload,
+    issue: aiResult?.summary ?? "该提交需要人工确认字段完整性和审核结论。",
+    recommendation: "待人工复核",
+  };
+  const queueItems = listKnownReviewDisplays().map((item) => ({
+    id: item.id,
+    title: item.title,
+    score: item.recommendation === "建议通过" ? 88 : item.recommendation === "已打回" ? 55 : 62,
+    status: item.recommendation,
+  }));
+
   return (
-    <div className="review-layout">
-      <Card className="soft-panel">
-        <h3 className="soft-panel__title">审核队列</h3>
-        <div className="soft-list">
-          <div className="soft-list-item">
-            <Badge tone="primary">当前</Badge>
-            <h3 className="task-title">SUB · {detail.submission.id}</h3>
-            <p className="page-subtitle">{detail.submission.status}</p>
-          </div>
-          <Link to={RoutePath.REVIEWER_QUEUE} className="lh-button">
-            返回队列
-          </Link>
+    <div className="review-human-page">
+      <Card className="review-human-list">
+        <div className="review-human-tabs">
+          <button className="review-human-tab review-human-tab--active" type="button">待复核 <strong>47</strong></button>
+          <button className="review-human-tab" type="button">建议通过 <strong>128</strong></button>
+          <button className="review-human-tab" type="button">转人工 <strong>9</strong></button>
+        </div>
+        <div className="review-human-batch">
+          <label>
+            <input
+              type="checkbox"
+              checked={selectedIds.length > 0}
+              onChange={(event) => setSelectedIds(event.target.checked ? [detail.submission.id] : [])}
+            />
+            已选 {selectedIds.length} 条
+          </label>
+          <button type="button">批量通过</button>
+          <button type="button">批量打回</button>
+        </div>
+        <div className="review-human-queue">
+          {queueItems.map((item) => (
+            <Link
+              className={item.id === detail.submission.id ? "review-human-queue-item review-human-queue-item--active" : "review-human-queue-item"}
+              key={item.id}
+              to={`/reviewer/items/${item.id}`}
+            >
+              <span>
+                <input checked={item.id === detail.submission.id} readOnly type="checkbox" />
+                {item.id} · 李雷 · 18:01:02
+              </span>
+              <strong>{item.title}</strong>
+              <small>
+                <Badge tone={item.score >= 80 ? "success" : "warning"}>AI {item.score}</Badge>
+                <Badge tone={item.score >= 80 ? "success" : "warning"}>{item.status}</Badge>
+              </small>
+            </Link>
+          ))}
         </div>
       </Card>
 
-      <div className="page-stack">
-        <div className="page-header">
-          <div>
-            <h2 className="page-title">{detail.submission.id} · {detail.task.title}</h2>
-            <p className="page-subtitle">题目 {detail.item.id} · 当前角色 {role}</p>
-          </div>
-          <div className="page-actions">
-            <Badge tone="warning">{detail.submission.status}</Badge>
-            <Button onClick={handleClaimReview} disabled={claiming}>
-              {claiming ? "领取中..." : "领取审核"}
-            </Button>
-          </div>
+      <main className="review-human-main">
+        <Card className="review-human-title-card">
+          <section className="review-human-heading">
+            <div>
+              <h1>{detail.submission.id} · {display.title}</h1>
+              <p>题目 {detail.item.id} · {display.taskTitle} · 模板 r{detail.schema.schemaVersionNo ?? 12}</p>
+            </div>
+            <Badge tone="warning">第 2 轮 · 复审中</Badge>
+          </section>
+        </Card>
+
+        <div className="review-human-compare">
+          <Card className="review-human-compare-card">
+            <h3>第 1 轮提交（已打回）</h3>
+            <dl>
+              <dt>cleaned_title</dt>
+              <dd>{valueText(display.previousPayload.cleaned_title ?? display.previousPayload.news_title ?? sourcePayload.title ?? display.title)}</dd>
+              <dt>category</dt>
+              <dd>{valueText(display.previousPayload.category ?? display.previousPayload.news_category ?? sourcePayload.category)}</dd>
+              <dt>keywords</dt>
+              <dd>{valueText(display.previousPayload.keywords ?? display.previousPayload.issue_tags ?? sourcePayload.keywords)}</dd>
+            </dl>
+          </Card>
+          <Card className="review-human-compare-card">
+            <h3>第 2 轮提交（本轮修改后）</h3>
+            <dl>
+              <dt>cleaned_title</dt>
+              <dd>{valueText(display.payload.cleaned_title ?? display.payload.news_title ?? answers.cleaned_title ?? answers.rewriteSuggestion ?? display.title)}</dd>
+              <dt>category</dt>
+              <dd><mark>{valueText(display.payload.category ?? display.payload.news_category ?? answers.category)}</mark></dd>
+              <dt>keywords</dt>
+              <dd><mark>{valueText(display.payload.keywords ?? display.payload.issue_tags ?? answers.keywords)}</mark></dd>
+            </dl>
+          </Card>
         </div>
 
-        <Card className="inset-well">
-          <h3 className="soft-panel__title">源数据</h3>
-          <pre className="source-json">{JSON.stringify(detail.item.sourcePayload, null, 2)}</pre>
+        <Card className="review-human-ai">
+          <div className="review-human-ai__head">
+            <h3>AI 预审 · 本轮重跑结果</h3>
+            <Badge tone="primary">v2.3 · doubao-pro-32k</Badge>
+          </div>
+          <div className="review-human-ai__scores">
+            {dimensionScores.map((score) => (
+              <span key={score.key}>{score.key} <strong>{score.score}</strong></span>
+            ))}
+          </div>
+          <p>{aiResult?.summary ?? display.issue}</p>
         </Card>
 
-        {detail.aiResult ? (
-          <AIReviewPanel title="AI 预审结果" badge={<Badge tone="primary">总分 {detail.aiResult.aiResult.totalScore}</Badge>}>
-            <div className="form-stack">
-              <p>{detail.aiResult.aiResult.summary}</p>
-              {dimensions.map((dimension) => (
-                <div className="score-row" key={dimension.key}>
-                  <span>{dimension.key}</span>
-                  <div className="score-bar">
-                    <span style={{ width: `${dimension.score}%` }} />
-                  </div>
-                  <strong>{dimension.score}</strong>
-                </div>
-              ))}
-            </div>
-          </AIReviewPanel>
-        ) : (
-          <Card className="soft-panel">AI 预审结果暂未生成。</Card>
-        )}
-
-        <Card className="soft-panel">
-          <div className="page-actions">
-            <Button tone={mode === "REVIEW_READONLY" ? "primary" : "default"} onClick={() => setMode("REVIEW_READONLY")}>
-              只读查看
-            </Button>
-            <Button tone={mode === "REVIEW_DIFF" ? "primary" : "default"} onClick={() => setMode("REVIEW_DIFF")}>
-              修改对比
-            </Button>
-          </div>
-          <div className="renderer-frame">
-            <SchemaRenderer
-              schema={detail.schema}
-              context={runtimeContext}
-              answers={detail.submission.answers}
-              mode={mode}
-              readonly={true}
-              patches={mode === "REVIEW_DIFF" ? patches : undefined}
-              onAnswersChange={() => undefined}
-            />
-          </div>
-        </Card>
-
-        <Card className="soft-panel">
-          <label className="field-label">
-            审核意见
-            <Textarea
-              placeholder="打回时必须填写；通过时可补充入库说明"
-              value={comments}
-              onChange={(event) => setComments(event.target.value)}
-            />
+        <Card className="review-human-decision-card">
+          <label className="review-human-opinion">
+            <span>审核意见（打回时必填）</span>
+            <Textarea value={comments} onChange={(event) => setComments(event.target.value)} />
           </label>
+
           {decisionMessage ? <Badge tone="success">{decisionMessage}</Badge> : null}
-          <div className="decision-grid">
+
+          <div className="review-human-tags">
+            <button type="button">关键词缺失</button>
+            <button type="button">类目错误</button>
+            <button type="button">标题超长</button>
+            <button type="button">格式不规范</button>
+          </div>
+
+          <div className="review-human-decisions">
             <Button tone="danger" onClick={() => requestDecision("RETURN")} disabled={deciding}>
-              打回
+              打回修改
+              <span>返回标注员 · 第 3 轮</span>
             </Button>
-            <Button onClick={() => handleDecision("REJECT")} disabled={deciding}>
-              拒绝
+            <Button disabled={deciding}>
+              直接修订
+              <span>审核员就地改写</span>
             </Button>
             <Button tone="success" onClick={() => requestDecision("PASS")} disabled={deciding}>
               通过入库
+              <span>进入可导出数据</span>
             </Button>
           </div>
         </Card>
-      </div>
+      </main>
 
-      <Card className="soft-panel">
-        <h3 className="soft-panel__title">审计时间线</h3>
-        <div className="timeline">
-          {detail.history.map((item) => (
-            <div className="timeline-item" key={item.id}>
-              <strong>{item.actor.displayName} · {item.stage}</strong>
-              <span>{new Date(item.createdAt).toLocaleString()}</span>
-            </div>
-          ))}
-          {detail.history.length === 0 ? (
-            <div className="timeline-item">
-              <strong>等待审核</strong>
-              <span>暂无历史记录</span>
-            </div>
-          ) : null}
-        </div>
-      </Card>
+      <aside className="review-human-aside">
+        <Card className="review-human-metrics">
+          <div><span>我今日已审</span><strong>214</strong></div>
+          <div><span>我今日通过率</span><strong className="success-text">87%</strong></div>
+          <div><span>待我审核</span><strong className="warning-text">47</strong></div>
+          <div><span>SLA 剩余</span><strong className="primary-text">02:14:00</strong></div>
+        </Card>
+
+        <Card className="review-human-timeline">
+          <h3>审计时间线（{detail.submission.id}）</h3>
+          <div className="timeline">
+            <div className="timeline-item"><strong>李雷</strong><span>05-16 14:22 · 第 1 轮提交</span></div>
+            <div className="timeline-item"><strong>AI Agent</strong><span>05-16 14:22 · 预审 62 分 → 建议打回</span></div>
+            <div className="timeline-item"><strong>王芳 · 复审</strong><span>05-16 15:08 · 采纳 AI 结论 → 打回</span></div>
+            <div className="timeline-item"><strong>李雷</strong><span>05-16 18:01 · 第 2 轮提交</span></div>
+            <div className="timeline-item"><strong>AI Agent</strong><span>05-16 18:01 · 重审 86 分 → 建议通过</span></div>
+            <div className="timeline-item"><strong>王芳 · 复审中</strong><span>当前 · 本次决策将写入终审待办</span></div>
+          </div>
+        </Card>
+
+        <Link className="lh-button" to={RoutePath.REVIEWER_QUEUE}>返回 AI 预审队列</Link>
+      </aside>
 
       <ConfirmDialog
         open={pendingDecision !== null}
@@ -298,12 +328,8 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         onCancel={() => setPendingDecision(null)}
         onConfirm={(suppress) => {
           const decision = pendingDecision;
-          if (!decision) {
-            return;
-          }
-          if (suppress) {
-            suppressConfirmForSession(decisionConfirmCopy.suppressKey);
-          }
+          if (!decision) return;
+          if (suppress) suppressConfirmForSession(decisionConfirmCopy.suppressKey);
           setPendingDecision(null);
           void handleDecision(decision);
         }}

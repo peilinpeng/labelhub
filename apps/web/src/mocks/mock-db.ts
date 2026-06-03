@@ -355,6 +355,12 @@ export function getAssignmentContext(assignmentId: string): AssignmentContextRes
   return assignment === undefined ? undefined : buildAssignmentContext(assignment);
 }
 
+export function listAssignmentDatasetItems(assignmentId: string): DatasetItem[] {
+  const assignment = mockDb.assignments.find((item) => item.id === assignmentId);
+  if (assignment === undefined) return [];
+  return mockDb.datasetItems.filter((item) => item.taskId === assignment.taskId);
+}
+
 export function saveDraft(assignmentId: string, answers: AnswerPayload, clientRevision: number): SaveDraftResponse | undefined {
   const assignment = mockDb.assignments.find((item) => item.id === assignmentId);
   if (assignment === undefined || !["CLAIMED", "DRAFTING", "RETURNED"].includes(assignment.status)) return undefined;

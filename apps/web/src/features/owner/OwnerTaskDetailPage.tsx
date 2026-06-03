@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
 import { getDemoWorkflowState } from "../../mocks/demo-workflow-store";
 import { tasksMock } from "../../mocks/data/tasks.mock";
+import { findLocalTaskById } from "../../mocks/local-task-store";
 import { Badge, Card } from "../../ui/primitives";
 import type { Task } from "@labelhub/contracts";
 
@@ -38,7 +39,7 @@ function taskDescription(task: Task): string {
 
 export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPageProps) {
   const { taskId } = useParams<{ taskId: string }>();
-  const task = tasksMock.find((item) => item.id === taskId);
+  const task = findLocalTaskById(taskId) ?? tasksMock.find((item) => item.id === taskId);
   const demoState = getDemoWorkflowState();
 
   if (!task) {

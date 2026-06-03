@@ -28,4 +28,43 @@ export const datasetItemsMock: DatasetItem[] = [
     createdAt: "2026-05-24T00:00:00.000Z",
     updatedAt: "2026-05-24T00:00:00.000Z",
   },
+  {
+    id: "item_news_3",
+    taskId: "task_news_quality",
+    externalKey: "news-3",
+    sourcePayload: {
+      title: "地方文旅活动带动周末消费",
+      body: "报道提到活动吸引大量游客，但缺少客流统计和同比数据。",
+      source: "地方媒体",
+    },
+    status: "AVAILABLE",
+    createdAt: "2026-05-24T00:00:00.000Z",
+    updatedAt: "2026-05-24T00:00:00.000Z",
+  },
+  {
+    id: "item_news_4",
+    taskId: "task_news_quality",
+    externalKey: "news-4",
+    sourcePayload: {
+      title: "高校发布人工智能课程计划",
+      body: "学校介绍将新增多个 AI 方向课程，但未说明师资和招生规模。",
+      source: "教育资讯",
+    },
+    status: "AVAILABLE",
+    createdAt: "2026-05-24T00:00:00.000Z",
+    updatedAt: "2026-05-24T00:00:00.000Z",
+  },
+  {
+    id: "item_news_5",
+    taskId: "task_news_quality",
+    externalKey: "news-5",
+    sourcePayload: {
+      title: "城市公共交通客流恢复增长",
+      body: "交通部门称工作日客流恢复明显，但报道未提供完整时间区间。",
+      source: "城市日报",
+    },
+    status: "AVAILABLE",
+    createdAt: "2026-05-24T00:00:00.000Z",
+    updatedAt: "2026-05-24T00:00:00.000Z",
+  },
 ];

@@ -1,25 +1,49 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { RoutePath, Role } from "../../app/routes";
 import { listTasks } from "../../api/owner";
 import { tasksMock } from "../../mocks/data/tasks.mock";
+import { listLocalTasks } from "../../mocks/local-task-store";
 import { Badge, Card, Input, Select } from "../../ui/primitives";
 import type { Task } from "@labelhub/contracts";
 
 interface OwnerWorkspaceProps {
-  role: Role;
+  role: "OWNER" | "LABELER" | "REVIEWER";
 }
 
-function statusTone(status: Task["status"]): "success" | "warning" | "default" {
+function EyeIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function TemplateIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
+      <path d="M8.5 4v16M8.5 9.5h12M13 14h4.5" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M12 3.5v11" />
+      <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+      <path d="M4.5 18.5h15" />
+    </svg>
+  );
+}
+
+type BadgeTone = "success" | "warning" | "default";
+
+function statusTone(status: Task["status"]): BadgeTone {
   if (status === "PUBLISHED") return "success";
   if (status === "DRAFT" || status === "PAUSED") return "warning";
   return "default";
-}
-
-function strategyLabel(strategy: Task["distributionStrategy"]): string {
-  if (strategy.type === "FIRST_COME_FIRST_SERVED") return "先到先得";
-  if (strategy.type === "ASSIGNMENT") return "指派";
-  return "配额抢单";
 }
 
 function statusLabel(status: Task["status"]): string {
@@ -29,12 +53,42 @@ function statusLabel(status: Task["status"]): string {
   return "已结束";
 }
 
+function strategyLabel(strategy: Task["distributionStrategy"]): string {
+  if (strategy.type === "FIRST_COME_FIRST_SERVED") return "先到先得";
+  if (strategy.type === "ASSIGNMENT") return "指派";
+  return "配额抢单";
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return "无截止时间";
+  return new Date(value).toLocaleDateString();
+}
+
 function taskDescription(task: Task): string {
   const description = task.description?.trim();
-  if (!description || description.startsWith("task_") || description.includes("Owner:")) {
+  const looksInternal =
+    !description ||
+    description.startsWith("task_") ||
+    description.includes("Owner:") ||
+    /[a-f0-9]{16,}/i.test(description);
+
+  if (looksInternal) {
     return "用于组织标注数据、模板配置、任务分发与结果交付。";
   }
   return description;
+}
+
+function progressValue(task: Task): number {
+  if (task.status === "DRAFT") return 0;
+  if (task.status === "PUBLISHED") return Math.min(100, Math.round((2340 / Math.max(1, task.quota.total)) * 100));
+  if (task.status === "PAUSED") return 49;
+  return 100;
+}
+
+function withLocalTasks(tasks: Task[]): Task[] {
+  const localTasks = listLocalTasks();
+  const localTaskIds = new Set(localTasks.map((task) => task.id));
+  return [...localTasks, ...tasks.filter((task) => !localTaskIds.has(task.id))];
 }
 
 export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
@@ -50,10 +104,10 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       try {
         setLoading(true);
         const data = await listTasks();
-        setTasks(data);
+        setTasks(withLocalTasks(data));
         setError(null);
-      } catch (e) {
-        setTasks(tasksMock);
+      } catch {
+        setTasks(withLocalTasks(tasksMock));
         setError("后端 API 暂不可用，当前显示本地任务数据。");
       } finally {
         setLoading(false);
@@ -62,9 +116,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   }, []);
 
   useEffect(() => {
-    if (!selectedTaskId) {
-      return;
-    }
+    if (!selectedTaskId) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -79,9 +131,8 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const visibleTasks = useMemo(
     () =>
       tasks.filter((task) => {
-        const matchesQuery = `${task.title} ${task.description}`
-          .toLowerCase()
-          .includes(query.toLowerCase());
+        const searchable = `${task.title} ${taskDescription(task)}`.toLowerCase();
+        const matchesQuery = searchable.includes(query.toLowerCase());
         const matchesStatus = status === "ALL" || task.status === status;
         return matchesQuery && matchesStatus;
       }),
@@ -89,26 +140,16 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   );
 
   const selectedTask = selectedTaskId
-    ? (visibleTasks.find((task) => task.id === selectedTaskId) ?? tasks.find((task) => task.id === selectedTaskId) ?? null)
+    ? (tasks.find((task) => task.id === selectedTaskId) ?? null)
     : null;
+
   const publishedCount = tasks.filter((task) => task.status === "PUBLISHED").length;
-  const reviewCount = tasks.filter((task) => task.status === "DRAFT" || task.status === "PAUSED").length;
-  const exportableCount = publishedCount;
+  const draftCount = tasks.filter((task) => task.status === "DRAFT").length;
   const totalQuota = tasks.reduce((sum, task) => sum + task.quota.total, 0);
-  const selectedProgress = selectedTask
-    ? Math.min(100, Math.round((publishedCount / Math.max(1, tasks.length)) * 100))
-    : 0;
-  const kpis = [
-    { label: "发布中任务", value: publishedCount.toString(), tone: "primary" },
-    { label: "草稿", value: reviewCount.toString(), tone: "default" },
-    { label: "本周新增提交", value: "3,481", tone: "success" },
-  ];
 
   if (loading) {
     return <Card className="state-panel">加载任务中...</Card>;
   }
-
-  const closeTaskDetail = () => setSelectedTaskId(null);
 
   return (
     <div className="page-stack">
@@ -127,12 +168,18 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       </div>
 
       <div className="owner-summary-strip" aria-label="任务概览">
-        {kpis.map((kpi) => (
-          <div className={`owner-summary-item owner-summary-item--${kpi.tone}`} key={kpi.label}>
-            <span>{kpi.label}</span>
-            <strong>{kpi.value}</strong>
-          </div>
-        ))}
+        <div className="owner-summary-item owner-summary-item--primary">
+          <span>发布中任务</span>
+          <strong>{publishedCount}</strong>
+        </div>
+        <div className="owner-summary-item">
+          <span>草稿</span>
+          <strong>{draftCount}</strong>
+        </div>
+        <div className="owner-summary-item owner-summary-item--success">
+          <span>本周新增提交</span>
+          <strong>3,481</strong>
+        </div>
       </div>
 
       <div className="owner-management-layout">
@@ -160,11 +207,12 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
               <p>{visibleTasks.length} 个任务匹配当前筛选</p>
             </div>
             <div className="owner-table-summary">
-              <span>总配额</span>
+              <span>总数据量</span>
               <strong>{totalQuota.toLocaleString()}</strong>
             </div>
           </div>
-          <table className="soft-table">
+
+          <table className="soft-table owner-task-table">
             <colgroup>
               <col className="owner-col-task" />
               <col className="owner-col-status" />
@@ -177,66 +225,84 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                 <th>任务</th>
                 <th>状态</th>
                 <th>分发策略</th>
-                <th>配额 / 进度</th>
+                <th>数据量 / 进度</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              {visibleTasks.map((task) => (
-                <tr
-                  className={["owner-task-row", selectedTask?.id === task.id ? "owner-task-row--selected" : ""]
-                    .filter(Boolean)
-                    .join(" ")}
-                  key={task.id}
-                  onClick={() => setSelectedTaskId(task.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedTaskId(task.id);
-                    }
-                  }}
-                  tabIndex={0}
-                >
-                  <td>
-                    <h3 className="task-title owner-task-title">{task.title}</h3>
-                    <p className="owner-task-description">{taskDescription(task)}</p>
-                    <div className="meta-line owner-task-meta">
-                      <span>创建 {new Date(task.createdAt).toLocaleDateString()}</span>
-                      <span>{task.deadlineAt ? `截止 ${new Date(task.deadlineAt).toLocaleDateString()}` : "无截止时间"}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <Badge tone={statusTone(task.status)}>{statusLabel(task.status)}</Badge>
-                  </td>
-                  <td className="owner-table-strong">{strategyLabel(task.distributionStrategy)}</td>
-                  <td>
-                    <div className="owner-progress-cell">
-                      <span>{task.status === "PUBLISHED" ? `2,340 / ${task.quota.total.toLocaleString()}` : task.status === "DRAFT" ? "—" : `980 / ${task.quota.total.toLocaleString()}`}</span>
-                      <div className="soft-progress" aria-label="任务进度">
-                        <span className="soft-progress__bar" />
+              {visibleTasks.map((task) => {
+                const progress = progressValue(task);
+                return (
+                  <tr
+                    className={["owner-task-row", selectedTask?.id === task.id ? "owner-task-row--selected" : ""]
+                      .filter(Boolean)
+                      .join(" ")}
+                    key={task.id}
+                    onClick={() => setSelectedTaskId(task.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedTaskId(task.id);
+                      }
+                    }}
+                    tabIndex={0}
+                  >
+                    <td>
+                      <h3 className="task-title owner-task-title">{task.title}</h3>
+                      <p className="owner-task-description">{taskDescription(task)}</p>
+                      <div className="meta-line owner-task-meta">
+                        <span>创建 {formatDate(task.createdAt)}</span>
+                        <span>截止 {formatDate(task.deadlineAt)}</span>
+                        <span>数据量 {task.quota.total.toLocaleString()}</span>
                       </div>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="owner-row-actions" onClick={(event) => event.stopPropagation()}>
-                      <Link to={`/owner/tasks/${task.id}`} className="lh-button owner-action-button">
-                        查看
-                      </Link>
-                      <Link to={`/owner/tasks/${task.id}/designer`} className="lh-button owner-action-button">
-                        模板
-                      </Link>
-                      <Link to={`/owner/tasks/${task.id}/export`} className="lh-button owner-action-button">
-                        导出
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      <Badge tone={statusTone(task.status)}>{statusLabel(task.status)}</Badge>
+                    </td>
+                    <td className="owner-table-strong">{strategyLabel(task.distributionStrategy)}</td>
+                    <td>
+                      <div className="owner-progress-cell">
+                        <span>{task.quota.total.toLocaleString()} 条</span>
+                        <div className="soft-progress" aria-label="任务进度">
+                          <span className="soft-progress__bar" style={{ width: `${progress}%` }} />
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="owner-row-actions" onClick={(event) => event.stopPropagation()}>
+                        <Link
+                          to={`/owner/tasks/${task.id}`}
+                          className="owner-icon-action"
+                          aria-label="查看"
+                          data-tooltip="查看"
+                        >
+                          <EyeIcon />
+                        </Link>
+                        <Link
+                          to={`/owner/tasks/${task.id}/designer`}
+                          className="owner-icon-action"
+                          aria-label="模板"
+                          data-tooltip="模板"
+                        >
+                          <TemplateIcon />
+                        </Link>
+                        <Link
+                          to={`/owner/tasks/${task.id}/export`}
+                          className="owner-icon-action"
+                          aria-label="导出"
+                          data-tooltip="导出"
+                        >
+                          <DownloadIcon />
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {visibleTasks.length === 0 ? <div className="empty-state">暂无匹配任务</div> : null}
         </Card>
-
       </div>
 
       {selectedTask ? (
@@ -245,114 +311,75 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
             type="button"
             className="owner-detail-modal-overlay"
             aria-label="关闭任务详情"
-            onClick={closeTaskDetail}
+            onClick={() => setSelectedTaskId(null)}
           />
           <aside className="lh-card soft-panel owner-detail-card owner-detail-modal" role="dialog" aria-modal="true">
-            <button type="button" className="owner-detail-close" onClick={closeTaskDetail}>
-              关闭
+            <button
+              type="button"
+              className="owner-detail-close"
+              aria-label="关闭任务详情"
+              title="关闭"
+              onClick={() => setSelectedTaskId(null)}
+            >
+              ×
             </button>
-          <div className="owner-detail-heading">
-            <Badge tone={statusTone(selectedTask?.status ?? "DRAFT")}>
-              {selectedTask ? statusLabel(selectedTask.status) : "暂无任务"}
-            </Badge>
-            <h3>{selectedTask ? `发布任务：${selectedTask.title}` : "暂无任务"}</h3>
-            <p>{selectedTask ? taskDescription(selectedTask) : "请选择一个任务查看详情。"}</p>
-          </div>
 
-          <div className="owner-publish-note">
-            发布后将进入「发布中」状态，标注员将在任务广场看到该任务并可领取。
-          </div>
+            <div className="owner-detail-heading">
+              <Badge tone={statusTone(selectedTask.status)}>{statusLabel(selectedTask.status)}</Badge>
+              <h3>{selectedTask.title}</h3>
+              <p>{taskDescription(selectedTask)}</p>
+            </div>
 
-          <div className="owner-detail-form">
-            <label>
-              <span>任务标题</span>
-              <div className="owner-readonly-field">{selectedTask?.title ?? "-"}</div>
-            </label>
-            <label>
-              <span>标签</span>
-              <div className="owner-tag-row">
-                {(selectedTask?.tags?.length ? selectedTask.tags : ["文本标注"]).map((tag) => (
-                  <Badge tone="primary" key={tag}>{tag}</Badge>
-                ))}
-              </div>
-            </label>
-            <div className="owner-detail-form-grid">
+            <div className="owner-detail-form">
               <label>
-                <span>配额</span>
-                <div className="owner-readonly-field">{selectedTask?.quota.total.toLocaleString() ?? "-"}</div>
+                <span>任务名称</span>
+                <div className="owner-readonly-field">{selectedTask.title}</div>
               </label>
               <label>
-                <span>截止时间</span>
+                <span>任务描述</span>
+                <div className="owner-readonly-field owner-readonly-field--multiline">{taskDescription(selectedTask)}</div>
+              </label>
+              <div className="owner-detail-form-grid">
+                <label>
+                  <span>状态</span>
+                  <div className="owner-readonly-field">{statusLabel(selectedTask.status)}</div>
+                </label>
+                <label>
+                  <span>配额</span>
+                  <div className="owner-readonly-field">{selectedTask.quota.total.toLocaleString()}</div>
+                </label>
+              </div>
+              <label>
+                <span>奖励</span>
                 <div className="owner-readonly-field">
-                  {selectedTask?.deadlineAt ? new Date(selectedTask.deadlineAt).toLocaleString() : "无截止时间"}
+                  {selectedTask.rewardRule
+                    ? `${selectedTask.rewardRule.amount} ${selectedTask.rewardRule.currency ?? "CNY"} / 条`
+                    : "0.30 CNY / 条"}
                 </div>
               </label>
-            </div>
-            <label>
-              <span>奖励规则</span>
-              <div className="owner-readonly-field">
-                {selectedTask?.rewardRule
-                  ? `${selectedTask.rewardRule.amount} ${selectedTask.rewardRule.currency ?? "CNY"} / 条`
-                  : "0.30 CNY / 条"}
-              </div>
-            </label>
-            <label>
-              <span>分发策略</span>
-              <div className="task-strategy-row">
-                <Badge tone={selectedTask?.distributionStrategy.type === "FIRST_COME_FIRST_SERVED" ? "primary" : "default"}>
-                  先到先得
-                </Badge>
-                <Badge tone={selectedTask?.distributionStrategy.type === "ASSIGNMENT" ? "primary" : "default"}>
-                  指派
-                </Badge>
-                <Badge tone={selectedTask?.distributionStrategy.type === "QUOTA_CLAIM" ? "primary" : "default"}>
-                  配额抢单
-                </Badge>
-              </div>
-            </label>
-            <label>
-              <span>关联模板</span>
-              <div className="owner-template-row">
-                <div className="owner-readonly-field">
-                  {selectedTask ? `${selectedTask.title} 模板` : "-"}
+              <label>
+                <span>分发策略</span>
+                <div className="owner-readonly-field">{strategyLabel(selectedTask.distributionStrategy)}</div>
+              </label>
+              <div>
+                <div className="task-publish-progress-line">
+                  <span>发布准备度</span>
+                  <strong>{progressValue(selectedTask)}%</strong>
                 </div>
-                <Link to={`/owner/tasks/${selectedTask?.id ?? "task_news_quality"}/designer`} className="lh-button">
-                  切换
-                </Link>
-              </div>
-            </label>
-            <label>
-              <span>启用 AI 预审</span>
-              <div className="owner-tag-row">
-                <Badge tone="success">已开启</Badge>
-                <Badge tone="default">规则：质量相关性</Badge>
-              </div>
-            </label>
-            <div>
-              <div className="task-publish-progress-line">
-                <span>发布准备度</span>
-                <strong>{selectedProgress}%</strong>
-              </div>
-              <div className="soft-progress soft-progress--wide" aria-label="发布准备度">
-                <span className="soft-progress__bar" />
+                <div className="soft-progress soft-progress--wide" aria-label="发布准备度">
+                  <span className="soft-progress__bar" style={{ width: `${progressValue(selectedTask)}%` }} />
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="owner-detail-actions">
-            <Link
-              to={`/owner/tasks/${selectedTask?.id ?? "task_news_quality"}`}
-              className="lh-button"
-            >
-              存为草稿
-            </Link>
-            <Link
-              to={`/owner/tasks/${selectedTask?.id ?? "task_news_quality"}/designer`}
-              className="lh-button lh-button--primary"
-            >
-              配置模板 →
-            </Link>
-          </div>
+            <div className="owner-detail-actions">
+              <Link to={`/owner/tasks/${selectedTask.id}/designer`} className="lh-button lh-button--primary">
+                配置模板
+              </Link>
+              <Link to={`/owner/tasks/${selectedTask.id}/export`} className="lh-button">
+                导出数据
+              </Link>
+            </div>
           </aside>
         </div>
       ) : null}

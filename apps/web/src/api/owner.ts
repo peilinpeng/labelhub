@@ -15,12 +15,31 @@ import type {
 } from "@labelhub/contracts";
 import { apiGet, apiPost, apiPut } from "./client";
 
+type PageList<T> = T[] | { items?: T[]; tasks?: T[]; jobs?: T[]; exportJobs?: T[] };
+
+function unwrapList<T>(response: PageList<T>): T[] {
+  if (Array.isArray(response)) return response;
+  return response.items ?? response.tasks ?? response.jobs ?? response.exportJobs ?? [];
+}
+
+function unwrapProp<T, K extends string>(response: T | Record<K, T>, key: K): T {
+  if (response && typeof response === "object" && key in response) {
+    return (response as Record<K, T>)[key];
+  }
+  return response as T;
+}
+
 export async function fetchServerRegistry(): Promise<ServerComponentRegistryItem[]> {
-  return apiGet<ServerComponentRegistryItem[]>("/api/v1/schema/component-registry");
+  const res = await apiGet<PageList<ServerComponentRegistryItem> & { components?: ServerComponentRegistryItem[] }>(
+    "/api/v1/schema/component-registry"
+  );
+  if (!Array.isArray(res) && res.components) return res.components;
+  return unwrapList(res);
 }
 
 export async function fetchTask(taskId: string): Promise<Task> {
-  return apiGet<Task>(`/api/v1/tasks/${taskId}`);
+  const res = await apiGet<Task | { task: Task }>(`/api/v1/tasks/${taskId}`);
+  return unwrapProp(res, "task");
 }
 
 export async function createTask(
@@ -34,7 +53,8 @@ export async function createTask(
 }
 
 export async function fetchSchemaDraft(taskId: string): Promise<LabelHubSchema> {
-  return apiGet<LabelHubSchema>(`/api/v1/tasks/${taskId}/schema/draft`);
+  const res = await apiGet<LabelHubSchema | { schema: LabelHubSchema }>(`/api/v1/tasks/${taskId}/schema/draft`);
+  return unwrapProp(res, "schema");
 }
 
 export async function saveSchemaDraft(
@@ -64,8 +84,8 @@ export async function publishTask(taskId: string, request: PublishTaskRequest): 
 }
 
 export async function listTasks(): Promise<Task[]> {
-  const res = await apiGet<{ tasks: Task[]; total: number; page: number; pageSize: number }>("/api/v1/tasks");
-  return res.tasks;
+  const res = await apiGet<PageList<Task>>("/api/v1/tasks");
+  return unwrapList(res);
 }
 
 export async function createExportJob(
@@ -76,5 +96,6 @@ export async function createExportJob(
 }
 
 export async function listExportJobs(taskId: string): Promise<ExportJob[]> {
-  return apiGet<ExportJob[]>(`/api/v1/tasks/${taskId}/exports`);
+  const res = await apiGet<PageList<ExportJob>>(`/api/v1/tasks/${taskId}/exports`);
+  return unwrapList(res);
 }

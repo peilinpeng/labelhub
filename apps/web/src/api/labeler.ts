@@ -2,6 +2,7 @@ import type {
   AssignmentContextResponse,
   ClaimTaskRequest,
   ClaimTaskResponse,
+  DatasetItem,
   SaveDraftRequest,
   SaveDraftResponse,
   SubmitAssignmentRequest,
@@ -12,11 +13,23 @@ import type {
 } from "@labelhub/contracts";
 import { apiGet, apiPost, apiPut } from "./client";
 
+type PageList<T> = T[] | { items?: T[]; tasks?: T[]; submissions?: T[] };
+
+function unwrapList<T>(response: PageList<T>): T[] {
+  if (Array.isArray(response)) return response;
+  return response.items ?? response.tasks ?? response.submissions ?? [];
+}
+
+function unwrapProp<T, K extends string>(response: T | Record<K, T>, key: K): T {
+  if (response && typeof response === "object" && key in response) {
+    return (response as Record<K, T>)[key];
+  }
+  return response as T;
+}
+
 export async function listMarketplaceTasks(): Promise<Task[]> {
-  const res = await apiGet<{ items: Task[]; total: number; page: number; pageSize: number }>(
-    "/api/v1/marketplace/tasks"
-  );
-  return res.items;
+  const res = await apiGet<PageList<Task>>("/api/v1/marketplace/tasks");
+  return unwrapList(res);
 }
 
 export async function claimTask(taskId: string, request: ClaimTaskRequest): Promise<ClaimTaskResponse> {
@@ -24,7 +37,15 @@ export async function claimTask(taskId: string, request: ClaimTaskRequest): Prom
 }
 
 export async function getAssignmentContext(assignmentId: string): Promise<AssignmentContextResponse> {
-  return apiGet<AssignmentContextResponse>(`/api/v1/assignments/${assignmentId}`);
+  const res = await apiGet<AssignmentContextResponse | { context: AssignmentContextResponse }>(
+    `/api/v1/assignments/${assignmentId}`
+  );
+  return unwrapProp(res, "context");
+}
+
+export async function listAssignmentItems(assignmentId: string): Promise<DatasetItem[]> {
+  const res = await apiGet<PageList<DatasetItem>>(`/api/v1/assignments/${assignmentId}/items`);
+  return unwrapList(res);
 }
 
 export async function saveDraft(assignmentId: string, request: SaveDraftRequest): Promise<SaveDraftResponse> {
@@ -43,5 +64,6 @@ export async function callLLMAssist(
 }
 
 export async function listMySubmissions(): Promise<Submission[]> {
-  return apiGet<Submission[]>("/api/v1/me/submissions");
+  const res = await apiGet<PageList<Submission>>("/api/v1/me/submissions");
+  return unwrapList(res);
 }

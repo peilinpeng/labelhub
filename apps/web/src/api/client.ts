@@ -19,9 +19,17 @@ export async function loginWithCredentials(role: string, email: string, password
     body: JSON.stringify({ email, password }),
   });
   if (res.ok) {
-    const data = await res.json();
-    localStorage.setItem("labelhub_token", data.token);
-    localStorage.setItem("labelhub_role", role);
+    const data = unwrapDataEnvelope(await res.json()) as {
+      token?: string;
+      accessToken?: string;
+      actor?: { role?: string };
+      user?: { role?: string };
+    };
+    const token = data.token ?? data.accessToken;
+    if (!token) throw new Error("Login succeeded but no token was returned.");
+    localStorage.setItem("labelhub_token", token);
+    localStorage.setItem("labelhub_role", data.actor?.role ?? data.user?.role ?? role);
+    if (data.actor) localStorage.setItem("labelhub_actor", JSON.stringify(data.actor));
   } else {
     let message = `登录失败 (${res.status})`;
     try {
@@ -82,5 +90,12 @@ async function handleResponse<T>(response: Response): Promise<T> {
     const error = data as ApiError | null;
     throw new Error(error?.message ?? `Request failed: ${response.status} ${response.statusText}`);
   }
-  return data as T;
+  return unwrapDataEnvelope(data) as T;
+}
+
+function unwrapDataEnvelope(data: unknown): unknown {
+  if (data && typeof data === "object" && "data" in data) {
+    return (data as { data: unknown }).data;
+  }
+  return data;
 }

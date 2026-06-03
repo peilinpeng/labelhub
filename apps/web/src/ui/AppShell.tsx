@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import type { Role } from "../app/routes";
-import { Badge, Button } from "./primitives";
 
 export interface ShellNavItem {
   label: string;
@@ -24,16 +23,53 @@ const roleLabel: Record<Role, string> = {
   REVIEWER: "Reviewer",
 };
 
-export function AppShell({ role, title, subtitle, navItems, onSwitchRole, children }: AppShellProps) {
+const roleUser: Record<Role, { name: string; avatar: string }> = {
+  OWNER: { name: "张满", avatar: "张" },
+  LABELER: { name: "李雷", avatar: "李" },
+  REVIEWER: { name: "王芳", avatar: "王" },
+};
+
+function getCurrentNavLabel(pathname: string, navItems: ShellNavItem[]): string {
+  const active = navItems
+    .filter((item) => pathname === item.path || pathname.startsWith(`${item.path}/`))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+  return active?.label ?? navItems[0]?.label ?? "工作台";
+}
+
+export function AppShell({ role, title, subtitle: _subtitle, navItems, onSwitchRole, children }: AppShellProps) {
+  const location = useLocation();
+  const user = roleUser[role];
+  const currentNavLabel = getCurrentNavLabel(location.pathname, navItems);
+
   return (
     <div className="app-shell">
-      <aside className="app-sidebar" aria-label="主导航">
-        <div className="app-sidebar__panel">
-          <div className="app-brand" aria-label="LabelHub">
-            <span className="app-brand__mark" aria-hidden="true" />
+      <header className="app-global-topbar">
+        <div className="app-global-topbar__left">
+          <div className="app-global-brand" aria-label="LabelHub">
+            <span className="app-global-brand__mark" aria-hidden="true" />
             <span>LabelHub</span>
           </div>
+          <div className="app-breadcrumb" aria-label="当前位置">
+            <span>{title}</span>
+            <span aria-hidden="true">/</span>
+            <strong>{currentNavLabel}</strong>
+          </div>
+        </div>
+        <div className="app-global-topbar__right">
+          <span className="app-user-avatar" aria-hidden="true">
+            {user.avatar}
+          </span>
+          <span className="app-user-name">
+            {user.name} · {roleLabel[role]}
+          </span>
+          <button className="app-account-switch" type="button" onClick={onSwitchRole}>
+            切换账号
+          </button>
+        </div>
+      </header>
 
+      <aside className="app-sidebar" aria-label="主导航">
+        <div className="app-sidebar__panel">
           <nav className="app-sidebar__section">
             <span className="app-sidebar__eyebrow">{roleLabel[role]} 工作台</span>
             <div className="app-nav">
@@ -58,18 +94,6 @@ export function AppShell({ role, title, subtitle, navItems, onSwitchRole, childr
       </aside>
 
       <main className="app-main">
-        <header className="app-topbar">
-          <div>
-            <h1 className="app-topbar__title">{title}</h1>
-            <p className="app-topbar__subtitle">{subtitle}</p>
-          </div>
-          <div className="app-topbar__right">
-            <Badge tone="primary">{roleLabel[role]}</Badge>
-            <Button tone="ghost" onClick={onSwitchRole}>
-              切换账号
-            </Button>
-          </div>
-        </header>
         <div className="app-content">{children}</div>
       </main>
     </div>

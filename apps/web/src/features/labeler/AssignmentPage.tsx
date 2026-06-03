@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { SchemaRenderer } from "@labelhub/schema-renderer";
-import { RoutePath, Role } from "../../app/routes";
-import { callLLMAssist, getAssignmentContext, saveDraft } from "../../api/labeler";
+import { Role } from "../../app/routes";
+import { callLLMAssist, getAssignmentContext, listAssignmentItems, saveDraft, submitAssignment } from "../../api/labeler";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
-import { AIReviewPanel, Badge, Button, Card } from "../../ui/primitives";
-import { submitDemoAssignment } from "../../mocks/demo-workflow-store";
+import { Badge, Button, Card } from "../../ui/primitives";
+import { DEMO_ASSIGNMENT_ID, submitDemoAssignment } from "../../mocks/demo-workflow-store";
+import { getAssignmentContext as getMockAssignmentContext } from "../../mocks/mock-db";
+import { datasetItemsMock } from "../../mocks/data/dataset-items.mock";
 import type {
   AnswerPayload,
   AssignmentContextResponse,
+  DatasetItem,
   LabelHubRuntimeContext,
   LLMAssistNode,
   LLMRuntimeResponse,
@@ -21,25 +24,51 @@ interface AssignmentPageProps {
   role: Role;
 }
 
+type LabelerNavigationStatus = "Submitted" | "Returned" | "Current" | "Draft" | "Pending";
+
+function getFallbackTaskItems(context: AssignmentContextResponse): DatasetItem[] {
+  const sameTaskItems = datasetItemsMock.filter((item) => item.taskId === context.task.id);
+  const hasCurrentItem = sameTaskItems.some((item) => item.id === context.item.id);
+  return hasCurrentItem ? sameTaskItems : [context.item, ...sameTaskItems];
+}
+
+function getItemTitle(item: DatasetItem): string {
+  const payload = item.sourcePayload as Record<string, unknown>;
+  const rawTitle =
+    typeof payload.title === "string"
+      ? payload.title
+      : typeof payload.name === "string"
+        ? payload.name
+        : item.externalKey ?? item.id;
+  return rawTitle.length > 12 ? `${rawTitle.slice(0, 12)}...` : rawTitle;
+}
+
+function getNavigationStatus(
+  item: DatasetItem,
+  currentItemId: string,
+  index: number,
+  submittedItemIds: Set<string>,
+): LabelerNavigationStatus {
+  if (item.id === currentItemId) return "Current";
+  if (submittedItemIds.has(item.id)) return "Submitted";
+  if (item.status === "COMPLETED") return "Submitted";
+  if (item.status === "LOCKED") return index === 0 ? "Draft" : "Pending";
+  return "Pending";
+}
+
 export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const { assignmentId } = useParams<{ assignmentId: string }>();
-  const navigate = useNavigate();
   const [context, setContext] = useState<AssignmentContextResponse | null>(null);
   const [answers, setAnswers] = useState<AnswerPayload>({});
+  const [answersByItemId, setAnswersByItemId] = useState<Record<string, AnswerPayload>>({});
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitNotice, setSubmitNotice] = useState<string | null>(null);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [pendingSubmitAnswers, setPendingSubmitAnswers] = useState<AnswerPayload | null>(null);
-  const itemNav = Array.from({ length: 20 }, (_, index) => {
-    const status = index === 2 ? "Current" : index < 2 ? "Submitted" : index === 5 ? "Returned" : "Draft";
-    return {
-      id: `item_${String(index + 1).padStart(3, "0")}`,
-      label: `#${String(index + 1).padStart(3, "0")}`,
-      status,
-    };
-  });
+  const [taskItems, setTaskItems] = useState<DatasetItem[]>([]);
+  const [submittedItemIds, setSubmittedItemIds] = useState<string[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -49,9 +78,21 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           const data = await getAssignmentContext(assignmentId);
           setContext(data);
           setAnswers(data.draft?.answers ?? {});
+          try {
+            const items = await listAssignmentItems(assignmentId);
+            setTaskItems(items.length > 0 ? items : [data.item]);
+          } catch {
+            setTaskItems(getFallbackTaskItems(data));
+          }
         }
       } catch (e) {
         console.error("Failed to fetch assignment:", e);
+        const fallbackContext = getMockAssignmentContext(assignmentId ?? DEMO_ASSIGNMENT_ID) ?? getMockAssignmentContext(DEMO_ASSIGNMENT_ID);
+        if (fallbackContext) {
+          setContext(fallbackContext);
+          setAnswers(fallbackContext.draft?.answers ?? {});
+          setTaskItems(getFallbackTaskItems(fallbackContext));
+        }
       } finally {
         setLoading(false);
       }
@@ -120,15 +161,45 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     requestDemoSubmit(submitAnswers);
   };
 
-  const confirmDemoSubmit = (submitAnswers: AnswerPayload = answers) => {
+  const confirmDemoSubmit = async (submitAnswers: AnswerPayload = answers) => {
+    if (!context || !assignmentId) return;
+    let submittedToBackend = false;
+    try {
+      await submitAssignment(assignmentId, { answers: submitAnswers, clientRevision: 0 });
+      submittedToBackend = true;
+    } catch (error) {
+      console.warn("Backend submit unavailable, using local workflow fallback:", error);
+    }
     submitDemoAssignment(submitAnswers);
-    setSubmitNotice("提交成功，已进入 Reviewer 审核队列。");
-    window.setTimeout(() => navigate(RoutePath.REVIEWER_QUEUE), 650);
+    const currentItemId = context.item.id;
+    const nextAnswersByItem = { ...answersByItemId, [currentItemId]: submitAnswers };
+    const nextItem = navigationItems[currentItemIndex + 1];
+
+    setAnswersByItemId(nextAnswersByItem);
+    setSubmittedItemIds((current) => (current.includes(currentItemId) ? current : [...current, currentItemId]));
+    setTaskItems((current) =>
+      current.map((item) =>
+        item.id === currentItemId ? { ...item, status: "COMPLETED", updatedAt: new Date().toISOString() } : item,
+      ),
+    );
+
+    if (nextItem) {
+      setSubmitNotice("提交成功，已进入下一题。");
+      window.setTimeout(() => {
+        setContext((current) => (current ? { ...current, item: nextItem } : current));
+        setAnswers(nextAnswersByItem[nextItem.id] ?? {});
+        setErrors([]);
+        setSubmitNotice(null);
+      }, 450);
+      return;
+    }
+
+    setSubmitNotice("提交成功，当前任务已完成。");
   };
 
   const requestDemoSubmit = (submitAnswers: AnswerPayload = answers) => {
     if (shouldSuppressConfirm(CONFIRM_KEYS.submit)) {
-      confirmDemoSubmit(submitAnswers);
+      void confirmDemoSubmit(submitAnswers);
       return;
     }
     setPendingSubmitAnswers(submitAnswers);
@@ -158,207 +229,200 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     return <Card className="state-panel danger-text">任务不存在</Card>;
   }
 
-  return (
-    <div className="labeler-workbench page-stack">
-      <div className="page-header labeler-workbench-header">
-        <div>
-          <Badge tone="primary">LABELING</Badge>
-          <h2 className="page-title">标注工作台</h2>
-          <p className="page-subtitle">查看任务数据，依据动态 Schema 完成标注并提交</p>
-          <div className="labeler-header-meta">
-            <span>{context.task.title}</span>
-            <span>Item 3 / 20</span>
-            <Badge tone={saving ? "warning" : "success"}>{saving ? "保存中" : "草稿已保存"}</Badge>
-          </div>
-        </div>
-        <div className="labeler-workbench-actions">
-          <Button onClick={handleSaveDraft} disabled={saving}>
-            {saving ? "保存中..." : "保存草稿"}
-          </Button>
-          <Button tone="primary" onClick={() => requestDemoSubmit()}>
-            提交标注
-          </Button>
-        </div>
-      </div>
+  const sourcePayload = context.item.sourcePayload as Record<string, unknown>;
+  const sourceTitle =
+    typeof sourcePayload.title === "string" ? sourcePayload.title : typeof sourcePayload.name === "string" ? sourcePayload.name : "待标注素材";
+  const sourceBody =
+    typeof sourcePayload.body === "string"
+      ? sourcePayload.body
+      : typeof sourcePayload.text === "string"
+        ? sourcePayload.text
+        : "暂无正文内容。";
+  const sourceMeta = typeof sourcePayload.source === "string" ? sourcePayload.source : "任务数据";
+  const navigationItems = taskItems.length > 0 ? taskItems : [context.item];
+  const currentItemIndex = Math.max(0, navigationItems.findIndex((item) => item.id === context.item.id));
+  const currentItemNumber = currentItemIndex + 1;
+  const totalItems = navigationItems.length;
+  const previousItem = currentItemIndex > 0 ? navigationItems[currentItemIndex - 1] : null;
+  const nextItem = currentItemIndex < navigationItems.length - 1 ? navigationItems[currentItemIndex + 1] : null;
+  const progressPercent = Math.round((currentItemNumber / totalItems) * 100);
+  const submittedItemSet = new Set(submittedItemIds);
+  const switchToItem = (item: DatasetItem) => {
+    if (!context || item.id === context.item.id) return;
+    const nextAnswersByItem = { ...answersByItemId, [context.item.id]: answers };
+    setAnswersByItemId(nextAnswersByItem);
+    setContext({ ...context, item });
+    setAnswers(nextAnswersByItem[item.id] ?? {});
+    setErrors([]);
+    setSubmitNotice(null);
+  };
+  const itemStatusLabel = (status: LabelerNavigationStatus) =>
+    status === "Submitted" ? "已提交" : status === "Returned" ? "已打回" : status === "Current" ? "进行中" : status === "Draft" ? "草稿" : "待标";
+  const itemStatusClass = (status: LabelerNavigationStatus) =>
+    status === "Submitted"
+      ? "labeler-runner-dot--success"
+      : status === "Returned"
+        ? "labeler-runner-dot--danger"
+        : status === "Current"
+          ? "labeler-runner-dot--primary"
+          : status === "Draft"
+            ? "labeler-runner-dot--warning"
+            : "";
+  const itemNav = navigationItems.map((item, index) => {
+    const status = getNavigationStatus(item, context.item.id, index, submittedItemSet);
+    return {
+      id: item.id,
+      item,
+      label: `#${String(index + 1).padStart(3, "0")}`,
+      title: getItemTitle(item),
+      status,
+    };
+  });
 
-      <div className="labeler-workbench-layout">
-        <Card className="labeler-side-panel labeler-item-panel">
-          <div className="labeler-panel-heading">
+  return (
+    <div className="labeler-runner">
+      <header className="labeler-runner-topbar">
+        <div className="labeler-runner-brand">
+          <span className="brand-mark brand-mark--small" />
+          <strong>LabelHub</strong>
+          <span>标注员工作台 / 任务市场 · {context.task.title} / 第 {currentItemNumber} / {totalItems} 题</span>
+        </div>
+        <div className="labeler-runner-user">
+          <Badge tone={saving ? "warning" : "success"}>{saving ? "保存中..." : "草稿已自动保存 18:02:31"}</Badge>
+          <span className="labeler-runner-avatar">李</span>
+          <span>李雷 · Labeler</span>
+        </div>
+      </header>
+
+      <div className="labeler-runner-layout">
+        <aside className="labeler-runner-nav">
+          <div className="labeler-runner-panel-head">
             <div>
-              <h3>Item 导航</h3>
-              <p>当前任务进度</p>
+              <h3>题目导航</h3>
+              <p>{currentItemNumber} / {totalItems} · 进度 {progressPercent}% · 配额 60</p>
             </div>
-            <Badge tone="primary">3 / 20</Badge>
           </div>
-          <div className="labeler-progress-summary">
-            <div className="soft-progress soft-progress--wide" aria-label="标注进度">
-              <span className="soft-progress__bar" />
-            </div>
-            <span>已完成 10%</span>
-          </div>
-          <div className="labeler-item-list">
+          <div className="labeler-runner-items">
             {itemNav.map((item) => (
               <button
-                className={[
-                  "labeler-item-row",
-                  item.status === "Current" ? "labeler-item-row--current" : "",
-                ]
+                className={["labeler-runner-item", item.status === "Current" ? "labeler-runner-item--current" : ""]
                   .filter(Boolean)
                   .join(" ")}
                 key={item.id}
+                onClick={() => switchToItem(item.item)}
                 type="button"
               >
-                <span>{item.label}</span>
-                <Badge
-                  tone={
-                    item.status === "Submitted"
-                      ? "success"
-                      : item.status === "Returned"
-                        ? "danger"
-                        : item.status === "Current"
-                          ? "primary"
-                          : "warning"
-                  }
-                >
-                  {item.status}
-                </Badge>
+                <span>{item.label} {item.title}</span>
+                <span className="labeler-runner-status">
+                  <span className={["labeler-runner-dot", itemStatusClass(item.status)].filter(Boolean).join(" ")} />
+                  {itemStatusLabel(item.status)}
+                </span>
               </button>
             ))}
+            {totalItems > itemNav.length ? <p className="labeler-runner-more">还有 {totalItems - itemNav.length} 题</p> : null}
           </div>
-          <div className="labeler-nav-actions">
-            <Button>上一题</Button>
-            <Button>下一题</Button>
+        </aside>
+
+        <main className="labeler-runner-main">
+          <section className="labeler-runner-main-head">
+            <div>
+              <h1>{context.task.title} · 第 {currentItemNumber} 题</h1>
+              <p>模板 r12 · 题目 ID {context.item.id} · 奖励 0.30 元</p>
+            </div>
+            <div className="labeler-runner-head-actions">
+              <Button>跳过</Button>
+              <Button>报告题目</Button>
+            </div>
+          </section>
+
+          <div className="labeler-runner-scroll">
+            {context.lastReturnReason ? (
+              <div className="labeler-runner-alert">
+                <strong>上一轮被打回：</strong>
+                {context.lastReturnReason.comments?.[0]?.message ?? "请根据审核意见修订后重新提交。"}
+              </div>
+            ) : (
+              <div className="labeler-runner-alert">
+                <strong>上一轮被打回：</strong>
+                关键词未覆盖核心卖点，请按本轮审核意见修改后再提交。
+              </div>
+            )}
+
+            {submitNotice ? (
+              <div className="labeler-runner-success">{submitNotice}</div>
+            ) : null}
+
+            <section className="labeler-runner-source">
+              <div className="labeler-runner-source-label">原始商品标题（不可编辑） · {sourceMeta}</div>
+              <p>{sourceTitle}</p>
+              <small>{sourceBody}</small>
+            </section>
+
+            <section className="labeler-runner-form">
+              <div className="renderer-frame labeler-renderer-frame labeler-schema-renderer-surface">
+                <SchemaRenderer
+                  schema={context.schema}
+                  context={runtimeContext}
+                  answers={answers}
+                  mode="LABELING"
+                  readonly={false}
+                  errors={errors}
+                  onAnswersChange={setAnswers}
+                  onSubmit={handleSubmit}
+                  onLLMAssist={handleLLMAssist}
+                />
+              </div>
+            </section>
           </div>
-        </Card>
 
-        <main className="labeler-main-workspace">
-          {context.lastReturnReason ? (
-            <Card className="labeler-return-card">
-              <Badge tone="warning">上一轮被打回</Badge>
-              <p>{context.lastReturnReason.comments?.[0]?.message ?? "请根据审核意见修订后重新提交。"}</p>
-            </Card>
-          ) : null}
-
-          {submitNotice ? (
-            <Card className="labeler-return-card">
-              <Badge tone="success">提交成功</Badge>
-              <p>{submitNotice}</p>
-            </Card>
-          ) : null}
-
-          <Card className="labeler-source-card">
-            <div className="labeler-card-heading">
-              <div>
-                <h3>原始数据</h3>
-                <p>{context.item.id}</p>
-              </div>
-              <Badge tone="primary">Source</Badge>
+          <footer className="labeler-runner-actions">
+            <div>
+              <Button disabled={!previousItem} onClick={() => previousItem && switchToItem(previousItem)}>
+                ← 上一题
+              </Button>
+              <Button disabled={!nextItem} onClick={() => nextItem && switchToItem(nextItem)}>
+                下一题 →
+              </Button>
             </div>
-            <div className="labeler-source-content">
-              <pre className="source-json">{JSON.stringify(context.item.sourcePayload, null, 2)}</pre>
-            </div>
-          </Card>
-
-          <Card className="labeler-form-card">
-            <div className="labeler-card-heading">
-              <div>
-                <h3>标注表单</h3>
-                <p>SchemaRenderer LABELING mode</p>
-              </div>
-              <Badge tone={errors.length > 0 ? "warning" : "success"}>
-                {errors.length > 0 ? `${errors.length} 个问题` : "可填写"}
-              </Badge>
-            </div>
-            <div className="renderer-frame labeler-renderer-frame labeler-schema-renderer-surface">
-              <SchemaRenderer
-                schema={context.schema}
-                context={runtimeContext}
-                answers={answers}
-                mode="LABELING"
-                readonly={false}
-                errors={errors}
-                onAnswersChange={setAnswers}
-                onSubmit={handleSubmit}
-                onLLMAssist={handleLLMAssist}
-              />
-            </div>
-            <div className="labeler-bottom-actions">
-              <Button>上一题</Button>
-              <Button>下一题</Button>
+            <div className="labeler-runner-submit-group">
+              <span>⌘+Enter 提交 · ⌘+S 保存草稿</span>
               <Button onClick={handleSaveDraft} disabled={saving}>
-                保存草稿
+                {saving ? "保存中..." : "保存草稿"}
               </Button>
               <Button tone="primary" onClick={() => requestDemoSubmit()}>
-                提交标注
+                提交本题 →
               </Button>
             </div>
-          </Card>
+          </footer>
         </main>
 
-        <aside className="labeler-side-panel labeler-assist-panel">
-          <Card className="labeler-assist-card">
-            <div className="labeler-card-heading">
-              <div>
-                <h3>任务说明</h3>
-                <p>标注规则、质量要求、示例</p>
-              </div>
+        <aside className="labeler-runner-side">
+          <section className="labeler-runner-side-card">
+            <h3>我的贡献（本任务）</h3>
+            <div className="labeler-runner-stats">
+              <div><span>已提交</span><strong>62</strong></div>
+              <div><span>通过</span><strong className="success-text">54</strong></div>
+              <div><span>打回</span><strong className="danger-text">5</strong></div>
             </div>
-            <div className="labeler-rule-list">
-              <div>
-                <strong>标注规则</strong>
-                <span>阅读原始内容后按 Schema 字段完成判断。</span>
-              </div>
-              <div>
-                <strong>质量要求</strong>
-                <span>理由需可追溯，避免空泛描述。</span>
-              </div>
-              <div>
-                <strong>示例</strong>
-                <span>优先关注标题、事实一致性与来源可信度。</span>
-              </div>
-            </div>
-          </Card>
+          </section>
 
-          <AIReviewPanel title="LLM Assist" badge={<Badge tone="primary">辅助</Badge>} className="labeler-llm-panel">
-            <p>可用于生成建议、解释规则、辅助判断。最终答案仍由标注员确认。</p>
-            <div className="labeler-assist-actions">
-              <Button>生成建议</Button>
-              <Button>解释规则</Button>
+          <section className="labeler-runner-side-card">
+            <h3>本题历史</h3>
+            <div className="labeler-runner-history">
+              <div><span>李雷 · 提交</span><time>05-16 14:22</time></div>
+              <div><span>AI 预审 · 打回</span><time>05-16 14:22</time></div>
+              <div><span>王芳 · 复审打回</span><time>05-16 15:08</time></div>
+              <div><span className="primary-text">李雷 · 修改中</span><time>当前</time></div>
             </div>
-          </AIReviewPanel>
+          </section>
 
-          <Card className="labeler-assist-card">
-            <div className="labeler-card-heading">
-              <div>
-                <h3>校验摘要</h3>
-                <p>提交前检查</p>
-              </div>
-              <Badge tone={errors.length > 0 ? "warning" : "success"}>
-                {errors.length > 0 ? "待修正" : "无阻塞"}
-              </Badge>
-            </div>
-            <div className="labeler-check-list">
-              <div>
-                <span className="schema-check-dot schema-check-dot--done" />
-                <strong>必填字段</strong>
-                <Badge tone="success">已检查</Badge>
-              </div>
-              <div>
-                <span className={errors.length > 0 ? "schema-check-dot" : "schema-check-dot schema-check-dot--done"} />
-                <strong>格式问题</strong>
-                <Badge tone={errors.length > 0 ? "warning" : "success"}>{errors.length}</Badge>
-              </div>
-              <div>
-                <span className="schema-check-dot" />
-                <strong>提交前检查</strong>
-                <Badge tone="warning">待提交</Badge>
-              </div>
-            </div>
-          </Card>
-
-          <Link to={RoutePath.LABELER_TASKS} className="lh-button">
-            返回任务市场
-          </Link>
+          <section className="labeler-runner-side-card">
+            <h3>快捷键</h3>
+            <p>⌘+Enter 提交本题</p>
+            <p>⌘+S 保存草稿</p>
+            <p>← / → 上一题 / 下一题</p>
+            <p>J 跳题 · R 报告题目</p>
+          </section>
         </aside>
       </div>
 
@@ -378,7 +442,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
             suppressConfirmForSession(CONFIRM_KEYS.submit);
           }
           setSubmitConfirmOpen(false);
-          confirmDemoSubmit(pendingSubmitAnswers ?? answers);
+          void confirmDemoSubmit(pendingSubmitAnswers ?? answers);
           setPendingSubmitAnswers(null);
         }}
       />

@@ -33,19 +33,40 @@ export interface ReviewQueueItem {
   aiDecision: string | null;
 }
 
-export async function listReviewQueue(): Promise<ReviewQueueItem[]> {
-  const res = await apiGet<{ items: ReviewQueueItem[]; total: number; page: number; pageSize: number }>(
-    "/api/v1/review/queue"
-  );
-  return res.items;
+type PageList<T> = T[] | { items?: T[]; submissions?: T[] };
+
+function unwrapList<T>(response: PageList<T>): T[] {
+  if (Array.isArray(response)) return response;
+  return response.items ?? response.submissions ?? [];
+}
+
+function unwrapProp<T, K extends string>(response: T | Record<K, T>, key: K): T {
+  if (response && typeof response === "object" && key in response) {
+    return (response as Record<K, T>)[key];
+  }
+  return response as T;
+}
+
+export async function listReviewQueue(params: { page?: number; pageSize?: number; status?: string } = {}): Promise<ReviewQueueItem[]> {
+  const search = new URLSearchParams();
+  if (params.page) search.set("page", String(params.page));
+  if (params.pageSize) search.set("pageSize", String(params.pageSize));
+  if (params.status) search.set("status", params.status);
+  const query = search.toString();
+  const res = await apiGet<PageList<ReviewQueueItem>>(`/api/v1/review/queue${query ? `?${query}` : ""}`);
+  return unwrapList(res);
 }
 
 export async function getReviewDetail(submissionId: string): Promise<ReviewDetailResponse> {
-  return apiGet<ReviewDetailResponse>(`/api/v1/review/submissions/${submissionId}`);
+  const res = await apiGet<ReviewDetailResponse | { detail: ReviewDetailResponse }>(
+    `/api/v1/review/submissions/${submissionId}`
+  );
+  return unwrapProp(res, "detail");
 }
 
 export async function claimReview(submissionId: string): Promise<Submission> {
-  return apiPost<Submission>(`/api/v1/review/submissions/${submissionId}/claim`, {});
+  const res = await apiPost<Submission | { submission: Submission }>(`/api/v1/review/submissions/${submissionId}/claim`, {});
+  return unwrapProp(res, "submission");
 }
 
 export async function decideReview(submissionId: string, request: ReviewDecisionRequest): Promise<ReviewDecisionResponse> {
