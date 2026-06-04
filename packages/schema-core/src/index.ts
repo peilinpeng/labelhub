@@ -1,4 +1,5 @@
 export * from "./compatibility.ts";
+export * from "./deprecation.ts";
 export * from "./expression.ts";
 export * from "./json-path.ts";
 export * from "./normalization.ts";
