@@ -3,6 +3,7 @@ export * from "./json-path.ts";
 export * from "./normalization.ts";
 export * from "./schema-factory.ts";
 export * from "./schema-guards.ts";
+export * from "./schema-versioning.ts";
 export * from "./traverse.ts";
 export * from "./validation.ts";
 export * from "./visibility.ts";
