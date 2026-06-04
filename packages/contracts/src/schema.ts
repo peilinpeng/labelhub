@@ -36,6 +36,8 @@ export interface SchemaVersion {
   schemaId: ID;
   taskId: ID;
   schemaVersionNo: number;
+  previousVersionId?: ID;
+  snapshotHash?: string;
   contractVersion: ContractVersion;
   snapshot: PublishedLabelHubSchema;
   createdAt: ISODateTime;
@@ -104,6 +106,7 @@ export interface BaseFieldNode extends BaseNode {
   validateWhenHidden?: boolean;
   submitWhenDisabled?: boolean;
   validations?: ValidationRule[];
+  deprecation?: FieldDeprecationConfig;
 }
 
 export interface TextFieldNode extends BaseFieldNode {
@@ -145,6 +148,15 @@ export type FieldNode =
   | ChoiceFieldNode
   | UploadFieldNode
   | JsonFieldNode;
+
+export interface FieldDeprecationConfig {
+  deprecated: boolean;
+  reason?: string;
+  replacementFieldName?: string;
+  hideForNewSubmissions?: boolean;
+  readonlyForNewSubmissions?: boolean;
+  plannedRemovalSchemaVersionNo?: number;
+}
 
 export interface ShowItemNode extends BaseNode {
   kind: "SHOW_ITEM";
