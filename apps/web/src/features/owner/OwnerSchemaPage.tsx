@@ -1,12 +1,22 @@
 import { useEffect, useMemo, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { SchemaDesigner } from "@labelhub/schema-designer";
-import { collectFieldNodes, createDefaultNode, flattenNodes } from "@labelhub/schema-core";
+import { SchemaDesigner, validateDesignerSchema } from "@labelhub/schema-designer";
+import {
+  checkBackwardCompatibility,
+  collectFieldNodes,
+  createDefaultNode,
+  createMigrationPlan,
+  flattenNodes,
+  validateDeprecationRules,
+  type DeprecationIssue,
+} from "@labelhub/schema-core";
 import type {
+  CompatibilityReport,
   FieldNode,
   ID,
   LabelHubRuntimeContext,
   LabelHubSchema,
+  ManualMappingSlot,
   NodeType,
   SchemaNode,
   SchemaValidationResult,
@@ -14,13 +24,12 @@ import type {
   Task,
 } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
-import { fetchSchemaDraft, fetchServerRegistry, fetchTask, publishSchema, publishTask, saveSchemaDraft } from "../../api/owner";
+import { fetchSchemaDraft, fetchSchemaVersion, fetchServerRegistry, fetchTask, publishSchema, publishTask, saveSchemaDraft } from "../../api/owner";
 import { tasksMock } from "../../mocks/data/tasks.mock";
 import { findLocalTaskById } from "../../mocks/local-task-store";
-import { ConfirmDialog } from "../../ui/ConfirmDialog";
-import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card } from "../../ui/primitives";
 import { localServerComponentRegistry } from "./localComponentRegistry";
+import { PublishPreviewDialog } from "./PublishPreviewDialog";
 import { createSchemaFromPreset, schemaPresetSummaries } from "./schemaPresetLibrary";
 
 interface OwnerSchemaPageProps {
@@ -53,6 +62,20 @@ interface ValidationRuleDraft {
   type: VisualValidationType;
   value: string;
   message: string;
+}
+
+interface PublishPreviewState {
+  isFirstPublish: boolean;
+  publishAllowed: boolean;
+  requiresApproval: boolean;
+  requiresMigration: boolean;
+  affectedSubmissionsLabel: string;
+  schemaValidation: SchemaValidationResult;
+  compatibilityReport?: CompatibilityReport;
+  deprecationErrors: DeprecationIssue[];
+  deprecationWarnings: DeprecationIssue[];
+  manualMappingSlots: ManualMappingSlot[];
+  oldSchemaStatusMessage?: string;
 }
 
 const quickMaterials: QuickMaterial[] = [
@@ -111,13 +134,15 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [serverRegistry, setServerRegistry] = useState<ServerComponentRegistryItem[]>(localServerComponentRegistry);
   const [schema, setSchema] = useState<LabelHubSchema>(() => createFallbackSchema(taskId));
   const [task, setTask] = useState<Task | undefined>(() => findLocalTaskById(taskId) ?? tasksMock.find((item) => item.id === taskId));
-  const [validation, setValidation] = useState<SchemaValidationResult | undefined>();
+  const [, setValidation] = useState<SchemaValidationResult | undefined>();
   const [statusMessage, setStatusMessage] = useState("正在加载模板编辑器");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishNotice, setPublishNotice] = useState<string | null>(null);
   const [previewExpanded, setPreviewExpanded] = useState(false);
-  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
+  const [publishPreviewOpen, setPublishPreviewOpen] = useState(false);
+  const [publishPreview, setPublishPreview] = useState<PublishPreviewState | undefined>();
+  const [publishPreviewPreparing, setPublishPreviewPreparing] = useState(false);
   const [activePresetId, setActivePresetId] = useState(() => presetIdForTask(taskId));
   const [dropActive, setDropActive] = useState(false);
   const [conditionRules, setConditionRules] = useState<ConditionRuleDraft[]>([]);
@@ -236,36 +261,52 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     setPublishNotice("Schema JSON 已导出。");
   };
 
-  const confirmPublish = async () => {
+  const confirmPublish = async (): Promise<void> => {
     const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
     try {
       setSaving(true);
-      await saveSchemaDraft(currentTaskId, {
+      setPublishNotice(null);
+      const draftResponse = await saveSchemaDraft(currentTaskId, {
         schema,
         baseSchemaDraftRevision: schema.schemaDraftRevision,
       });
+      setSchema(draftResponse.schema);
+      setValidation(draftResponse.validation);
       const published = await publishSchema(currentTaskId);
-      const schemaVersionId =
-        published.schemaVersion && typeof published.schemaVersion === "object" && "id" in published.schemaVersion
-          ? String((published.schemaVersion as { id: unknown }).id)
-          : schema.schemaVersionId;
-      await publishTask(currentTaskId, { schemaVersionId: schemaVersionId as ID });
+      const schemaVersionId = readPublishedSchemaVersionId(published.schemaVersion, draftResponse.schema.schemaVersionId);
+      await publishTask(currentTaskId, { schemaVersionId });
       setPublishNotice("发布成功，任务已进入任务市场。");
+      window.setTimeout(() => navigate(RoutePath.OWNER_TASKS), 650);
     } catch (error) {
-      console.warn("Backend publish unavailable, using local workflow fallback:", error);
+      const message = error instanceof Error ? error.message : "发布失败，请稍后重试。";
+      setStatusMessage("发布失败，请检查后端服务或当前 schema 状态。");
+      setPublishNotice(`发布失败：${message}`);
     } finally {
       setSaving(false);
     }
-    setPublishNotice("发布成功，任务已回到任务管理列表。");
-    window.setTimeout(() => navigate(RoutePath.OWNER_TASKS), 650);
   };
 
-  const handlePublish = () => {
-    if (shouldSuppressConfirm(CONFIRM_KEYS.publish)) {
-      void confirmPublish();
-      return;
+  const handlePublish = async (): Promise<void> => {
+    try {
+      setPublishPreviewPreparing(true);
+      setPublishNotice(null);
+      const preview = await buildPublishPreview({
+        schema,
+        task,
+      });
+      setPublishPreview(preview);
+      setPublishPreviewOpen(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "生成发布前检查失败。";
+      setPublishNotice(`发布前检查失败：${message}`);
+    } finally {
+      setPublishPreviewPreparing(false);
     }
-    setPublishConfirmOpen(true);
+  };
+
+  const handleConfirmPublishPreview = () => {
+    setPublishPreviewOpen(false);
+    void confirmPublish();
   };
 
   const handleDesignerCanvasClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -369,8 +410,8 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           <Button type="button" onClick={exportSchemaJson}>
             导出 Schema JSON
           </Button>
-          <Button type="button" tone="primary" disabled={saving} onClick={handlePublish}>
-            保存并发布版本 {schemaRevisionLabel(schema)}
+          <Button type="button" tone="primary" disabled={saving || publishPreviewPreparing} onClick={() => void handlePublish()}>
+            {publishPreviewPreparing ? "检查中..." : `保存并发布版本 ${schemaRevisionLabel(schema)}`}
           </Button>
         </div>
       </Card>
@@ -628,20 +669,24 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         </div>
       </Card>
 
-      <ConfirmDialog
-        open={publishConfirmOpen}
-        title="确认发布任务？"
-        description="发布后，标注员将可以在任务市场领取该任务。"
-        confirmText="发布任务"
-        cancelText="取消"
-        suppressLabel="本次会话不再提醒发布确认"
-        onCancel={() => setPublishConfirmOpen(false)}
-        onConfirm={(suppress) => {
-          if (suppress) suppressConfirmForSession(CONFIRM_KEYS.publish);
-          setPublishConfirmOpen(false);
-          void confirmPublish();
-        }}
-      />
+      {publishPreview ? (
+        <PublishPreviewDialog
+          affectedSubmissionsLabel={publishPreview.affectedSubmissionsLabel}
+          compatibilityReport={publishPreview.compatibilityReport}
+          deprecationErrors={publishPreview.deprecationErrors}
+          deprecationWarnings={publishPreview.deprecationWarnings}
+          isFirstPublish={publishPreview.isFirstPublish}
+          manualMappingSlots={publishPreview.manualMappingSlots}
+          oldSchemaStatusMessage={publishPreview.oldSchemaStatusMessage}
+          open={publishPreviewOpen}
+          publishAllowed={publishPreview.publishAllowed}
+          requiresApproval={publishPreview.requiresApproval}
+          requiresMigration={publishPreview.requiresMigration}
+          schemaValidation={publishPreview.schemaValidation}
+          onCancel={() => setPublishPreviewOpen(false)}
+          onConfirm={handleConfirmPublishPreview}
+        />
+      ) : null}
     </div>
   );
 }
@@ -671,8 +716,79 @@ function SelectField({
   );
 }
 
-function isShowItemNode(node: SchemaNode): node is ShowItemNode {
-  return node.kind === "SHOW_ITEM";
+async function buildPublishPreview({
+  schema,
+  task,
+}: {
+  schema: LabelHubSchema;
+  task: Task | undefined;
+}): Promise<PublishPreviewState> {
+  const schemaValidation = validateDesignerSchema(schema);
+  const deprecationResult = validateDeprecationRules(schema);
+  const activeSchemaVersionId = task?.activeSchemaVersionId;
+  let compatibilityReport: CompatibilityReport | undefined;
+  let manualMappingSlots: ManualMappingSlot[] = [];
+  let isFirstPublish = true;
+  let oldSchemaStatusMessage: string | undefined;
+
+  if (activeSchemaVersionId !== undefined) {
+    try {
+      const schemaVersion = await fetchSchemaVersion(activeSchemaVersionId);
+      const oldSchema = schemaVersion.snapshot;
+      compatibilityReport = checkBackwardCompatibility(oldSchema, schema);
+      manualMappingSlots = createMigrationPlan(oldSchema, schema).manualMappingSlots;
+      isFirstPublish = false;
+    } catch (error) {
+      oldSchemaStatusMessage = error instanceof Error
+        ? `未能加载上一已发布版本，本次仅执行当前草稿本地检查：${error.message}`
+        : "未能加载上一已发布版本，本次仅执行当前草稿本地检查。";
+    }
+  }
+
+  const compatibilityPublishAllowed = compatibilityReport?.publishAllowed ?? true;
+  const publishAllowed = schemaValidation.valid && deprecationResult.valid && compatibilityPublishAllowed;
+  const requiresApproval =
+    (compatibilityReport?.requiresApproval ?? false) ||
+    schemaValidation.warnings.length > 0 ||
+    deprecationResult.warnings.length > 0;
+  const requiresMigration = (compatibilityReport?.requiresMigration ?? false) || manualMappingSlots.length > 0;
+
+  const result: PublishPreviewState = {
+    isFirstPublish,
+    publishAllowed,
+    requiresApproval,
+    requiresMigration,
+    affectedSubmissionsLabel: "后端统计暂未接入",
+    schemaValidation,
+    deprecationErrors: deprecationResult.errors,
+    deprecationWarnings: deprecationResult.warnings,
+    manualMappingSlots,
+  };
+
+  if (compatibilityReport !== undefined) {
+    result.compatibilityReport = compatibilityReport;
+  }
+  if (oldSchemaStatusMessage !== undefined) {
+    result.oldSchemaStatusMessage = oldSchemaStatusMessage;
+  }
+
+  return result;
+}
+
+function readPublishedSchemaVersionId(schemaVersion: unknown, fallbackSchemaVersionId: ID | undefined): ID {
+  if (isRecord(schemaVersion) && typeof schemaVersion.id === "string") {
+    return schemaVersion.id as ID;
+  }
+
+  if (fallbackSchemaVersionId !== undefined) {
+    return fallbackSchemaVersionId;
+  }
+
+  throw new Error("schema publish response 缺少 schemaVersion.id。");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function getMaterialLabelFromNodeCard(nodeCard: Element): string | null {

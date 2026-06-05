@@ -12,6 +12,7 @@ import type {
   CreateExportJobRequest,
   CreateExportJobResponse,
   ExportJob,
+  SchemaVersion,
 } from "@labelhub/contracts";
 import { apiGet, apiPost, apiPut } from "./client";
 
@@ -20,13 +21,6 @@ type PageList<T> = T[] | { items?: T[]; tasks?: T[]; jobs?: T[]; exportJobs?: T[
 function unwrapList<T>(response: PageList<T>): T[] {
   if (Array.isArray(response)) return response;
   return response.items ?? response.tasks ?? response.jobs ?? response.exportJobs ?? [];
-}
-
-function unwrapProp<T, K extends string>(response: T | Record<K, T>, key: K): T {
-  if (response && typeof response === "object" && key in response) {
-    return (response as Record<K, T>)[key];
-  }
-  return response as T;
 }
 
 export async function fetchServerRegistry(): Promise<ServerComponentRegistryItem[]> {
@@ -39,7 +33,7 @@ export async function fetchServerRegistry(): Promise<ServerComponentRegistryItem
 
 export async function fetchTask(taskId: string): Promise<Task> {
   const res = await apiGet<Task | { task: Task }>(`/api/v1/tasks/${taskId}`);
-  return unwrapProp(res, "task");
+  return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
 }
 
 export async function createTask(
@@ -54,7 +48,12 @@ export async function createTask(
 
 export async function fetchSchemaDraft(taskId: string): Promise<LabelHubSchema> {
   const res = await apiGet<LabelHubSchema | { schema: LabelHubSchema }>(`/api/v1/tasks/${taskId}/schema/draft`);
-  return unwrapProp(res, "schema");
+  return isRecord(res) && "schema" in res ? (res as { schema: LabelHubSchema }).schema : res;
+}
+
+export async function fetchSchemaVersion(schemaVersionId: string): Promise<SchemaVersion> {
+  const res = await apiGet<SchemaVersion | { schemaVersion: SchemaVersion }>(`/api/v1/schema-versions/${schemaVersionId}`);
+  return isRecord(res) && "schemaVersion" in res ? (res as { schemaVersion: SchemaVersion }).schemaVersion : res;
 }
 
 export async function saveSchemaDraft(
@@ -98,4 +97,8 @@ export async function createExportJob(
 export async function listExportJobs(taskId: string): Promise<ExportJob[]> {
   const res = await apiGet<PageList<ExportJob>>(`/api/v1/tasks/${taskId}/exports`);
   return unwrapList(res);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
