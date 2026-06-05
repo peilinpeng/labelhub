@@ -3,11 +3,7 @@ import { Link } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
 import { listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
 import { Badge, Card } from "../../ui/primitives";
-import {
-  applyDemoSubmissionState,
-  DEMO_SUBMISSION_ID,
-  getDemoSubmissionFallback,
-} from "../../mocks/demo-workflow-store";
+import { DEMO_SUBMISSION_ID, getDemoSubmissionFallback } from "../../mocks/demo-workflow-store";
 import { getQueueDisplay } from "./review-display";
 
 interface ReviewerWorkspaceProps {
@@ -123,6 +119,19 @@ function reviewQueueStatusFor(filter: QueueFilter): string | undefined {
   return undefined;
 }
 
+function applyDemoQueueItemState(item: ReviewQueueItem): ReviewQueueItem {
+  if (item.submission.id !== DEMO_SUBMISSION_ID) return item;
+  const demoSubmission = getDemoSubmissionFallback();
+  return {
+    ...item,
+    submission: {
+      ...item.submission,
+      status: demoSubmission.status,
+      updatedAt: demoSubmission.updatedAt,
+    },
+  };
+}
+
 export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
   const [submissions, setSubmissions] = useState<ReviewQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,7 +144,7 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
       try {
         setLoading(true);
         const data = await listReviewQueue({ status: reviewQueueStatusFor(filter) });
-        const withDemoState = data.map(applyDemoSubmissionState);
+        const withDemoState = data.map(applyDemoQueueItemState);
         const nextSubmissions = withDemoState.some((item) => item.submission.id === DEMO_SUBMISSION_ID)
           ? withDemoState
           : [{ ...fallbackQueue[0], submission: getDemoSubmissionFallback() }, ...withDemoState];

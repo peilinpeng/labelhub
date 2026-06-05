@@ -163,10 +163,8 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
   const confirmDemoSubmit = async (submitAnswers: AnswerPayload = answers) => {
     if (!context || !assignmentId) return;
-    let submittedToBackend = false;
     try {
       await submitAssignment(assignmentId, { answers: submitAnswers, clientRevision: 0 });
-      submittedToBackend = true;
     } catch (error) {
       console.warn("Backend submit unavailable, using local workflow fallback:", error);
     }

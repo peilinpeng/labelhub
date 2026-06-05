@@ -7,7 +7,7 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import { applyDemoSubmissionState, DEMO_SUBMISSION_ID, reviewDemoSubmission } from "../../mocks/demo-workflow-store";
-import type { ReviewDecisionRequest, ReviewDetailResponse } from "@labelhub/contracts";
+import type { ID, ReviewDecisionRequest, ReviewDetailResponse } from "@labelhub/contracts";
 import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-display";
 
 interface ReviewDetailPageProps {
@@ -23,7 +23,7 @@ function getFallbackDetail(submissionId?: string): ReviewDetailResponse | undefi
     ...detail,
     submission: {
       ...detail.submission,
-      id: submissionId,
+      id: submissionId as ID,
     },
   };
 }
@@ -34,16 +34,8 @@ function valueText(value: unknown): string {
   return String(value);
 }
 
-function formatTime(value: string): string {
-  return new Date(value).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
+  void role;
   const { submissionId } = useParams<{ submissionId: string }>();
   const navigate = useNavigate();
   const [detail, setDetail] = useState<ReviewDetailResponse | null>(null);

@@ -8,6 +8,7 @@ import { tasksMock } from "../../mocks/data/tasks.mock";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
+import type { ID } from "@labelhub/contracts";
 
 interface OwnerExportPageProps {
   role: Role;
@@ -136,9 +137,11 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
     setJobs((current) => [nextJob, ...current]);
 
     try {
+      const fallbackSchemaVersionId: ID = `sv_${taskId ?? "task"}_draft`;
+      const schemaVersionId = task?.activeSchemaVersionId ?? fallbackSchemaVersionId;
       const response = await createExportJob(taskId ?? "", {
         mapping: {
-          schemaVersionId: String(task?.activeSchemaVersionId ?? `sv_${taskId ?? "task"}_draft`),
+          schemaVersionId,
           format,
           answerSource: "PATCHED_ANSWERS",
           allowPatchedAnswers: true,
