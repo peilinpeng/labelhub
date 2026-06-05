@@ -9,6 +9,7 @@ import { Badge, Button, Card } from "../../ui/primitives";
 import { DEMO_ASSIGNMENT_ID, submitDemoAssignment } from "../../mocks/demo-workflow-store";
 import { getAssignmentContext as getMockAssignmentContext } from "../../mocks/mock-db";
 import { datasetItemsMock } from "../../mocks/data/dataset-items.mock";
+import { useLabelingTelemetry } from "./useLabelingTelemetry";
 import type {
   AnswerPayload,
   AssignmentContextResponse,
@@ -69,6 +70,12 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const [pendingSubmitAnswers, setPendingSubmitAnswers] = useState<AnswerPayload | null>(null);
   const [taskItems, setTaskItems] = useState<DatasetItem[]>([]);
   const [submittedItemIds, setSubmittedItemIds] = useState<string[]>([]);
+  const telemetry = useLabelingTelemetry({
+    assignmentId,
+    context,
+    answers,
+    onAnswersChange: setAnswers,
+  });
 
   useEffect(() => {
     void (async () => {
@@ -168,6 +175,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     } catch (error) {
       console.warn("Backend submit unavailable, using local workflow fallback:", error);
     }
+    telemetry.appendSubmissionSummary(submitAnswers);
     submitDemoAssignment(submitAnswers);
     const currentItemId = context.item.id;
     const nextAnswersByItem = { ...answersByItemId, [currentItemId]: submitAnswers };
@@ -278,7 +286,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   });
 
   return (
-    <div className="labeler-runner">
+    <div className="labeler-runner" onClick={telemetry.handleActivity} onPaste={telemetry.handlePaste}>
       <header className="labeler-runner-topbar">
         <div className="labeler-runner-brand">
           <span className="brand-mark brand-mark--small" />
@@ -365,7 +373,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                   mode="LABELING"
                   readonly={false}
                   errors={errors}
-                  onAnswersChange={setAnswers}
+                  onAnswersChange={telemetry.handleAnswersChange}
                   onSubmit={handleSubmit}
                   onLLMAssist={handleLLMAssist}
                 />
