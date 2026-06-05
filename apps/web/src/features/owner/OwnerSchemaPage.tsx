@@ -317,16 +317,16 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       const schemaVersionId = readPublishedSchemaVersionId(published.schemaVersion, draftResponse.schema.schemaVersionId);
 
       failureStage = "PUBLISH_TASK";
-      await publishTask(currentTaskId, { schemaVersionId });
+      const publishedTask = await publishTask(currentTaskId, { schemaVersionId });
+      setTask(publishedTask.task);
       await appendSchemaPublishedAuditEvent({
         schema: draftResponse.schema,
-        task,
+        task: publishedTask.task,
         schemaVersionId,
         schemaVersionNo: readPublishedSchemaVersionNo(published.schemaVersion, draftResponse.schema.schemaVersionNo),
       });
       await loadAuditEvents();
-      setPublishNotice("发布成功，任务已进入任务市场。");
-      window.setTimeout(() => navigate(RoutePath.OWNER_TASKS), 650);
+      setPublishNotice("发布成功，任务已进入任务市场，审计日志已刷新。");
     } catch (error) {
       await appendSchemaPublishFailedAuditEvent({
         schema,
@@ -673,13 +673,6 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           </div>
         </Card>
 
-        <AuditTimelinePanel
-          events={auditEvents}
-          error={auditEventsError}
-          loading={auditEventsLoading}
-          onRefresh={() => void loadAuditEvents()}
-        />
-
         <Card className="schema-config-card schema-config-card--wide">
           <details open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
             <summary>高级 JSON 配置 / 查看 JSON</summary>
@@ -735,6 +728,13 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           />
         </div>
       </Card>
+
+      <AuditTimelinePanel
+        events={auditEvents}
+        error={auditEventsError}
+        loading={auditEventsLoading}
+        onRefresh={() => void loadAuditEvents()}
+      />
 
       {publishPreview ? (
         <PublishPreviewDialog

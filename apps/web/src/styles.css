@@ -477,7 +477,8 @@ a {
     "status"
     "notice"
     "presets"
-    "designer";
+    "designer"
+    "audit";
   align-items: start;
   gap: 14px;
 }
@@ -500,6 +501,12 @@ a {
 
 .schema-builder-page > .schema-designer-shell--builder {
   grid-area: designer;
+  min-width: 0;
+}
+
+.schema-builder-page > .schema-audit-card {
+  grid-area: audit;
+  width: 100%;
   min-width: 0;
 }
 
