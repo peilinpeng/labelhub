@@ -2,6 +2,12 @@ import { http, HttpResponse } from "msw";
 import type {
   BatchReviewRequest,
   ClaimTaskRequest,
+  AppendAuditEventRequest,
+  AuditEventQuery,
+  AuditEventType,
+  AuditSeverity,
+  AuditSource,
+  AuditTargetEntityType,
   CreateExportJobRequest,
   CreateExportJobResponse,
   CreateUploadUrlRequest,
@@ -15,10 +21,12 @@ import type {
   SaveSchemaDraftRequest,
   SubmitAssignmentRequest,
   ConfirmUploadResponse,
+  QueryAuditEventsResponse,
   SchemaValidationResult,
   LabelHubSchema,
 } from "@labelhub/contracts";
 import {
+  appendAuditEvent,
   audit,
   batchDecideReview,
   callLLMAssist,
@@ -42,6 +50,7 @@ import {
   mockDb,
   publishSchema,
   publishTask,
+  queryAuditEvents,
   saveDraft,
   saveSchemaDraft,
   schemaHasDuplicateFieldName,
@@ -272,6 +281,16 @@ export const handlers = [
     return withIdempotency(request, body, () => ({ body: batchDecideReview(body.items) }));
   }),
 
+  http.post("/api/v1/audit-events", async ({ request }) => {
+    const body = await readJson<AppendAuditEventRequest>(request);
+    return okJson({ event: appendAuditEvent(body) }, 201);
+  }),
+
+  http.get("/api/v1/audit-events", ({ request }) => {
+    const query = parseAuditEventQuery(new URL(request.url).searchParams);
+    return okJson<QueryAuditEventsResponse>(queryAuditEvents(query));
+  }),
+
   http.get("/api/v1/schema/component-registry", () => okJson(mockDb.registry)),
 
   http.get("/api/v1/schema-versions/:schemaVersionId", ({ params }) => {
@@ -354,6 +373,75 @@ function apiErrorBody(code: Parameters<typeof errorJson>[0], message: string, de
     details,
     traceId: `trace_${Date.now()}`,
   };
+}
+
+function parseAuditEventQuery(search: URLSearchParams): AuditEventQuery {
+  const query: AuditEventQuery = {};
+  setOptionalQueryValue(search, query, "taskId");
+  setOptionalQueryValue(search, query, "entityId");
+  setOptionalQueryValue(search, query, "schemaVersionId");
+  setOptionalQueryValue(search, query, "assignmentId");
+  setOptionalQueryValue(search, query, "submissionId");
+  setOptionalQueryValue(search, query, "reviewId");
+  setOptionalQueryValue(search, query, "exportId");
+  setOptionalQueryValue(search, query, "migrationPlanId");
+  setOptionalQueryValue(search, query, "actorId");
+  setOptionalQueryValue(search, query, "createdFrom");
+  setOptionalQueryValue(search, query, "createdTo");
+
+  const entityType = search.get("entityType");
+  if (entityType !== null) query.entityType = entityType as AuditTargetEntityType;
+  const source = search.get("source");
+  if (source !== null) query.source = source as AuditSource;
+  const limit = search.get("limit");
+  if (limit !== null) {
+    const parsed = Number(limit);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      query.limit = parsed;
+    }
+  }
+
+  const types = readMultiValueParam(search, "types");
+  if (types.length > 0) query.types = types as AuditEventType[];
+  const severities = readMultiValueParam(search, "severities");
+  if (severities.length > 0) query.severities = severities as AuditSeverity[];
+
+  return query;
+}
+
+function setOptionalQueryValue(search: URLSearchParams, query: AuditEventQuery, key: keyof AuditEventQuery): void {
+  const value = search.get(key);
+  if (value !== null) {
+    setAuditQueryStringValue(query, key, value);
+  }
+}
+
+function setAuditQueryStringValue(query: AuditEventQuery, key: keyof AuditEventQuery, value: string): void {
+  switch (key) {
+    case "taskId":
+    case "entityId":
+    case "schemaVersionId":
+    case "assignmentId":
+    case "submissionId":
+    case "reviewId":
+    case "exportId":
+    case "migrationPlanId":
+    case "actorId":
+    case "createdFrom":
+    case "createdTo":
+      query[key] = value;
+      return;
+    default:
+      return;
+  }
+}
+
+function readMultiValueParam(search: URLSearchParams, key: string): string[] {
+  return search
+    .getAll(key)
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
 }
 
 async function handleSaveSchemaDraftRequest(request: Request, params: MockParams): Promise<Response> {
