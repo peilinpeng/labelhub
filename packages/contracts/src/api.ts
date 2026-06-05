@@ -1,4 +1,4 @@
-import type { AuditLog, AuditLogSummary } from "./audit";
+import type { AppendAuditEventRequest, AuditEventQuery, AuditEventRecord, AuditLog, AuditLogSummary } from "./audit";
 import type { ApiError } from "./errors";
 import type { ExportJob, ExportMapping } from "./export";
 import type { FileObject } from "./file";
@@ -204,6 +204,19 @@ export interface DownloadExportResponse {
   downloadUrl: string;
   expiresAt: ISODateTime;
 }
+
+export type AppendAuditEventResponse = {
+  event: AuditEventRecord;
+};
+
+export type QueryAuditEventsRequest = AuditEventQuery;
+
+export type QueryAuditEventsResponse = {
+  events: AuditEventRecord[];
+  nextCursor?: string;
+};
+
+export type { AppendAuditEventRequest };
 
 export type {
   ConfirmUploadRequest,
