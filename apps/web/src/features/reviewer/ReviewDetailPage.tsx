@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
-import { decideReview, getReviewDetail } from "../../api/reviewer";
+import { claimReview, decideReview, getReviewDetail } from "../../api/reviewer";
 import { getReviewDetail as getMockReviewDetail } from "../../mocks/mock-db";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
@@ -9,6 +9,7 @@ import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import { applyDemoSubmissionState, DEMO_SUBMISSION_ID, reviewDemoSubmission } from "../../mocks/demo-workflow-store";
 import type { ID, ReviewDecisionRequest, ReviewDetailResponse } from "@labelhub/contracts";
 import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-display";
+import { appendReviewStartedAuditSafely, appendReviewSubmittedAuditSafely } from "./reviewer-audit-events";
 
 interface ReviewDetailPageProps {
   role: Role;
@@ -45,8 +46,11 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<ReviewDecision | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([submissionId ?? DEMO_SUBMISSION_ID]);
+  const startedAuditSubmissionIdsRef = useRef<Set<string>>(new Set());
+  const reviewOpenedAtMsRef = useRef(Date.now());
 
   useEffect(() => {
+    reviewOpenedAtMsRef.current = Date.now();
     void (async () => {
       try {
         setLoading(true);
@@ -66,6 +70,14 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
     })();
   }, [submissionId]);
 
+  useEffect(() => {
+    if (!detail || startedAuditSubmissionIdsRef.current.has(detail.submission.id)) {
+      return;
+    }
+    startedAuditSubmissionIdsRef.current.add(detail.submission.id);
+    appendReviewStartedAuditSafely(detail);
+  }, [detail]);
+
   const aiResult = detail?.aiResult?.aiResult;
   const answers = (detail?.submission.answers ?? {}) as Record<string, unknown>;
   const sourcePayload = (detail?.item.sourcePayload ?? {}) as Record<string, unknown>;
@@ -84,7 +96,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   );
 
   const handleDecision = async (decision: ReviewDecision) => {
-    if (!submissionId) return;
+    if (!submissionId || !detail) return;
     try {
       setDeciding(true);
       const request: ReviewDecisionRequest =
@@ -102,10 +114,21 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               reason: comments || "需要标注员重新修改后提交。",
               comments: comments ? [{ message: comments }] : undefined,
             };
+      await claimReview(submissionId).catch(() => undefined);
+      const response = await decideReview(submissionId, request);
       reviewDemoSubmission(decision);
       setDecisionMessage(decision === "PASS" ? "审核通过，结果已进入可导出数据。" : "已打回，等待标注员修改后重新提交。");
-      void decideReview(submissionId, request).catch(() => undefined);
+      appendReviewSubmittedAuditSafely({
+        detail,
+        decision,
+        response,
+        reviewDurationMs: Math.max(0, Date.now() - reviewOpenedAtMsRef.current),
+        commentLength: comments.length,
+      });
       window.setTimeout(() => navigate(RoutePath.REVIEWER_QUEUE), 650);
+    } catch (error) {
+      console.warn("提交审核决策失败：", error);
+      setDecisionMessage("审核提交失败，请稍后重试。");
     } finally {
       setDeciding(false);
     }
