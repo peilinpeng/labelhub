@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -189,12 +190,14 @@ def _execute_review(db, job_id: str) -> None:
         llm_log.status = "RUNNING"
         db.flush()
 
+        _started = time.monotonic()
         response = client.chat.completions.create(
             model=settings.DOUBAO_MODEL,
             messages=[{"role": "user", "content": rendered_prompt}],
             tools=[AI_REVIEW_TOOL],
             tool_choice={"type": "function", "function": {"name": "submit_ai_review_result"}},
         )
+        _latency_ms = int((time.monotonic() - _started) * 1000)
         tool_call = response.choices[0].message.tool_calls[0]
         ai_result = json.loads(tool_call.function.arguments)
         raw_output = json.dumps(ai_result, ensure_ascii=False)
@@ -202,6 +205,13 @@ def _execute_review(db, job_id: str) -> None:
 
         llm_log.status = "SUCCEEDED"
         llm_log.output_hash = output_hash
+        llm_log.latency_ms = _latency_ms
+        # Token 用量（TC-AI-07 可追溯）；部分网关可能不返回 usage，做容错
+        _usage = getattr(response, "usage", None)
+        if _usage is not None:
+            llm_log.prompt_tokens = getattr(_usage, "prompt_tokens", None)
+            llm_log.completion_tokens = getattr(_usage, "completion_tokens", None)
+            llm_log.total_tokens = getattr(_usage, "total_tokens", None)
         llm_log.finished_at = datetime.now(timezone.utc)
         job.raw_output_ref = llm_log.id
 

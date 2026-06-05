@@ -378,11 +378,20 @@ def get_review_detail(db: Session, submission_id: str, actor: Any) -> dict:
         .order_by(AuditLog.created_at.asc())
         .all()
     )
+    # AI 预审可追溯日志（TC-AI-07）：最近一次该 submission 的 AI_REVIEW 调用
+    from app.models.llm import LLMCallLog
+    ai_trace = (
+        db.query(LLMCallLog)
+        .filter_by(submission_id=submission.id, purpose="AI_REVIEW")
+        .order_by(LLMCallLog.created_at.desc())
+        .first()
+    )
     return {
         "submission": submission,
         "task": task,
         "schema_version": schema_version,
         "ai_result": ai_result,
+        "ai_trace": ai_trace,
         "history": history,
         "audit_logs": audit_logs,
     }

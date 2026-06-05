@@ -244,7 +244,7 @@ def llm_assist(db: Session, assignment_id: str, actor: object, req: object) -> d
     call_id = "llm_" + uuid.uuid4().hex
     llm_log = LLMCallLog(
         id=call_id,
-        purpose="ASSIST",
+        purpose="LLM_ASSIST",  # 契约 §12 LLMCallLog.purpose 合法值
         actor_id=actor.id,
         assignment_id=assignment_id,
         node_id=req.nodeId,
@@ -274,6 +274,7 @@ def llm_assist(db: Session, assignment_id: str, actor: object, req: object) -> d
         latency_ms = int((time.monotonic() - started) * 1000)
         llm_log.status = "FAILED"
         llm_log.error_message = str(exc)[:500]
+        llm_log.latency_ms = latency_ms
         llm_log.finished_at = datetime.now(timezone.utc)
         db.commit()
         raise LLMAssistFailedException(
@@ -283,6 +284,13 @@ def llm_assist(db: Session, assignment_id: str, actor: object, req: object) -> d
     latency_ms = int((time.monotonic() - started) * 1000)
     llm_log.status = "SUCCEEDED"
     llm_log.output_hash = hashlib.sha256(output_text.encode()).hexdigest()
+    llm_log.latency_ms = latency_ms
+    # Token 用量（TC-AI-07 可追溯）；部分网关可能不返回 usage，做容错
+    _usage = getattr(response, "usage", None)
+    if _usage is not None:
+        llm_log.prompt_tokens = getattr(_usage, "prompt_tokens", None)
+        llm_log.completion_tokens = getattr(_usage, "completion_tokens", None)
+        llm_log.total_tokens = getattr(_usage, "total_tokens", None)
     llm_log.finished_at = datetime.now(timezone.utc)
 
     # 依据 llm.assist 节点的 outputBindings 构造可一键应用的草稿补丁（best-effort）

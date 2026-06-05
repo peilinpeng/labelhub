@@ -5,7 +5,7 @@
 #   LLM_ASSIST / AI_REVIEW / SCHEMA_GENERATION
 # status 合法值（契约 §12 LLMCallStatus）：
 #   PENDING / RUNNING / SUCCEEDED / FAILED
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, func
+from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey, func
 
 from app.database import Base
 
@@ -54,6 +54,12 @@ class LLMCallLog(Base):
 
     # 契约 LLMCallLog.errorMessage，失败时填写
     error_message = Column(Text, nullable=True)
+
+    # Token 用量与耗时（TC-AI-07 可追溯）：调用成功后由应用层写入，可空
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
 
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 

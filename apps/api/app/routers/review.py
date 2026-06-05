@@ -14,6 +14,7 @@ from app.schemas.review import (
     ReviewQueueResponse,
     ReviewQueueItem,
     ReviewDetailResponse,
+    AITraceResponse,
     SubmissionSummary,
     ReviewResultResponse,
     AuditLogSummary,
@@ -74,6 +75,7 @@ def get_review_detail(
         schemaVersionId=detail["submission"].schema_version_id,
         schemaJson=detail["schema_version"].schema_json if detail["schema_version"] else {},
         aiResult=ReviewResultResponse.from_orm(detail["ai_result"]) if detail["ai_result"] else None,
+        aiTrace=AITraceResponse.from_orm(detail["ai_trace"]) if detail["ai_trace"] else None,
         history=[ReviewResultResponse.from_orm(r) for r in detail["history"]],
         auditLogs=[AuditLogSummary.from_orm(log) for log in detail["audit_logs"]],
     )
