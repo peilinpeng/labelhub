@@ -54,6 +54,11 @@ import { aiReviewJobsMock, reviewResultsMock } from "./data/reviews.mock";
 import { newsQualitySchemaDraft, schemaVersionsMock } from "./data/schemas.mock";
 import { submissionsMock } from "./data/submissions.mock";
 import { tasksMock } from "./data/tasks.mock";
+import {
+  schemaGovernanceDemoSchemaDrafts,
+  schemaGovernanceDemoSchemaVersions,
+  schemaGovernanceDemoTasks,
+} from "./demo-schema-governance";
 import { clone, nextId, now } from "./mock-utils";
 
 interface MockState {
@@ -73,9 +78,9 @@ interface MockState {
 }
 
 export const mockDb: MockState = {
-  tasks: clone(tasksMock),
-  schemaDrafts: [clone(newsQualitySchemaDraft)],
-  schemaVersions: clone(schemaVersionsMock),
+  tasks: [...clone(tasksMock), ...clone(schemaGovernanceDemoTasks)],
+  schemaDrafts: [clone(newsQualitySchemaDraft), ...clone(schemaGovernanceDemoSchemaDrafts)],
+  schemaVersions: [...clone(schemaVersionsMock), ...clone(schemaGovernanceDemoSchemaVersions)],
   datasetItems: clone(datasetItemsMock),
   assignments: clone(assignmentsMock),
   drafts: clone(draftsMock),
