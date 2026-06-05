@@ -2,6 +2,7 @@ export * from "./compatibility.ts";
 export * from "./deprecation.ts";
 export * from "./expression.ts";
 export * from "./json-path.ts";
+export * from "./migration.ts";
 export * from "./normalization.ts";
 export * from "./schema-factory.ts";
 export * from "./schema-guards.ts";
