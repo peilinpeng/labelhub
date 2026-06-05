@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { SchemaDesigner, validateDesignerSchema } from "@labelhub/schema-designer";
 import {
@@ -11,6 +11,7 @@ import {
   type DeprecationIssue,
 } from "@labelhub/schema-core";
 import type {
+  AuditEventRecord,
   CompatibilityReport,
   FieldNode,
   ID,
@@ -24,6 +25,7 @@ import type {
   Task,
 } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
+import { queryAuditEvents } from "../../api/audit";
 import { fetchSchemaDraft, fetchSchemaVersion, fetchServerRegistry, fetchTask, publishSchema, publishTask, saveSchemaDraft } from "../../api/owner";
 import { tasksMock } from "../../mocks/data/tasks.mock";
 import { findLocalTaskById } from "../../mocks/local-task-store";
@@ -36,6 +38,7 @@ import {
   type OwnerPublishAuditPreview,
   type OwnerPublishFailureStage,
 } from "./audit-events";
+import { AuditTimelinePanel } from "./AuditTimelinePanel";
 import { localServerComponentRegistry } from "./localComponentRegistry";
 import { PublishPreviewDialog } from "./PublishPreviewDialog";
 import { createSchemaFromPreset, schemaPresetSummaries } from "./schemaPresetLibrary";
@@ -157,6 +160,24 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [validationRules, setValidationRules] = useState<ValidationRuleDraft[]>([]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [selectedMaterialLabel, setSelectedMaterialLabel] = useState<string | null>(null);
+  const [auditEvents, setAuditEvents] = useState<AuditEventRecord[]>([]);
+  const [auditEventsLoading, setAuditEventsLoading] = useState(false);
+  const [auditEventsError, setAuditEventsError] = useState<string | null>(null);
+
+  const loadAuditEvents = useCallback(async (): Promise<void> => {
+    const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
+    try {
+      setAuditEventsLoading(true);
+      setAuditEventsError(null);
+      const response = await queryAuditEvents({ taskId: currentTaskId, limit: 20 });
+      setAuditEvents(response.events);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "审计日志加载失败。";
+      setAuditEventsError(`审计日志加载失败：${message}`);
+    } finally {
+      setAuditEventsLoading(false);
+    }
+  }, [schema.meta.taskId, taskId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +229,10 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       cancelled = true;
     };
   }, [taskId]);
+
+  useEffect(() => {
+    void loadAuditEvents();
+  }, [loadAuditEvents]);
 
   useEffect(() => {
     if (!previewExpanded) return;
@@ -299,6 +324,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         schemaVersionId,
         schemaVersionNo: readPublishedSchemaVersionNo(published.schemaVersion, draftResponse.schema.schemaVersionNo),
       });
+      await loadAuditEvents();
       setPublishNotice("发布成功，任务已进入任务市场。");
       window.setTimeout(() => navigate(RoutePath.OWNER_TASKS), 650);
     } catch (error) {
@@ -308,6 +334,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         stage: failureStage,
         error,
       });
+      await loadAuditEvents();
       const message = error instanceof Error ? error.message : "发布失败，请稍后重试。";
       setStatusMessage("发布失败，请检查后端服务或当前 schema 状态。");
       setPublishNotice(`发布失败：${message}`);
@@ -325,6 +352,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         task,
       });
       await appendPublishPreviewAuditEvents(createOwnerPublishAuditPreview(schema, task, preview));
+      await loadAuditEvents();
       setPublishPreview(preview);
       setPublishPreviewOpen(true);
     } catch (error) {
@@ -644,6 +672,13 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             <div><strong>{validationRules.length}</strong><span>校验规则</span></div>
           </div>
         </Card>
+
+        <AuditTimelinePanel
+          events={auditEvents}
+          error={auditEventsError}
+          loading={auditEventsLoading}
+          onRefresh={() => void loadAuditEvents()}
+        />
 
         <Card className="schema-config-card schema-config-card--wide">
           <details open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
