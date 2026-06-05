@@ -28,6 +28,14 @@ import { fetchSchemaDraft, fetchSchemaVersion, fetchServerRegistry, fetchTask, p
 import { tasksMock } from "../../mocks/data/tasks.mock";
 import { findLocalTaskById } from "../../mocks/local-task-store";
 import { Badge, Button, Card } from "../../ui/primitives";
+import {
+  appendPublishPreviewAuditEvents,
+  appendPublishRequestedAuditEvent,
+  appendSchemaPublishedAuditEvent,
+  appendSchemaPublishFailedAuditEvent,
+  type OwnerPublishAuditPreview,
+  type OwnerPublishFailureStage,
+} from "./audit-events";
 import { localServerComponentRegistry } from "./localComponentRegistry";
 import { PublishPreviewDialog } from "./PublishPreviewDialog";
 import { createSchemaFromPreset, schemaPresetSummaries } from "./schemaPresetLibrary";
@@ -261,23 +269,45 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     setPublishNotice("Schema JSON 已导出。");
   };
 
-  const confirmPublish = async (): Promise<void> => {
+  const confirmPublish = async (preview: PublishPreviewState | undefined): Promise<void> => {
     const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
+    let failureStage: OwnerPublishFailureStage = "SAVE_DRAFT";
     try {
       setSaving(true);
       setPublishNotice(null);
+      if (preview !== undefined) {
+        await appendPublishRequestedAuditEvent(createOwnerPublishAuditPreview(schema, task, preview));
+      }
+
+      failureStage = "SAVE_DRAFT";
       const draftResponse = await saveSchemaDraft(currentTaskId, {
         schema,
         baseSchemaDraftRevision: schema.schemaDraftRevision,
       });
       setSchema(draftResponse.schema);
       setValidation(draftResponse.validation);
+
+      failureStage = "PUBLISH_SCHEMA";
       const published = await publishSchema(currentTaskId);
       const schemaVersionId = readPublishedSchemaVersionId(published.schemaVersion, draftResponse.schema.schemaVersionId);
+
+      failureStage = "PUBLISH_TASK";
       await publishTask(currentTaskId, { schemaVersionId });
+      await appendSchemaPublishedAuditEvent({
+        schema: draftResponse.schema,
+        task,
+        schemaVersionId,
+        schemaVersionNo: readPublishedSchemaVersionNo(published.schemaVersion, draftResponse.schema.schemaVersionNo),
+      });
       setPublishNotice("发布成功，任务已进入任务市场。");
       window.setTimeout(() => navigate(RoutePath.OWNER_TASKS), 650);
     } catch (error) {
+      await appendSchemaPublishFailedAuditEvent({
+        schema,
+        task,
+        stage: failureStage,
+        error,
+      });
       const message = error instanceof Error ? error.message : "发布失败，请稍后重试。";
       setStatusMessage("发布失败，请检查后端服务或当前 schema 状态。");
       setPublishNotice(`发布失败：${message}`);
@@ -294,6 +324,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         schema,
         task,
       });
+      await appendPublishPreviewAuditEvents(createOwnerPublishAuditPreview(schema, task, preview));
       setPublishPreview(preview);
       setPublishPreviewOpen(true);
     } catch (error) {
@@ -305,8 +336,9 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   };
 
   const handleConfirmPublishPreview = () => {
+    const preview = publishPreview;
     setPublishPreviewOpen(false);
-    void confirmPublish();
+    void confirmPublish(preview);
   };
 
   const handleDesignerCanvasClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -775,6 +807,31 @@ async function buildPublishPreview({
   return result;
 }
 
+function createOwnerPublishAuditPreview(
+  schema: LabelHubSchema,
+  task: Task | undefined,
+  preview: PublishPreviewState,
+): OwnerPublishAuditPreview {
+  const auditPreview: OwnerPublishAuditPreview = {
+    schema,
+    task,
+    schemaValidation: preview.schemaValidation,
+    deprecationErrors: preview.deprecationErrors,
+    deprecationWarnings: preview.deprecationWarnings,
+    manualMappingSlots: preview.manualMappingSlots,
+    publishAllowed: preview.publishAllowed,
+    requiresApproval: preview.requiresApproval,
+    requiresMigration: preview.requiresMigration,
+    isFirstPublish: preview.isFirstPublish,
+  };
+
+  if (preview.compatibilityReport !== undefined) {
+    auditPreview.compatibilityReport = preview.compatibilityReport;
+  }
+
+  return auditPreview;
+}
+
 function readPublishedSchemaVersionId(schemaVersion: unknown, fallbackSchemaVersionId: ID | undefined): ID {
   if (isRecord(schemaVersion) && typeof schemaVersion.id === "string") {
     return schemaVersion.id as ID;
@@ -785,6 +842,18 @@ function readPublishedSchemaVersionId(schemaVersion: unknown, fallbackSchemaVers
   }
 
   throw new Error("schema publish response 缺少 schemaVersion.id。");
+}
+
+function readPublishedSchemaVersionNo(schemaVersion: unknown, fallbackSchemaVersionNo: number | undefined): number | undefined {
+  if (isRecord(schemaVersion) && typeof schemaVersion.schemaVersionNo === "number") {
+    return schemaVersion.schemaVersionNo;
+  }
+
+  if (isRecord(schemaVersion) && isRecord(schemaVersion.snapshot) && typeof schemaVersion.snapshot.schemaVersionNo === "number") {
+    return schemaVersion.snapshot.schemaVersionNo;
+  }
+
+  return fallbackSchemaVersionNo;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
