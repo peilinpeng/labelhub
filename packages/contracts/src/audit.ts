@@ -133,6 +133,12 @@ export type AuditSource =
   | "AI_AGENT"
   | "SYSTEM";
 
+export type AiAssistType =
+  | "SUMMARY"
+  | "REWRITE"
+  | "CLASSIFICATION"
+  | "QUALITY_CHECK";
+
 export type AuditActor = {
   id: ID | string;
   role: Role | string;
@@ -359,11 +365,7 @@ export interface AiAssistOutcomeAuditPayload {
 
   promptVersionId?: string;
   modelId?: string;
-  assistType:
-    | "SUMMARY"
-    | "REWRITE"
-    | "CLASSIFICATION"
-    | "QUALITY_CHECK";
+  assistType: AiAssistType;
 
   triggeredCount?: number;
   acceptedCount?: number;

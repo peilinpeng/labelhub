@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import { deepEqual, equal } from "node:assert/strict";
 import type {
+  AiAssistType,
   AiAssistOutcomeAuditPayload,
   AiReviewGeneratedAuditPayload,
   AppendAuditEventRequest,
@@ -10,6 +11,7 @@ import type {
   DataQualityPassportGeneratedAuditPayload,
   ExportGeneratedAuditPayload,
   FormAbandonedAuditPayload,
+  LLMRuntimeResponse,
   LabelerRiskSignalGeneratedAuditPayload,
   LabelingSessionSummaryAuditPayload,
   MigrationExecutedAuditPayload,
@@ -398,6 +400,7 @@ describe("Audit Event 共享类型", () => {
   });
 
   test("可以构造 AI_ASSIST_ACCEPTED / AI_ASSIST_EDITED payload，且不保存 prompt 或 raw output", () => {
+    const assistType: AiAssistType = "SUMMARY";
     const payload = {
       taskId: "task_news",
       assignmentId: "asn_news_1",
@@ -406,7 +409,7 @@ describe("Audit Event 共享类型", () => {
       fieldName: "summary",
       promptVersionId: "prompt_v1",
       modelId: "model_demo",
-      assistType: "SUMMARY",
+      assistType,
       triggeredCount: 1,
       acceptedCount: 1,
       editedCount: 1,
@@ -440,6 +443,43 @@ describe("Audit Event 共享类型", () => {
     equal(editedType, "AI_ASSIST_EDITED");
     equal(Object.keys(payload).includes("prompt"), false);
     equal(Object.keys(payload).includes("rawOutput"), false);
+    equal(payload.assistType, "SUMMARY");
+  });
+
+  test("LLMRuntimeResponse 可以携带 Prompt Feedback metadata", () => {
+    const assistType: AiAssistType = "REWRITE";
+    const response = {
+      output: {
+        summary: "建议补充事实来源。",
+      },
+      suggestedPatch: {
+        summary: "建议补充事实来源和统计口径。",
+      },
+      callId: "llm_call_1",
+      promptVersionId: "prompt_rewrite_v1",
+      modelId: "model_demo",
+      assistType,
+      latencyMs: 820,
+      outputHash: "sha256:ai-output",
+      promptSnapshotHash: "sha256:prompt",
+    } satisfies LLMRuntimeResponse;
+
+    equal(response.promptVersionId, "prompt_rewrite_v1");
+    equal(response.modelId, "model_demo");
+    equal(response.assistType, "REWRITE");
+    equal(response.latencyMs, 820);
+    equal(response.outputHash, "sha256:ai-output");
+    equal(response.promptSnapshotHash, "sha256:prompt");
+  });
+
+  test("最小 LLMRuntimeResponse 仍保持向后兼容", () => {
+    const response: LLMRuntimeResponse = {
+      output: "AI 建议摘要",
+      callId: "llm_legacy",
+    };
+
+    equal(response.callId, "llm_legacy");
+    equal(response.suggestedPatch, undefined);
   });
 
   test("可以构造 DATA_QUALITY_PASSPORT_GENERATED payload", () => {

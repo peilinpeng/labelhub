@@ -1,4 +1,4 @@
-import type { AuditLogSummary } from "./audit";
+import type { AiAssistType, AuditLogSummary } from "./audit";
 import type { ID, ISODateTime, ContractVersion, JsonPath, ReviewRuntimeContext } from "./global";
 import type { FileRef } from "./file";
 import type { ServerComponentRegistryItem, FrontendComponentRegistryItem } from "./registry";
@@ -254,6 +254,20 @@ export interface LLMRuntimeResponse {
   output: unknown;
   suggestedPatch?: AnswerPayload;
   callId: ID;
+  promptVersionId?: string;
+  modelId?: string;
+  assistType?: AiAssistType;
+  latencyMs?: number;
+  /**
+   * 应由后端或统一 hash 工具基于 canonical-json-v1 + SHA-256 生成。
+   * 前端不应使用 stableStringify 字符串冒充 hash。
+   */
+  outputHash?: string;
+  /**
+   * 应由后端或统一 hash 工具基于 canonical-json-v1 + SHA-256 生成。
+   * 前端不应使用 stableStringify 字符串冒充 hash。
+   */
+  promptSnapshotHash?: string;
 }
 
 export type ValidationRuleType =
