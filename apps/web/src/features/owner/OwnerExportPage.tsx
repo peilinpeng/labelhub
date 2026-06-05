@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
 import type { ID } from "@labelhub/contracts";
+import { appendExportGeneratedAuditSafely } from "./export-audit-events";
 
 interface OwnerExportPageProps {
   role: Role;
@@ -157,6 +158,18 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
         },
       });
       const backendJob = mapBackendExportJob(response.exportJob as BackendExportJob, taskId ?? "");
+      appendExportGeneratedAuditSafely({
+        taskId: taskId ?? "",
+        exportJob: response.exportJob,
+        format,
+        rowCount: response.exportJob.progress.total,
+        warningCount: 0,
+        targetSchemaVersionId: schemaVersionId,
+        includedSchemaVersionIds: response.exportJob.mapping.includedSchemaVersionIds ?? [schemaVersionId],
+        includeAudit,
+        statusFilter,
+        stage: "JOB_CREATED",
+      });
       setJobs((current) => current.map((job) => (job.id === jobId ? backendJob : job)));
       setExporting(false);
       setExportNotice("导出任务已提交，进度可在下载历史中查看。");
