@@ -54,6 +54,13 @@ class ListItemsResponse(BaseModel):
     total: int
 
 
+class AssignmentItemsResponse(BaseModel):
+    """Labeler 作答工作台左侧题目导航：返回该任务全部题目 + 当前题目下标。"""
+    items: list[DatasetItemResponse]
+    total: int
+    currentIndex: int  # 当前 assignment 绑定 item 在列表中的下标；找不到为 -1
+
+
 class UpdateDatasetItemRequest(BaseModel):
     sourcePayload: dict | None = None
     status: Literal["AVAILABLE", "DISABLED"] | None = Field(

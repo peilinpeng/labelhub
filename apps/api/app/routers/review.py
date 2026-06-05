@@ -30,10 +30,11 @@ router = APIRouter(tags=["review"])
 def get_review_queue(
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
+    status: str | None = Query(None, description="按 Submission 状态精确筛选（前端 Tab）"),
     db: Session = Depends(get_db),
     actor: Actor = Depends(require_roles("REVIEWER", "OWNER", "ADMIN")),
 ) -> ReviewQueueResponse:
-    submissions, total = review_domain.get_review_queue(db, actor, page, pageSize)
+    submissions, total = review_domain.get_review_queue(db, actor, page, pageSize, status)
     items = []
     for sub in submissions:
         from app.models.task import Task

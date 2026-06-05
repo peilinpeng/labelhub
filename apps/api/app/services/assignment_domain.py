@@ -1,10 +1,16 @@
+import hashlib
+import json
+import time
 import uuid
 from datetime import datetime, timezone, timedelta
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.middleware.error_handler import (
     InvalidStateTransitionException,
+    LLMAssistFailedException,
     PermissionDeniedException,
     ResourceNotFoundException,
     RevisionConflictException,
@@ -12,6 +18,7 @@ from app.middleware.error_handler import (
 )
 from app.models.assignment import Assignment, Draft
 from app.models.dataset import DatasetItem
+from app.models.llm import LLMCallLog
 from app.models.schema import SchemaVersion
 from app.models.task import Task
 from app.schemas.assignment import (
@@ -38,6 +45,19 @@ def _collect_field_names(nodes: list, result: set) -> None:
             _collect_field_names(children, result)
 
 
+def _find_node_by_id(nodes: list, node_id: str) -> dict | None:
+    """在 schema nodes（可能嵌套 children）中递归查找指定 id 的节点。"""
+    for node in nodes:
+        if node.get("id") == node_id:
+            return node
+        children = node.get("children", [])
+        if children:
+            found = _find_node_by_id(children, node_id)
+            if found:
+                return found
+    return None
+
+
 def _validate_answers(schema_json: dict, answers: dict) -> dict:
     nodes = schema_json.get("nodes", [])
     valid_field_names: set[str] = set()
@@ -49,8 +69,23 @@ def _validate_answers(schema_json: dict, answers: dict) -> dict:
     return {"valid": len(errors) == 0, "errors": errors}
 
 
-def get_marketplace_tasks(db: Session, actor: object, page: int, page_size: int) -> MarketplaceResponse:
+def get_marketplace_tasks(
+    db: Session,
+    actor: object,
+    page: int,
+    page_size: int,
+    keyword: str | None = None,
+    status: str | None = None,
+) -> MarketplaceResponse:
+    # 任务广场默认只展示 PUBLISHED；status 传入时进一步收窄（仅 PUBLISHED 在广场可见）
     base_q = db.query(Task).filter(Task.status == "PUBLISHED")
+    if status:
+        base_q = base_q.filter(Task.status == status)
+    if keyword:
+        like = f"%{keyword}%"
+        base_q = base_q.filter(
+            or_(Task.title.ilike(like), Task.description.ilike(like))
+        )
     total = base_q.count()
     items = (
         base_q.order_by(Task.created_at.desc())
@@ -154,6 +189,118 @@ def get_assignment_context(db: Session, assignment_id: str, actor: object) -> di
         "schema_json": schema_version.schema_json,
         "draft": draft,
         "last_return_reason": None,
+    }
+
+
+def list_assignment_items(db: Session, assignment_id: str, actor: object) -> dict:
+    """返回 assignment 所属任务的全部题目（供工作台左侧导航），并标出当前题目下标。"""
+    assignment = db.query(Assignment).filter_by(id=assignment_id).first()
+    if not assignment:
+        raise ResourceNotFoundException(f"Assignment {assignment_id!r} 不存在")
+
+    if actor.role == "LABELER" and assignment.labeler_id != actor.id:
+        raise PermissionDeniedException("无权访问该作答的题目列表")
+
+    items = (
+        db.query(DatasetItem)
+        .filter(DatasetItem.task_id == assignment.task_id)
+        .order_by(DatasetItem.created_at.asc())
+        .all()
+    )
+    current_index = next(
+        (idx for idx, it in enumerate(items) if it.id == assignment.item_id), -1
+    )
+    return {"items": items, "total": len(items), "current_index": current_index}
+
+
+def llm_assist(db: Session, assignment_id: str, actor: object, req: object) -> dict:
+    """
+    标注作答时调用 llm.assist 节点辅助生成内容（TC-ANS-05 / TC-DES-06）。
+    - 设置 30s 超时，避免前端长时间挂起
+    - 记录 LLMCallLog（purpose=ASSIST）并返回 latency_ms
+    - 返回契约 LLMRuntimeResponse 结构（output / suggestedPatch / callId）
+    """
+    assignment = db.query(Assignment).filter_by(id=assignment_id).first()
+    if not assignment:
+        raise ResourceNotFoundException(f"Assignment {assignment_id!r} 不存在")
+    if assignment.labeler_id != actor.id:
+        raise PermissionDeniedException("无权在该作答上调用 LLM 辅助")
+
+    schema_version = db.query(SchemaVersion).filter_by(id=assignment.schema_version_id).first()
+    nodes = (schema_version.schema_json or {}).get("nodes", [])
+    node = _find_node_by_id(nodes, req.nodeId)
+    if not node:
+        raise ValidationFailedException(f"节点 {req.nodeId!r} 不在当前 Schema 中")
+    if node.get("type") != "llm.assist":
+        raise ValidationFailedException(f"节点 {req.nodeId!r} 不是 llm.assist 类型")
+
+    prompt_template = node.get("promptTemplate") or "请根据以下标注上下文给出辅助建议。"
+    answers_str = json.dumps(req.answers, ensure_ascii=False)
+    rendered_prompt = f"{prompt_template}\n\n当前答案：{answers_str}"
+    model_policy_id = node.get("modelPolicyId") or settings.DOUBAO_MODEL
+    input_hash = hashlib.sha256(rendered_prompt.encode()).hexdigest()
+    prompt_hash = hashlib.sha256(prompt_template.encode()).hexdigest()
+
+    call_id = "llm_" + uuid.uuid4().hex
+    llm_log = LLMCallLog(
+        id=call_id,
+        purpose="ASSIST",
+        actor_id=actor.id,
+        assignment_id=assignment_id,
+        node_id=req.nodeId,
+        model_policy_id=model_policy_id,
+        prompt_snapshot_hash=prompt_hash,
+        input_hash=input_hash,
+        status="RUNNING",
+    )
+    db.add(llm_log)
+    db.flush()
+
+    started = time.monotonic()
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key=settings.DOUBAO_API_KEY,
+            base_url=settings.DOUBAO_BASE_URL,
+            timeout=30,
+        )
+        response = client.chat.completions.create(
+            model=settings.DOUBAO_MODEL,
+            messages=[{"role": "user", "content": rendered_prompt}],
+        )
+        output_text = response.choices[0].message.content or ""
+    except Exception as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        llm_log.status = "FAILED"
+        llm_log.error_message = str(exc)[:500]
+        llm_log.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        raise LLMAssistFailedException(
+            f"LLM 辅助调用失败（{latency_ms}ms）：{str(exc)[:200]}"
+        )
+
+    latency_ms = int((time.monotonic() - started) * 1000)
+    llm_log.status = "SUCCEEDED"
+    llm_log.output_hash = hashlib.sha256(output_text.encode()).hexdigest()
+    llm_log.finished_at = datetime.now(timezone.utc)
+
+    # 依据 llm.assist 节点的 outputBindings 构造可一键应用的草稿补丁（best-effort）
+    suggested_patch: dict | None = None
+    bindings = node.get("outputBindings") or []
+    if bindings:
+        suggested_patch = {
+            b["toFieldName"]: output_text
+            for b in bindings
+            if b.get("toFieldName")
+        } or None
+
+    db.commit()
+    return {
+        "output": output_text,
+        "suggested_patch": suggested_patch,
+        "call_id": call_id,
+        "latency_ms": latency_ms,
     }
 
 

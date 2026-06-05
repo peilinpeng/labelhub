@@ -6,11 +6,12 @@ from app.models.schema import SchemaVersion
 from app.middleware.auth import Actor, require_roles
 from app.services import assignment_domain, submission_domain
 from app.schemas.task import AuditLogSummaryResponse, TaskResponse
-from app.schemas.dataset import DatasetItemResponse
+from app.schemas.dataset import DatasetItemResponse, AssignmentItemsResponse
 from app.schemas.assignment import (
     ClaimTaskRequest, ClaimTaskResponse, AssignmentContextResponse,
     AssignmentResponse, DraftResponse, SaveDraftRequest, SaveDraftResponse,
     ValidationResultResponse, ListAssignmentsResponse,
+    LLMAssistRequest, LLMAssistResponse,
 )
 from app.schemas.submission import (
     SubmitAssignmentRequest, SubmitAssignmentResponse, SubmissionResponse,
@@ -69,6 +70,24 @@ def get_assignment(
     )
 
 
+@router.get(
+    "/assignments/{assignment_id}/items",
+    response_model=AssignmentItemsResponse,
+    summary="作答工作台左侧题目导航（任务全部题目 + 当前下标）",
+)
+def list_assignment_items(
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("LABELER", "OWNER", "ADMIN")),
+) -> AssignmentItemsResponse:
+    result = assignment_domain.list_assignment_items(db, assignment_id, actor)
+    return AssignmentItemsResponse(
+        items=[DatasetItemResponse.from_orm(i) for i in result["items"]],
+        total=result["total"],
+        currentIndex=result["current_index"],
+    )
+
+
 @router.put(
     "/assignments/{assignment_id}/draft",
     response_model=SaveDraftResponse,
@@ -112,6 +131,26 @@ def submit_assignment(
         validation=ValidationResultResponse(**submission.validation_json),
         nextStatus=submission.status,
         auditLog=AuditLogSummaryResponse.from_orm_obj(log),
+    )
+
+
+@router.post(
+    "/assignments/{assignment_id}/llm-assist",
+    response_model=LLMAssistResponse,
+    summary="LLM 辅助：调用 llm.assist 节点生成建议（30s 超时）",
+)
+def llm_assist(
+    assignment_id: str,
+    body: LLMAssistRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("LABELER")),
+) -> LLMAssistResponse:
+    result = assignment_domain.llm_assist(db, assignment_id, actor, body)
+    return LLMAssistResponse(
+        output=result["output"],
+        suggestedPatch=result["suggested_patch"],
+        callId=result["call_id"],
+        latencyMs=result["latency_ms"],
     )
 
 

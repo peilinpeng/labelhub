@@ -120,3 +120,17 @@ class MarketplaceResponse(BaseModel):
     page: int
     pageSize: int
     total: int
+
+
+class LLMAssistRequest(BaseModel):
+    """契约 LLMRuntimeRequest：标注作答时触发 llm.assist 节点。"""
+    nodeId: str
+    answers: dict = Field(default_factory=dict)
+
+
+class LLMAssistResponse(BaseModel):
+    """契约 LLMRuntimeResponse + latencyMs（前端据此显示 loading/超时）。"""
+    output: Any
+    suggestedPatch: dict | None = None
+    callId: str
+    latencyMs: int

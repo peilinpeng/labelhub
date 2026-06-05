@@ -323,9 +323,26 @@ def batch_decision(db: Session, actor: Any, req: Any) -> list[dict]:
     return results
 
 
-def get_review_queue(db: Session, actor: Any, page: int, page_size: int) -> tuple[list, int]:
-    statuses = ["AI_PASSED", "NEEDS_HUMAN_REVIEW", "HUMAN_REVIEWING", "FINAL_REVIEWING"]
-    query = db.query(Submission).filter(Submission.status.in_(statuses))
+# 审核队列默认展示的待处理状态（无 status 过滤时）
+_REVIEW_QUEUE_DEFAULT_STATUSES = ["AI_PASSED", "NEEDS_HUMAN_REVIEW", "HUMAN_REVIEWING", "FINAL_REVIEWING"]
+# 允许前端 Tab 精确筛选的全部 Submission 状态（含已通过/已打回历史）
+_REVIEW_QUEUE_FILTERABLE_STATUSES = _REVIEW_QUEUE_DEFAULT_STATUSES + ["ACCEPTED", "RETURNED", "REJECTED"]
+
+
+def get_review_queue(
+    db: Session, actor: Any, page: int, page_size: int, status: str | None = None
+) -> tuple[list, int]:
+    if status:
+        # 前端 Tab 精确筛选：支持 AI 通过 / 需人工 / 已通过 / 已打回 等
+        if status not in _REVIEW_QUEUE_FILTERABLE_STATUSES:
+            raise ValidationFailedException(
+                f"status 取值非法：{status!r}，仅支持 {_REVIEW_QUEUE_FILTERABLE_STATUSES}"
+            )
+        query = db.query(Submission).filter(Submission.status == status)
+    else:
+        query = db.query(Submission).filter(
+            Submission.status.in_(_REVIEW_QUEUE_DEFAULT_STATUSES)
+        )
     total = query.count()
     offset = (page - 1) * page_size
     submissions = (
