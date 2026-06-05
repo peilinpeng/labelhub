@@ -6,7 +6,6 @@ import type {
   ExprValue,
   FieldNode,
   LabelHubSchema,
-  LLMAssistNode,
   SchemaChange,
   SchemaNode,
   ValidationRule,
