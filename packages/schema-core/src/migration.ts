@@ -6,6 +6,7 @@ import type {
   LabelHubSchema,
   ManualMappingSlot,
   MigrationDryRunReport,
+  MigrationExecutionResult,
   MigrationOperation,
   MigrationPlan,
   MigrationSkippedSubmission,
@@ -17,6 +18,7 @@ import type {
 } from "@labelhub/contracts";
 import { detectSchemaChanges, type SchemaChangeDetectionOptions } from "./compatibility.ts";
 import { normalizeAnswers } from "./normalization.ts";
+import { stableStringify } from "./stable-hash.ts";
 import { collectFieldNodes } from "./traverse.ts";
 import { validateAnswers } from "./validation.ts";
 
@@ -64,6 +66,8 @@ type SampleCandidate = {
   archivedAnswers?: AnswerPayload;
   signals: Set<SampleSignal>;
 };
+
+type MigratedSubmission = MigrationExecutionResult["migratedSubmissions"][number];
 
 const samplePriorityOrder: SampleSignal[] = [
   "BLOCKING",
@@ -360,6 +364,91 @@ export function dryRunMigration(
   };
 }
 
+export function executeMigrationPlan(
+  plan: MigrationPlan,
+  submissions: MigrationSubmissionInput[],
+): MigrationExecutionResult {
+  assertMigrationPlanExecutable(plan);
+
+  const migratedSubmissions: MigratedSubmission[] = [];
+  const skippedSubmissions: MigrationSkippedSubmission[] = [];
+  const archivedFieldStats = new Map<string, number>();
+
+  for (const submission of submissions) {
+    const outOfScopeReason = getOutOfScopeReason(plan, submission);
+    if (outOfScopeReason !== undefined) {
+      skippedSubmissions.push({
+        submissionId: submission.submissionId,
+        reason: "OUT_OF_SCOPE",
+        message: outOfScopeReason,
+      });
+      continue;
+    }
+
+    const answers = cloneAnswerPayload(submission.answers);
+    const archivedAnswers: AnswerPayload = {};
+    const blockingMessages: string[] = [];
+
+    for (const operation of plan.operations) {
+      const result = applyMigrationOperation(operation, answers, archivedAnswers);
+      if (operation.op === "ARCHIVE_FIELD" && Object.prototype.hasOwnProperty.call(archivedAnswers, operation.fieldName)) {
+        incrementArchivedFieldStat(archivedFieldStats, operation.fieldName);
+      }
+      if (result.blockedMessage !== undefined) {
+        blockingMessages.push(result.blockedMessage);
+      }
+    }
+
+    if (blockingMessages.length > 0) {
+      skippedSubmissions.push({
+        submissionId: submission.submissionId,
+        reason: "BLOCKED",
+        message: blockingMessages.join("；"),
+      });
+      continue;
+    }
+
+    const migrated: MigratedSubmission = {
+      submissionId: submission.submissionId,
+      answers,
+    };
+    if (plan.fromSchemaVersionId !== undefined) {
+      migrated.fromSchemaVersionId = plan.fromSchemaVersionId;
+    }
+    if (plan.toSchemaVersionId !== undefined) {
+      migrated.toSchemaVersionId = plan.toSchemaVersionId;
+    }
+    if (Object.keys(archivedAnswers).length > 0) {
+      migrated.archivedAnswers = archivedAnswers;
+    }
+    if (submission.version !== undefined) {
+      migrated.expectedVersion = submission.version;
+    }
+    if (submission.updatedAt !== undefined) {
+      migrated.expectedUpdatedAt = submission.updatedAt;
+    }
+    migratedSubmissions.push(migrated);
+  }
+
+  const conflictCount = 0;
+  const checksumInput = createExecutionChecksumInput(plan, migratedSubmissions, skippedSubmissions, archivedFieldStats);
+
+  return {
+    migratedSubmissions,
+    skippedSubmissions,
+    conflictCount,
+    recordDraft: {
+      operationCount: plan.operations.length,
+      migratedCount: migratedSubmissions.length,
+      skippedCount: skippedSubmissions.length,
+      conflictCount,
+      generatedAt: new Date().toISOString(),
+      checksumInput: toCanonicalChecksumInput(checksumInput),
+      canonicalSerializationVersion: plan.canonicalSerializationVersion ?? "canonical-json-v1",
+    },
+  };
+}
+
 function createFieldMaps(oldSchema: LabelHubSchema, newSchema: LabelHubSchema): FieldMaps {
   const oldFields = collectFieldNodes(oldSchema);
   const newFields = collectFieldNodes(newSchema);
@@ -369,6 +458,38 @@ function createFieldMaps(oldSchema: LabelHubSchema, newSchema: LabelHubSchema): 
     oldFieldsByName: mapFieldsByName(oldFields),
     newFieldsByName: mapFieldsByName(newFields),
   };
+}
+
+function assertMigrationPlanExecutable(plan: MigrationPlan): void {
+  const hasUnresolvedManualSlot = plan.manualMappingSlots.some((slot) => slot.resolved === false);
+  const hasManualMappingOperation = plan.operations.some((operation) => operation.op === "REQUIRE_MANUAL_MAPPING");
+
+  if (plan.executable !== true || hasUnresolvedManualSlot || hasManualMappingOperation) {
+    throw new Error("MigrationPlan 不可执行：存在未解决的人工映射或 blocking issue。");
+  }
+}
+
+function createExecutionChecksumInput(
+  plan: MigrationPlan,
+  migratedSubmissions: MigratedSubmission[],
+  skippedSubmissions: MigrationSkippedSubmission[],
+  archivedFieldStats: Map<string, number>,
+): unknown {
+  return {
+    fromSchemaVersionId: plan.fromSchemaVersionId,
+    toSchemaVersionId: plan.toSchemaVersionId,
+    operationCount: plan.operations.length,
+    operations: plan.operations,
+    migratedSubmissionIds: migratedSubmissions.map((submission) => submission.submissionId).sort(),
+    skippedSubmissionIds: skippedSubmissions.map((submission) => submission.submissionId).sort(),
+    archivedFieldSummary: [...archivedFieldStats.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([fieldName, count]) => ({ fieldName, count })),
+  };
+}
+
+function toCanonicalChecksumInput(checksumInput: unknown): unknown {
+  return JSON.parse(stableStringify(checksumInput)) as unknown;
 }
 
 function createExistingFieldOperations(
@@ -576,12 +697,28 @@ function applyOptionValueMapping(
     return { applied: true, touchedFieldName: operation.fieldName, sampleSignal: "AFFECTED" };
   }
 
-  if (Array.isArray(value) && value.some((item) => item === operation.fromValue)) {
-    answers[operation.fieldName] = value.map((item) => (item === operation.fromValue ? operation.toValue : item));
-    return { applied: true, touchedFieldName: operation.fieldName, sampleSignal: "AFFECTED" };
+  if (typeof value === "string") {
+    return { applied: false };
   }
 
-  return { applied: false };
+  if (Array.isArray(value)) {
+    if (!value.every((item) => typeof item === "string")) {
+      return {
+        applied: false,
+        blockedMessage: `字段 ${operation.fieldName} 无法执行 MAP_OPTION_VALUE：原值不是 string[]。`,
+      };
+    }
+    if (value.some((item) => item === operation.fromValue)) {
+      answers[operation.fieldName] = value.map((item) => (item === operation.fromValue ? operation.toValue : item));
+      return { applied: true, touchedFieldName: operation.fieldName, sampleSignal: "AFFECTED" };
+    }
+    return { applied: false };
+  }
+
+  return {
+    applied: false,
+    blockedMessage: `字段 ${operation.fieldName} 无法执行 MAP_OPTION_VALUE：原值不是 string 或 string[]。`,
+  };
 }
 
 function getOutOfScopeReason(plan: MigrationPlan, submission: MigrationSubmissionInput): string | undefined {

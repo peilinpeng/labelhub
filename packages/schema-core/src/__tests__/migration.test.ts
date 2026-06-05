@@ -1,4 +1,4 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { describe, test } from "node:test";
 import type {
   ChoiceFieldNode,
@@ -11,6 +11,7 @@ import type {
 import {
   createMigrationPlan,
   dryRunMigration,
+  executeMigrationPlan,
 } from "../index.ts";
 
 describe("Migration Plan", () => {
@@ -460,6 +461,271 @@ describe("Migration Dry Run", () => {
   });
 });
 
+describe("Migration Execute", () => {
+  test("plan.executable = false 时拒绝执行", () => {
+    const oldSchema = createSchema();
+    const newSchema = removeField(oldSchema, "obsoleteNote");
+    const plan = createMigrationPlan(oldSchema, newSchema);
+
+    throws(() => executeMigrationPlan(plan, [submission("sub_1", completeAnswers())]), /MigrationPlan 不可执行/);
+  });
+
+  test("KEEP_FIELD 保留字段值", () => {
+    const schema = createSchema();
+    const plan = createMigrationPlan(schema, cloneSchema(schema));
+
+    const result = executeMigrationPlan(plan, [submission("sub_1", completeAnswers())]);
+
+    equal(result.migratedSubmissions[0]?.answers.summary, "原摘要");
+    equal(result.skippedSubmissions.length, 0);
+  });
+
+  test("RENAME_FIELD 移动字段值并删除 old field", () => {
+    const oldSchema = createSchema();
+    const newSchema = removeField(oldSchema, "summary");
+    addField(newSchema, textareaField("newsSummary", false));
+    const plan = createMigrationPlan(oldSchema, newSchema, {
+      renameMap: { summary: "newsSummary" },
+    });
+
+    const result = executeMigrationPlan(plan, [submission("sub_1", completeAnswers())]);
+
+    equal(result.migratedSubmissions[0]?.answers.newsSummary, "原摘要");
+    equal(Object.prototype.hasOwnProperty.call(result.migratedSubmissions[0]?.answers ?? {}, "summary"), false);
+  });
+
+  test("choice.radio → choice.checkbox 执行 string → string[]", () => {
+    const oldSchema = createSchema();
+    const newSchema = replaceField(oldSchema, choiceField("qualityRating", "choice.checkbox"));
+    const plan = createMigrationPlan(oldSchema, newSchema);
+
+    const result = executeMigrationPlan(plan, [submission("sub_1", completeAnswers())]);
+
+    deepEqual(result.migratedSubmissions[0]?.answers.qualityRating, ["pass"]);
+  });
+
+  test("choice.checkbox → choice.radio 数组长度为 1 时执行 string[] → string", () => {
+    const oldSchema = replaceField(createSchema(), choiceField("qualityRating", "choice.checkbox"));
+    const newSchema = replaceField(oldSchema, choiceField("qualityRating", "choice.radio"));
+    const plan = createMigrationPlan(oldSchema, newSchema);
+
+    const result = executeMigrationPlan(
+      plan,
+      [submission("sub_1", { summary: "原摘要", qualityRating: ["pass"], obsoleteNote: "旧备注" })],
+    );
+
+    equal(result.migratedSubmissions[0]?.answers.qualityRating, "pass");
+  });
+
+  test("choice.checkbox → choice.radio 数组长度大于 1 时 skipped / BLOCKED", () => {
+    const oldSchema = replaceField(createSchema(), choiceField("qualityRating", "choice.checkbox"));
+    const newSchema = replaceField(oldSchema, choiceField("qualityRating", "choice.radio"));
+    const plan = createMigrationPlan(oldSchema, newSchema);
+
+    const result = executeMigrationPlan(
+      plan,
+      [submission("sub_1", { summary: "原摘要", qualityRating: ["pass", "needs_revision"], obsoleteNote: "旧备注" })],
+    );
+
+    equal(result.migratedSubmissions.length, 0);
+    ok(result.skippedSubmissions.some((item) => item.reason === "BLOCKED"));
+  });
+
+  test("ARCHIVE_FIELD 输出 archivedAnswers，且 migrated answers 不包含旧字段", () => {
+    const oldSchema = createSchema();
+    const newSchema = removeField(oldSchema, "obsoleteNote");
+    const plan = createMigrationPlan(oldSchema, newSchema, {
+      archiveRemovedFields: true,
+    });
+
+    const result = executeMigrationPlan(plan, [submission("sub_1", completeAnswers())]);
+
+    equal(result.migratedSubmissions[0]?.archivedAnswers?.obsoleteNote, "旧备注");
+    equal(Object.prototype.hasOwnProperty.call(result.migratedSubmissions[0]?.answers ?? {}, "obsoleteNote"), false);
+  });
+
+  test("ADD_DEFAULT 写入默认值", () => {
+    const oldSchema = createSchema();
+    const newSchema = cloneSchema(oldSchema);
+    addField(newSchema, {
+      ...textField("reviewNote", false),
+      defaultValue: "待复核",
+    });
+    const plan = createMigrationPlan(oldSchema, newSchema);
+
+    const result = executeMigrationPlan(plan, [submission("sub_1", completeAnswers())]);
+
+    equal(result.migratedSubmissions[0]?.answers.reviewNote, "待复核");
+  });
+
+  test("MAP_OPTION_VALUE 替换 string 值", () => {
+    const oldSchema = createSchema();
+    const newSchema = replaceField(oldSchema, {
+      ...choiceField("qualityRating", "choice.radio"),
+      options: [
+        { label: "通过", value: "pass" },
+        { label: "需要复核", value: "review_required" },
+      ],
+    });
+    const plan = createMigrationPlan(oldSchema, newSchema, {
+      optionValueMap: {
+        qualityRating: {
+          needs_revision: "review_required",
+        },
+      },
+    });
+
+    const result = executeMigrationPlan(
+      plan,
+      [submission("sub_1", { summary: "原摘要", qualityRating: "needs_revision", obsoleteNote: "旧备注" })],
+    );
+
+    equal(result.migratedSubmissions[0]?.answers.qualityRating, "review_required");
+  });
+
+  test("MAP_OPTION_VALUE 替换 string[] 中的值", () => {
+    const oldSchema = replaceField(createSchema(), choiceField("qualityRating", "choice.checkbox"));
+    const newSchema = replaceField(oldSchema, {
+      ...choiceField("qualityRating", "choice.checkbox"),
+      options: [
+        { label: "通过", value: "pass" },
+        { label: "需要复核", value: "review_required" },
+      ],
+    });
+    const plan = createMigrationPlan(oldSchema, newSchema, {
+      optionValueMap: {
+        qualityRating: {
+          needs_revision: "review_required",
+        },
+      },
+    });
+
+    const result = executeMigrationPlan(
+      plan,
+      [submission("sub_1", { summary: "原摘要", qualityRating: ["pass", "needs_revision"], obsoleteNote: "旧备注" })],
+    );
+
+    deepEqual(result.migratedSubmissions[0]?.answers.qualityRating, ["pass", "review_required"]);
+  });
+
+  test("无法映射的 option value 使该 submission skipped / BLOCKED", () => {
+    const oldSchema = createSchema();
+    const newSchema = replaceField(oldSchema, {
+      ...choiceField("qualityRating", "choice.radio"),
+      options: [
+        { label: "通过", value: "pass" },
+        { label: "需要复核", value: "review_required" },
+      ],
+    });
+    const plan = createMigrationPlan(oldSchema, newSchema, {
+      optionValueMap: {
+        qualityRating: {
+          needs_revision: "review_required",
+        },
+      },
+    });
+
+    const result = executeMigrationPlan(
+      plan,
+      [submission("sub_1", { summary: "原摘要", qualityRating: 123, obsoleteNote: "旧备注" })],
+    );
+
+    equal(result.migratedSubmissions.length, 0);
+    ok(result.skippedSubmissions.some((item) => item.reason === "BLOCKED"));
+  });
+
+  test("executeMigrationPlan 不修改原 submissions", () => {
+    const oldSchema = createSchema();
+    const newSchema = replaceField(oldSchema, textareaField("summary", true));
+    const plan = createMigrationPlan(oldSchema, newSchema);
+    const submissions = [submission("sub_1", completeAnswers())];
+    const before = cloneSubmissions(submissions);
+
+    executeMigrationPlan(plan, submissions);
+
+    deepEqual(submissions, before);
+  });
+
+  test("includedSubmissionIds 外的 submission skipped 为 OUT_OF_SCOPE", () => {
+    const schema = createSchema();
+    const plan = createMigrationPlan(schema, cloneSchema(schema), {
+      includedSubmissionIds: ["sub_1"],
+    });
+
+    const result = executeMigrationPlan(
+      plan,
+      [submission("sub_1", completeAnswers()), submission("sub_2", completeAnswers())],
+    );
+
+    ok(result.skippedSubmissions.some((item) => item.submissionId === "sub_2" && item.reason === "OUT_OF_SCOPE"));
+    equal(result.migratedSubmissions.length, 1);
+  });
+
+  test("cutoffSubmittedAt 之后的 submission skipped 为 OUT_OF_SCOPE", () => {
+    const schema = createSchema();
+    const plan = createMigrationPlan(schema, cloneSchema(schema), {
+      cutoffSubmittedAt: "2026-05-24T00:00:00.000Z",
+    });
+
+    const result = executeMigrationPlan(
+      plan,
+      [
+        submission("sub_1", completeAnswers(), "2026-05-24T00:00:00.000Z"),
+        submission("sub_2", completeAnswers(), "2026-05-25T00:00:00.000Z"),
+      ],
+    );
+
+    ok(result.skippedSubmissions.some((item) => item.submissionId === "sub_2" && item.reason === "OUT_OF_SCOPE"));
+    equal(result.migratedSubmissions.length, 1);
+  });
+
+  test("migratedSubmissions 携带 expectedVersion / expectedUpdatedAt", () => {
+    const schema = createSchema();
+    const plan = createMigrationPlan(schema, cloneSchema(schema));
+
+    const result = executeMigrationPlan(
+      plan,
+      [submission("sub_1", completeAnswers(), "2026-05-24T00:00:00.000Z", {
+        version: 7,
+        updatedAt: "2026-05-24T10:00:00.000Z",
+      })],
+    );
+
+    equal(result.migratedSubmissions[0]?.expectedVersion, 7);
+    equal(result.migratedSubmissions[0]?.expectedUpdatedAt, "2026-05-24T10:00:00.000Z");
+  });
+
+  test("recordDraft 正确统计并包含 checksumInput，conflictCount 默认为 0", () => {
+    const oldSchema = createSchema();
+    const newSchema = removeField(oldSchema, "obsoleteNote");
+    const plan = createMigrationPlan(oldSchema, newSchema, {
+      archiveRemovedFields: true,
+      includedSubmissionIds: ["sub_1"],
+    });
+
+    const result = executeMigrationPlan(
+      plan,
+      [submission("sub_1", completeAnswers()), submission("sub_2", completeAnswers())],
+    );
+
+    equal(result.recordDraft.operationCount, plan.operations.length);
+    equal(result.recordDraft.migratedCount, 1);
+    equal(result.recordDraft.skippedCount, 1);
+    equal(result.recordDraft.conflictCount, 0);
+    equal(result.conflictCount, 0);
+    ok(typeof result.recordDraft.generatedAt === "string");
+    deepEqual(result.recordDraft.checksumInput, {
+      archivedFieldSummary: [{ fieldName: "obsoleteNote", count: 1 }],
+      fromSchemaVersionId: "sv_migration_1",
+      migratedSubmissionIds: ["sub_1"],
+      operationCount: plan.operations.length,
+      operations: plan.operations,
+      skippedSubmissionIds: ["sub_2"],
+      toSchemaVersionId: "sv_migration_1",
+    });
+  });
+});
+
 function createSchema(): LabelHubSchema {
   return {
     contractVersion: "1.1",
@@ -569,13 +835,24 @@ function submission(
   submissionId: string,
   answers: Record<string, unknown>,
   submittedAt = "2026-05-24T00:00:00.000Z",
+  metadata: {
+    version?: number;
+    updatedAt?: string;
+  } = {},
 ): MigrationSubmissionInput {
-  return {
+  const result: MigrationSubmissionInput = {
     submissionId,
     schemaVersionId: "sv_migration_1",
     answers,
     submittedAt,
   };
+  if (metadata.version !== undefined) {
+    result.version = metadata.version;
+  }
+  if (metadata.updatedAt !== undefined) {
+    result.updatedAt = metadata.updatedAt;
+  }
+  return result;
 }
 
 function removeField(schema: LabelHubSchema, fieldName: string): LabelHubSchema {
