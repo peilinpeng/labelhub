@@ -404,6 +404,16 @@ export interface FieldNode {
 
 当前 contracts 中已经存在 `SchemaVersion` 和 `SchemaVersionRef`。Batch 1 不应直接新增一个与现有类型职责重叠的版本信息类型。
 
+当前实现已经复用现有 `SchemaVersion` / `SchemaVersionRef`，并对 `SchemaVersion` 做最小扩展以承载 `previousVersionId` 和 `snapshotHash`。这两个字段只用于表达版本链路和不可变快照校验，不改变 `SchemaVersion` 作为已发布 snapshot metadata 的核心职责。
+
+后续不允许新增与 `SchemaVersion` / `SchemaVersionRef` 职责重叠的 `SchemaVersionInfo`。如果未来确实需要辅助视图类型，必须先证明现有类型无法通过最小扩展表达，并且不得在 schema-core、schema-designer 或 apps/web 中私自定义重复版本类型。
+
+Batch 1 实施报告必须明确说明：
+
+1. 复用了 `SchemaVersion` / `SchemaVersionRef` 中的哪些字段；
+2. 最小扩展了哪些字段；
+3. 为什么没有新增 `SchemaVersionInfo`。
+
 Batch 1 的处理规则：
 
 1. 先审查并复用现有 `SchemaVersion` / `SchemaVersionRef`。
@@ -460,6 +470,8 @@ LABELING -> CREATE / EDIT，由页面或 assignment 状态决定
 REVIEW_READONLY -> REVIEW
 REVIEW_DIFF -> REVIEW
 ```
+
+`LABELING -> CREATE / EDIT` 的决策权属于页面层调用方。schema-renderer 不根据 `submissionId`、answers 是否为空、URL、缓存或其他隐式状态自行推断 `CREATE` / `EDIT`。页面层应根据是否已有 `submissionId`、是否为退回后的重新编辑提交、或 assignment/submission 的真实状态，显式传入 `CREATE` 或 `EDIT` 对应的 `SchemaVisibilityMode`。renderer 只消费 `SchemaVisibilityMode`，不拥有业务语义判断权。
 
 ### 6.4 RuntimeContext 扩展
 
@@ -1611,6 +1623,19 @@ type TransformRegistry = Record<
 >;
 ```
 
+`TransformRegistry` 必须在服务启动时由后端代码静态初始化。Transform 实现必须随后端代码一起发布、审查和测试。
+
+禁止通过以下方式动态注册 transform：
+
+1. API 请求；
+2. 数据库记录；
+3. 远程配置；
+4. schema payload；
+5. 用户上传文件；
+6. 运行时脚本或插件注入。
+
+服务运行期间不允许运行时替换 `apply` 函数。如果需要新增或修改 transform，必须通过后端代码变更、代码审查、测试和重新发布完成。
+
 第一版实现中，schema-core 只负责在 MigrationPlan 中标记需要 `CUSTOM_TRANSFORM` 的操作，不负责执行。
 
 后端执行 `CUSTOM_TRANSFORM` 前必须检查：
@@ -1880,6 +1905,17 @@ export type ExportWarning = {
 ```
 
 Export 完成后，后端应保存 export audit record，并记录 warning count。
+
+#### 11.4.5 ARCHIVE_RESTORE 合法来源
+
+`ARCHIVE_RESTORE` 只能来自明确、可审计的 mapping，合法来源只有两类：
+
+1. 管理员在导出配置中显式提供的 `ExportFieldMapping`；
+2. 已审批且状态为 succeeded 的 `MigrationRecord` 中保存的 archive mapping。
+
+没有明确 mapping 时，`archivedAnswers` 只能作为独立 archive 数据导出，不能回填到 `targetSchemaVersionId` 的目标 schema 表头中。
+
+如果同一个 archived field 到 target field 存在多条同等优先级 mapping，后端必须返回冲突错误，不允许前端自行选择，也不允许通过字段名相似度、类型相似度或 LLM 推断自动选择。
 
 ---
 
