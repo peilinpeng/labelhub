@@ -13,6 +13,7 @@ import type {
   CreateUploadUrlRequest,
   CreateUploadUrlResponse,
   GenerateSchemaRequest,
+  GetExportArtifactRecordsResponse,
   ImportDatasetRequest,
   PublishTaskRequest,
   PublishTaskResponse,
@@ -39,11 +40,13 @@ import {
   decideReview,
   generateSchema,
   getAssignmentContext,
+  getExportArtifactSummary,
   getReviewDetail,
   getSchemaDraft,
   getTask,
   importDataset,
   listAssignmentDatasetItems,
+  listExportRecords,
   listMarketplaceTasks,
   listMySubmissions,
   listReviewQueue,
@@ -178,6 +181,20 @@ export const handlers = [
   http.get("/api/v1/tasks/:taskId/exports", ({ params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     return okJson(mockDb.exportJobs.filter((item) => item.taskId === taskId));
+  }),
+
+  http.get("/api/v1/exports/:exportId/records", ({ params }) => {
+    const exportId = getParam(params as MockParams, "exportId");
+    const artifactSummary = getExportArtifactSummary(exportId);
+    if (artifactSummary === undefined) {
+      return errorJson("RESOURCE_NOT_FOUND", "导出产物记录不存在", 404);
+    }
+    const response: GetExportArtifactRecordsResponse = {
+      exportId,
+      records: listExportRecords(exportId),
+      artifactSummary,
+    };
+    return okJson(response);
   }),
 
   http.get("/api/v1/exports/:exportJobId", ({ params }) => {

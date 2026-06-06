@@ -335,7 +335,7 @@ function createSeedAuditEvents(): AuditEventRecord[] {
       payload: sanitizeAuditPayload({
         exportId: "job_seed_export",
         passportCount: 128,
-        passportBatchHash: "sha256:mock-passport-batch",
+        passportBatchHash: "aca626a201b9d65560ef78fd91933451f1edaf1ff0ec05c7b9010ab7de44701d",
         warningCount: 0,
       }),
       createdAt,
@@ -1047,6 +1047,7 @@ async function generateExportArtifact(exportJob: ExportJob, submissions: Submiss
 
   exportJob.artifactSummary = summary;
   upsertExportArtifact({ summary, records });
+  appendDataQualityPassportGeneratedAudit(summary);
 }
 
 function buildDataQualityPassport(input: {
@@ -1167,6 +1168,39 @@ function buildExportRecordMetadata(input: {
 function upsertExportArtifact(artifact: MockExportArtifact): void {
   mockDb.exportArtifacts = mockDb.exportArtifacts.filter((item) => item.summary.exportId !== artifact.summary.exportId);
   mockDb.exportArtifacts.push(artifact);
+}
+
+function appendDataQualityPassportGeneratedAudit(summary: ExportArtifactSummary): void {
+  if (summary.passportBatchHash === undefined) {
+    console.warn("质量护照批次 hash 缺失，跳过 DATA_QUALITY_PASSPORT_GENERATED 审计事件。");
+    return;
+  }
+  const target: AppendAuditEventRequest["target"] = {
+    entityType: "EXPORT",
+    entityId: summary.exportId,
+    taskId: summary.taskId,
+    exportId: summary.exportId,
+  };
+  if (summary.schemaVersionId !== undefined) target.schemaVersionId = summary.schemaVersionId;
+
+  appendAuditEvent({
+    type: "DATA_QUALITY_PASSPORT_GENERATED",
+    severity: summary.warningCount > 0 ? "WARNING" : "INFO",
+    source: "SYSTEM",
+    actor: {
+      id: "mock-export-worker",
+      role: "SYSTEM",
+      displayName: "Mock Export Worker",
+    },
+    target,
+    payload: {
+      exportId: summary.exportId,
+      passportCount: summary.passportCount ?? 0,
+      passportBatchHash: summary.passportBatchHash,
+      warningCount: summary.warningCount,
+    },
+    idempotencyKey: `DATA_QUALITY_PASSPORT:${summary.exportId}:GENERATED`,
+  });
 }
 
 function applyReviewPatches(answers: AnswerPayload, patches: ReviewPatch[]): Record<string, unknown> {

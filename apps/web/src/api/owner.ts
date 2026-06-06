@@ -12,6 +12,7 @@ import type {
   CreateExportJobRequest,
   CreateExportJobResponse,
   ExportJob,
+  GetExportArtifactRecordsResponse,
   SchemaVersion,
 } from "@labelhub/contracts";
 import { apiGet, apiPost, apiPut } from "./client";
@@ -97,6 +98,10 @@ export async function createExportJob(
 export async function listExportJobs(taskId: string): Promise<ExportJob[]> {
   const res = await apiGet<PageList<ExportJob>>(`/api/v1/tasks/${taskId}/exports`);
   return unwrapList(res);
+}
+
+export async function getExportArtifactRecords(exportId: string): Promise<GetExportArtifactRecordsResponse> {
+  return apiGet<GetExportArtifactRecordsResponse>(`/api/v1/exports/${exportId}/records`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
