@@ -19,8 +19,8 @@
 |---|---|---|---|
 | Phase A | QL-6 / AI-1~AI-6 | Prompt Feedback Loop（metadata、renderer callback、Labeler 事件、AI_ASSIST_EDITED、Reviewer AI feedback） | ✅ 已完成 |
 | A-tail | AI-7 | mock prompt registry / 真实 SHA-256 `promptSnapshotHash` / `outputHash` | ✅ 已完成（commit 73ec0bc） |
-| Phase B1 | QL-4 第一步 / RD-1 | Reviewer corrected answers + shallow patches（不写 audit） | ✅ 已完成（未 commit，工作区 dirty） |
-| **Phase B2** | QL-4 第二步 / **RD-2** | `REVIEW_DIFF_GENERATED` audit | 🔵 当前任务（下一步） |
+| Phase B1 | QL-4 第一步 / RD-1 | Reviewer corrected answers + shallow patches（不写 audit） | ✅ 已完成（commit 31e4bac） |
+| **Phase B2** | QL-4 第二步 / **RD-2** | `REVIEW_DIFF_GENERATED` audit | ✅ 已完成（未 commit，待维护者提交） |
 | Phase C | QL-5 | Export / Data Quality Passport contracts 与 mock | ⬜ 未开始 |
 | Phase D | QL-7 | Read Model / Snapshot / risk fast path | ⬜ 未开始（工业化阶段） |
 
@@ -32,37 +32,37 @@
 
 ```txt
 分支：    feature/schema-governance-upgrade
-commit：  4e84977   docs: add multi-agent handoff files for schema arch work
-工作区：  dirty（Phase B1 改动未 commit，含下方 4 个文件）
-          - apps/web/src/features/reviewer/reviewer-diff.ts（新增）
+commit：  待维护者 commit 后回填
+工作区：  dirty（Phase B2 改动未 commit，含下方 3 个文件）
+          - HANDOFF.md（修改）
           - apps/web/src/features/reviewer/ReviewDetailPage.tsx（修改）
           - apps/web/src/features/reviewer/reviewer-audit-events.ts（修改）
-          - apps/web/src/styles.css（修改）
-更新时间：2026-06-06（本班 Claude Code 完成 Phase B1）
-更新者：  Claude Code
+更新时间：2026-06-06（本班 Codex 完成 Phase B2 审查与收尾）
+更新者：  Codex
 ```
 
-> 注：HEAD 4e84977 是维护者做的文档基础设施 commit（在 73ec0bc A-tail 之上）。
-> 开班时：`git rev-parse HEAD` 应得到 4e84977；工作区 dirty 是预期状态（B1 改动未 commit）。
+> 注：本班开班时真实 HEAD 为 5acdcfa（`docs: add RD-2 task spec (REVIEW_DIFF_GENERATED)`）。
+> Phase B2 代码改动尚未 commit，维护者提交后再回填最终 commit。
 
 ---
 
 ## 2. 当前任务（本轮范围，唯一权威）
 
-**当前任务：Phase B1（= RD-1）Reviewer corrected answers / shallow patches 最小实现**
+**当前任务：Phase B2（= RD-2）REVIEW_DIFF_GENERATED audit 审查与收尾**
 
 本轮目标：
-- 让 Reviewer 在审核详情页基于原始 submission answers 生成 corrected answers；
-- 在 PASS / RETURN 提交时带上结构化 patches。
+- 审查 Claude Code 已写的 RD-2 diff audit；
+- 确认 `REVIEW_DIFF_GENERATED` 触发时机、payload 安全性和 hash 真实性；
+- 如审查通过，恢复更新本文件。
 
 **本轮明确不做：**
-- 不写 `REVIEW_DIFF_GENERATED` / `REVIEW_DEEP_DIFF_GENERATED`（留给 B2）；
-- 不生成 beforeAnswerHash / afterAnswerHash，不生成 fake hash；
-- 不修改 contracts（除非 `ReviewDecisionRequest.patches` 根本不存在，那种情况先停下报告）；
+- 不写 `REVIEW_DEEP_DIFF_GENERATED`；
+- 不实现 SERVER deep diff / patch 分级；
+- 不修改 contracts；
 - 不修改 schema-core / docs；
 - 不影响 Owner / Labeler / Export / AI Assist 现有链路。
 
-> 详细任务规格见 `tasks/RD-1.md`。本文件只记状态，不重复全文。
+> 详细任务规格见 `tasks/RD-2.md`。本文件只记状态，不重复全文。
 
 ---
 
@@ -73,16 +73,24 @@ commit：  4e84977   docs: add multi-agent handoff files for schema arch work
 - A-tail：mock prompt registry + 真实 SHA-256 `promptSnapshotHash` / `outputHash`（commit 73ec0bc）
   - 新增 `apps/web/src/mocks/ai-prompt-registry.ts`、`apps/web/src/mocks/hash-utils.ts`
   - 无 fake hash，response 不返回完整 prompt
-- Phase B1（RD-1）：Reviewer corrected answers / shallow patches（未 commit，工作区 dirty）
+- Phase B1（RD-1）：Reviewer corrected answers / shallow patches（commit 31e4bac）
   - 新增 `apps/web/src/features/reviewer/reviewer-diff.ts`（`computeReviewPatches`）
   - 复用 contracts `ReviewPatch`（`previousValue`/`nextValue`），无新增类型
   - `ReviewDetailPage.tsx` 加 correctedAnswers JSON textarea UI，handleDecision 提交时带 patches
   - `reviewer-audit-events.ts` `appendReviewSubmittedAuditSafely` 加 `patchCount` 参数（`ReviewSubmittedAuditPayload.patchCount` 已存在，未改 contracts）
   - 未写 `REVIEW_DIFF_GENERATED`，未生成 hash，未把完整 answers 写入 audit
   - 验证：web typecheck ✅ build ✅；contracts typecheck ✅ test ✅(65)；git diff --check ✅
+- Phase B2（RD-2）：`REVIEW_DIFF_GENERATED` audit（未 commit，工作区 dirty）
+  - 复用 contracts 现有 `ReviewDiffGeneratedAuditPayload`
+  - 只在 `patches.length > 0` 且 `decideReview` 成功后写入
+  - `diffMode = "FRONTEND_SHALLOW"`
+  - `beforeAnswerHash` / `afterAnswerHash` / `diffSummaryHash` 复用 `hashCanonicalJson`
+  - payload 只含摘要 + hash + 索引字段，`patchedFieldNames` 只含字段名
+  - 未写 `REVIEW_DEEP_DIFF_GENERATED`
+  - 未触碰 contracts / schema-core / docs
 
 **进行中：**
-- Phase B2（RD-2）：尚未开始，下一班接手
+- 无
 
 **暂缓 / 推迟：**
 - canonical-json-v1 + SHA-256 的前后端一致 test vectors（真实后端阶段再补）
@@ -95,6 +103,29 @@ commit：  4e84977   docs: add multi-agent handoff files for schema arch work
 > 格式：日期时间 | 工具 | 改了哪些文件 | 是否触碰边界 | 验证结果 | 遗留问题
 
 ```txt
+### 2026-06-06 | Codex
+- 任务：Phase B2（RD-2）REVIEW_DIFF_GENERATED audit 审查与收尾
+- 改动文件：
+  - HANDOFF.md（修改）
+  - apps/web/src/features/reviewer/ReviewDetailPage.tsx（Claude Code 已改）
+  - apps/web/src/features/reviewer/reviewer-audit-events.ts（Claude Code 已改）
+- 是否触碰边界：
+  - contracts：未改
+  - schema-core：未改
+  - docs：未改
+  - apps/web/src/features/owner / labeler / admin：未改
+- 验证：
+  - apps/web typecheck ✅
+  - apps/web build ✅
+  - contracts typecheck ✅
+  - contracts test ✅
+  - git diff --check ✅
+  - `.contract-test-dist` 生成产物已 `git checkout --` 恢复
+- 手动 QA：
+  - 需维护者手动 QA
+- 遗留问题：
+  - 无 blocker
+
 ### 2026-06-06 | Claude Code
 - 任务：Phase B1（RD-1）Reviewer corrected answers / shallow patches
 - 改动文件：
@@ -133,15 +164,15 @@ commit：  4e84977   docs: add multi-agent handoff files for schema arch work
 > 上一班在收班时填写，给接手方一句话讲清「下一步立刻该做什么 + 有什么坑」。
 
 ```txt
-下一步：开始 Phase B2（RD-2），完整规格待补充 tasks/RD-2.md（尚未创建）。
-        B2 目标：基于 B1 生成的真实 patches 写 REVIEW_DIFF_GENERATED audit 事件。
+下一步：维护者先 review 当前 diff，手动 QA Reviewer 修改答案后是否写入 REVIEW_DIFF_GENERATED；
+        确认无误后 commit Phase B2。
+        之后进入 Phase C：Export / Data Quality Passport contracts 与 mock。
 
 注意坑：
-  1) B1 改动尚未 commit，接手前可先让维护者 commit 或自行 commit（commit 时注意不要 push）；
-  2) B2 需要写 REVIEW_DIFF_GENERATED，要复用 contracts 现有 ReviewDiffGeneratedAuditPayload
-     （字段：taskId、submissionId、reviewId、reviewerId、patchedFieldNames、patchCount、decision 等）；
-  3) beforeAnswerHash / afterAnswerHash 本轮 B1 未生成，B2 可选填（不生成 fake hash）；
-  4) B1 实现是 JSON textarea，B2 可依赖 handleDecision 里已计算好的 patches，不需要重新 diff；
+  1) Phase B2 改动尚未 commit，不要误以为 HEAD 已包含 RD-2；
+  2) 手动 QA 重点看 audit payload 不含完整 answers / correctedAnswers / patch values；
+  3) 无修改提交时不应写 REVIEW_DIFF_GENERATED；
+  4) 提交失败时不应写 REVIEW_DIFF_GENERATED；
   5) 不影响 Owner / Labeler / Export / AI Assist 链路。
 ```
 

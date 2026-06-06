@@ -4,8 +4,11 @@ import type {
   ReviewDecisionForAudit,
   ReviewDecisionResponse,
   ReviewDetailResponse,
+  ReviewDiffGeneratedAuditPayload,
+  ReviewPatch,
 } from "@labelhub/contracts";
 import { appendAuditEvent } from "../../api/audit";
+import { hashCanonicalJson } from "../../mocks/hash-utils";
 
 type ReviewerDecision = "PASS" | "RETURN";
 export type AiReviewFeedback = "HELPFUL" | "NOT_HELPFUL" | "NOT_USED";
@@ -135,8 +138,64 @@ export function appendAiReviewFeedbackAuditSafely(input: {
   });
 }
 
+export function appendReviewDiffGeneratedAuditSafely(input: {
+  detail: ReviewDetailResponse;
+  decision: ReviewerDecision;
+  response: ReviewDecisionResponse;
+  patches: ReviewPatch[];
+  reviewDurationMs: number;
+  correctedAnswers: Record<string, unknown>;
+}): void {
+  void (async () => {
+    const reviewerId = DEMO_REVIEWER_ID;
+    const reviewId = input.response.reviewResult.id;
+    const submissionId = input.detail.submission.id;
+    const patchedFieldNames = input.patches.map((p) => p.fieldName);
+    const patchCount = input.patches.length;
+
+    const [beforeAnswerHash, afterAnswerHash, diffSummaryHash] = await Promise.all([
+      hashCanonicalJson(input.detail.submission.answers),
+      hashCanonicalJson(input.correctedAnswers),
+      hashCanonicalJson({ patchedFieldNames, patchCount }),
+    ]);
+
+    const payload: ReviewDiffGeneratedAuditPayload = {
+      taskId: input.detail.task.id,
+      submissionId,
+      reviewId,
+      reviewerId,
+      labelerId: input.detail.submission.labelerId,
+      schemaVersionId: input.detail.schemaVersionId,
+      decision: mapDecisionForDiffAudit(input.decision),
+      patchedFieldNames,
+      patchCount,
+      diffMode: "FRONTEND_SHALLOW",
+      reviewDurationMs: input.reviewDurationMs,
+    };
+    if (beforeAnswerHash !== undefined) payload.beforeAnswerHash = beforeAnswerHash;
+    if (afterAnswerHash !== undefined) payload.afterAnswerHash = afterAnswerHash;
+    if (diffSummaryHash !== undefined) payload.diffSummaryHash = diffSummaryHash;
+
+    await appendAuditEvent({
+      type: "REVIEW_DIFF_GENERATED",
+      severity: "INFO",
+      source: "WEB",
+      actor: createReviewerActor(reviewerId),
+      target: createReviewTarget(input.detail, reviewId),
+      payload,
+      idempotencyKey: `REVIEW:${submissionId}:REVIEW_DIFF_GENERATED:${reviewId}`,
+    });
+  })().catch((error) => {
+    console.warn("写入 REVIEW_DIFF_GENERATED 审计事件失败：", error);
+  });
+}
+
 function mapReviewDecisionForAudit(decision: ReviewerDecision): ReviewDecisionForAudit {
   return decision === "PASS" ? "APPROVED" : "REJECTED";
+}
+
+function mapDecisionForDiffAudit(decision: ReviewerDecision): ReviewDecisionForAudit {
+  return decision === "PASS" ? "APPROVED_WITH_CHANGES" : "REJECTED";
 }
 
 function createReviewerActor(reviewerId: string): AuditActor {

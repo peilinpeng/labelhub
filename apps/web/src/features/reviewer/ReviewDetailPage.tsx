@@ -12,6 +12,7 @@ import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-
 import { computeReviewPatches } from "./reviewer-diff";
 import {
   appendAiReviewFeedbackAuditSafely,
+  appendReviewDiffGeneratedAuditSafely,
   appendReviewStartedAuditSafely,
   appendReviewSubmittedAuditSafely,
   type AiReviewFeedback,
@@ -120,13 +121,15 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
 
     // 解析修正答案并计算 patches
     let patches: ReturnType<typeof computeReviewPatches> = [];
+    let parsedCorrectedAnswers: Record<string, unknown> = {};
     try {
       const parsed: unknown = JSON.parse(correctedAnswersText);
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
         setCorrectedAnswersParseError("修正答案必须是 JSON 对象，无法提交。");
         return;
       }
-      patches = computeReviewPatches(answers, parsed as Record<string, unknown>);
+      parsedCorrectedAnswers = parsed as Record<string, unknown>;
+      patches = computeReviewPatches(answers, parsedCorrectedAnswers);
       setCorrectedAnswersParseError(null);
     } catch {
       setCorrectedAnswersParseError("修正答案 JSON 格式不正确，无法提交。");
@@ -157,14 +160,25 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
       const response = await decideReview(submissionId, request);
       reviewDemoSubmission(decision);
       setDecisionMessage(decision === "PASS" ? "审核通过，结果已进入可导出数据。" : "已打回，等待标注员修改后重新提交。");
+      const reviewDurationMs = Math.max(0, Date.now() - reviewOpenedAtMsRef.current);
       appendReviewSubmittedAuditSafely({
         detail,
         decision,
         response,
-        reviewDurationMs: Math.max(0, Date.now() - reviewOpenedAtMsRef.current),
+        reviewDurationMs,
         commentLength: comments.length,
         patchCount: patches.length,
       });
+      if (patches.length > 0) {
+        appendReviewDiffGeneratedAuditSafely({
+          detail,
+          decision,
+          response,
+          patches,
+          reviewDurationMs,
+          correctedAnswers: parsedCorrectedAnswers,
+        });
+      }
       if (aiResult) {
         appendAiReviewFeedbackAuditSafely({
           detail,
