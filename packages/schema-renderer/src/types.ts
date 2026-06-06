@@ -31,6 +31,8 @@ export interface SchemaRendererProps {
   patches?: ReviewPatch[];
   onUnsupportedNode?(node: unknown): void;
   className?: string;
+  /** 渲染引擎選擇；默認 "legacy" 保持現有行為，"formily-v2" 走 FormilyRuntimeRenderer */
+  engine?: "legacy" | "formily-v2";
 }
 
 export interface RenderNodeContext {

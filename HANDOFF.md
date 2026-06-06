@@ -24,7 +24,8 @@
 | Phase C | QL-5 | Export / Data Quality Passport contracts 与 mock | ✅ 已完成（contracts 6993e3b / web fcbccb4） |
 | **Phase D** | QL-7 | Read Model / Snapshot / risk fast path | ⬜ 暂缓（待 FE 轨道完成后评估） |
 | **FE-1** | Phase 1a | 安装 Formily + ComponentRegistry + FormilyRuntimeRenderer shell | ✅ 已完成（待 commit） |
-| **FE-2** | Phase 1b | 7 个 input adapter + feature flag 接入 SchemaRenderer | ⬜ **当前下一步** |
+| **FE-2** | Phase 1b | 7 个 input adapter + feature flag 接入 SchemaRenderer | ✅ 已完成（待 commit） |
+| **FE-3** | Phase 1c | Formily answers 双向同步策略（debounce + flush on submit）+ 新增测试 | ⬜ **当前下一步** |
 
 > 维护规则：新任务追加到本表，**不要再引入新的编号体系**。
 
@@ -34,43 +35,48 @@
 
 ```txt
 分支：    feature/schema-governance-upgrade
-commit：  9ef90c1   docs: add Formily arch decisions and competition priority principle
-工作区：  dirty（FE-1 未 commit：2 个新文件 + 2 个修改文件 + package-lock.json）
-更新时间：2026-06-06（Claude Code FE-1 更新）
+commit：  00491e4   feat(schema-renderer): add Formily shell and ComponentRegistry (FE-1)
+工作区：  dirty（FE-1 + FE-2 未 commit：9 个新文件 + 3 个修改文件）
+更新时间：2026-06-06（Claude Code FE-2 更新）
 更新者：  Claude Code
 ```
 
-> 开班时：`git rev-parse HEAD` 应得到 9ef90c1；工作区有 FE-1 待 commit 的改动（正常，等维护者 commit）。
-> 说明：维护者在上一次 HANDOFF 记录的 1e9ed33 之后，额外新增了 2 个 docs commit（39a967e + 9ef90c1）。
+> 开班时：`git rev-parse HEAD` 应得到 00491e4；工作区有 FE-1 + FE-2 待 commit 的改动（正常，等维护者 commit）。
+> 说明：FE-1 commit 为 00491e4；维护者可选择分两次 commit（分别 FE-1/FE-2）或合并一次。
 
 ---
 
 ## 2. 当前任务（本轮范围，唯一权威）
 
-**Schema Runtime Engine FE 轨道已启动。FE-1 已完成（待 commit），下一步为 FE-2。**
+**Schema Runtime Engine FE 轨道：FE-1 + FE-2 均已完成（待 commit），下一步为 FE-3。**
 
 > Quality Layer 主体（Phase A / A-tail / B1 / B2 / C）已全部完成。Phase D 暂缓，先完成 FE 轨道。
 
-**FE-2 目标（Phase 1b）：**
-- 将 7 个现有 input 组件（Text / Textarea / Radio / Checkbox / Select / Tags / Json）包装为 Formily adapter（使用 @formily/react 的 `connect` + `mapProps`）；
-- 在 `SchemaRendererProps` 新增 `engine?: "legacy" | "formily-v2"` prop；
-- 在 `SchemaRenderer.tsx` 接入 feature flag：engine="legacy" 走现有路径，engine="formily-v2" 渲染 `FormilyRuntimeRenderer`；
-- feature flag 默认值必须是 `"legacy"`（不破坏现有用法）。
+**FE-3 目标（Phase 1c）：**
+- 在 FormilyRuntimeRenderer 中实现 answers 双向同步：Formily form values → onAnswersChange（含 debounce 策略）；
+- 在 SchemaRenderer.tsx feature flag 路径中添加 onSubmit flush（提交时立刻同步最新值）；
+- 新增针对 formily-v2 路径的测试（FE-1/FE-2 对应的测试补充）。
 
 **接手时明确不做（除非维护者另行指定）：**
 - 不改 LLMAssistRenderer patch 逻辑（Phase 3 FE-8）；
 - 不修改 contracts 破坏性变更；
 - 不在 schema-renderer 引入 dnd-kit；
-- 不改现有 13 个测试；
 - 不 commit，不 push。
 
-> FE-2 详细规格见 `FORMILY_ARCH_DECISIONS.md` 任务列表节。
+> FE-3 详细规格见 `FORMILY_ARCH_DECISIONS.md` 任务列表节。
 
 ---
 
 ## 3. 状态看板
 
 **已完成：**
+- FE-2（Phase 1b）：7 个 input adapter + feature flag 接入 SchemaRenderer（待 commit）
+  - 新增 `packages/schema-renderer/src/adapters/` 目录（7 个 FormilyXxxAdapter.tsx + index.ts）
+  - 修改 `packages/schema-renderer/src/types.ts`（新增 `engine?: "legacy" | "formily-v2"` 到 SchemaRendererProps）
+  - 修改 `packages/schema-renderer/src/SchemaRenderer.tsx`（feature flag 分叉 + import FormilyRuntimeRenderer + DEFAULT_FORMILY_REGISTRY）
+  - 修改 `packages/schema-renderer/src/index.ts`（追加 `export * from "./adapters"`）
+  - 修改 `packages/schema-renderer/src/FormilyRuntimeRenderer.tsx`（完整 schema 遍历 + Field 渲染 + containerType fix）
+  - 验证：schema-renderer typecheck ✅；test ✅(13/13)；apps/web typecheck ✅；git diff --check ✅
 - FE-1（Phase 1a）：Formily 安装 + ComponentRegistry + FormilyRuntimeRenderer shell（待 commit）
   - 新增 `packages/schema-renderer/src/ComponentRegistry.ts`（类型定义 + createRegistry + COMPONENT_NAMES）
   - 新增 `packages/schema-renderer/src/FormilyRuntimeRenderer.tsx`（FormProvider shell，无 adapter）
@@ -103,7 +109,7 @@ commit：  9ef90c1   docs: add Formily arch decisions and competition priority p
   - sub_1001–1004 迁移到 `apps/web/src/mocks/data/` 独立文件，固定 id / answers / timestamps
 
 **进行中：**
-- FE-2（Phase 1b）：input adapter + feature flag（下一班执行）
+- FE-3（Phase 1c）：answers 双向同步 debounce + flush on submit + 新测试（下一班执行）
 
 **暂缓 / 推迟：**
 - canonical-json-v1 + SHA-256 的前后端一致 test vectors（真实后端阶段再补）
@@ -118,6 +124,35 @@ commit：  9ef90c1   docs: add Formily arch decisions and competition priority p
 > 格式：日期时间 | 工具 | 改了哪些文件 | 是否触碰边界 | 验证结果 | 遗留问题
 
 ```txt
+### 2026-06-06 | Claude Code（FE-2 Phase 1b）
+- 任务：7 个 input adapter + feature flag 接入 SchemaRenderer
+- 改动文件：
+  - packages/schema-renderer/src/adapters/FormilyTextInputAdapter.tsx（新增）
+  - packages/schema-renderer/src/adapters/FormilyTextareaAdapter.tsx（新增）
+  - packages/schema-renderer/src/adapters/FormilyJsonEditorAdapter.tsx（新增）
+  - packages/schema-renderer/src/adapters/FormilyRadioAdapter.tsx（新增）
+  - packages/schema-renderer/src/adapters/FormilyCheckboxAdapter.tsx（新增）
+  - packages/schema-renderer/src/adapters/FormilySelectAdapter.tsx（新增）
+  - packages/schema-renderer/src/adapters/FormilyTagsAdapter.tsx（新增）
+  - packages/schema-renderer/src/adapters/index.ts（新增，含 DEFAULT_FORMILY_REGISTRY）
+  - packages/schema-renderer/src/types.ts（新增 engine prop）
+  - packages/schema-renderer/src/SchemaRenderer.tsx（feature flag 分叉 + imports）
+  - packages/schema-renderer/src/index.ts（追加 adapters export）
+  - packages/schema-renderer/src/FormilyRuntimeRenderer.tsx（完整 schema 遍历实现，fix containerType→type）
+- 是否触碰边界：否
+  - LLMAssistRenderer 未动（Phase 3 FE-8）
+  - contracts 未动
+  - 现有 13 个测试全部保持通过（feature flag 默认 legacy，现有路径不变）
+  - dnd-kit 未引入
+- 修复问题：
+  - ContainerNode 不存在 containerType 属性（实为 type），FormilyRuntimeRenderer.tsx 第 94 行修正
+  - adapter 采用手动 props 传递（而非 @formily/react connect + mapProps），规避 FieldComponentProps 索引签名与 connect 泛型的兼容性问题
+- 验证：schema-renderer typecheck ✅；test ✅(13/13)；apps/web typecheck ✅；git diff --check ✅
+- commit：待维护者 commit 后回填
+- 遗留问题 / 卡点：
+  - FormilyRuntimeRenderer answers 双向同步已在 FE-2 实现（form.subscribe），但 debounce + flush on submit 在 FE-3 补充
+  - Vitest CVE 暂缓（同 FE-1 记录）
+
 ### 2026-06-06 | Claude Code（FE-1 Phase 1a）
 - 任务：安装 @formily/core + @formily/react，新建 ComponentRegistry，建立 FormilyRuntimeRenderer shell
 - 改动文件：
@@ -209,28 +244,27 @@ commit：  9ef90c1   docs: add Formily arch decisions and competition priority p
 > 上一班在收班时填写，给接手方一句话讲清「下一步立刻该做什么 + 有什么坑」。
 
 ```txt
-下一步：FE-2（Phase 1b）—— input adapter 包装 + feature flag 接入 SchemaRenderer。
+下一步：FE-3（Phase 1c）—— answers 双向同步 debounce + flush on submit + 新测试。
 
 准备工作（接手前先确认）：
-  1) 工作区有 FE-1 未 commit 的改动（正常，等维护者 commit），HEAD 应为 9ef90c1；
-  2) 先读 docs/FORMILY_ARCH_DECISIONS.md 全文（必须，FE-2 的约束前提在里面）；
-  3) 先做实施前审查：读 packages/schema-renderer/src/components/ 的全部文件，
-     确认每个 input 组件的 props 接口，再设计 connect() 包裝策略。
+  1) 工作区有 FE-1 + FE-2 未 commit 的改动（正常），HEAD 应为 00491e4；
+  2) 先读 docs/FORMILY_ARCH_DECISIONS.md 全文（FE-3 策略约束在里面）；
+  3) 先做实施前审查：读 FormilyRuntimeRenderer.tsx，确认现有 form.subscribe 实现，
+     决定 debounce 方案（useRef + setTimeout vs lodash debounce）。
 
-FE-2 核心改动（预计 5 个 adapter + 2 个修改）：
-  - 新增 src/adapters/ 目录，7 个 FormilyXxxAdapter.tsx（用 @formily/react connect + mapProps）
-  - 修改 src/types.ts：SchemaRendererProps 新增 engine?: "legacy" | "formily-v2"
-  - 修改 src/SchemaRenderer.tsx：接入 feature flag，engine="formily-v2" 走 FormilyRuntimeRenderer
+FE-3 核心改动：
+  - FormilyRuntimeRenderer.tsx：answers subscribe 加 debounce（建议 ~300ms）
+  - SchemaRenderer.tsx 的 formily-v2 路径：onSubmit 时 flush 最新 form.values（绕过 debounce 等待）
+  - src/__tests__/ 新增针对 formily-v2 路径的测试（至少覆盖：初始值渲染、值变更触发 onAnswersChange）
 
 注意事项：
-  - feature flag 默认值必须是 "legacy"，不能默认开 formily-v2
   - 不要改 LLMAssistRenderer（Phase 3b FE-8 才动）
   - 不要在 schema-renderer 引入 dnd-kit
   - 不要 commit，不要 push
+  - 现有 13 个测试必须继续全部通过
 
-已知技术债（不阻断 FE-2）：
+已知技术债（不阻断 FE-3）：
   - Vitest <4.1.0 critical CVE，由维护者决定是否升级 v4
-  - FormilyRuntimeRenderer 内 answers 无双向同步（FE-3 做）
 ```
 
 ---
