@@ -24,6 +24,7 @@ export interface SchemaRendererProps {
     context: LabelHubRuntimeContext,
     answers: AnswerPayload,
   ): LLMRuntimeResponse | Promise<LLMRuntimeResponse>;
+  onAssistOutcome?(outcome: LLMAssistOutcome): void;
   readonly?: boolean;
   errors?: ValidationError[];
   patchedAnswers?: AnswerPayload;
@@ -42,6 +43,7 @@ export interface RenderNodeContext {
   errorsByField: Map<string, ValidationError[]>;
   onFieldChange(field: FieldNode, value: unknown): void;
   onLLMAssist: SchemaRendererProps["onLLMAssist"];
+  onAssistOutcome: SchemaRendererProps["onAssistOutcome"];
   onApplySuggestedPatch(patch: AnswerPayload): void;
   onUnsupportedNode: ((node: unknown) => void) | undefined;
 }
@@ -49,4 +51,16 @@ export interface RenderNodeContext {
 export interface NodeRendererProps {
   node: SchemaNode;
   renderContext: RenderNodeContext;
+}
+
+export type LLMAssistOutcomeAction =
+  | "SHOWN"
+  | "ACCEPTED"
+  | "DISMISSED";
+
+export interface LLMAssistOutcome {
+  callId: string;
+  nodeId: string;
+  action: LLMAssistOutcomeAction;
+  appliedPatchFieldNames?: string[];
 }
