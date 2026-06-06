@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { createExportJob, listExportJobs } from "../../api/owner";
+import { createExportJob, getExportArtifactRecords, listExportJobs } from "../../api/owner";
 import { RoutePath, Role } from "../../app/routes";
 import { getDemoWorkflowState } from "../../mocks/demo-workflow-store";
 import { submissionsMock } from "../../mocks/data/submissions.mock";
@@ -8,7 +8,7 @@ import { tasksMock } from "../../mocks/data/tasks.mock";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
-import type { ID } from "@labelhub/contracts";
+import type { ExportArtifactSummary, ExportRecord, ID } from "@labelhub/contracts";
 import { appendExportGeneratedAuditSafely } from "./export-audit-events";
 
 interface OwnerExportPageProps {
@@ -34,6 +34,7 @@ interface ExportJob {
   createdAt: string;
   fileName: string;
   recordCount: number;
+  artifactSummary?: ExportArtifactSummary;
 }
 
 type BackendExportJob = {
@@ -46,7 +47,15 @@ type BackendExportJob = {
   fileName?: string;
   recordCount?: number;
   rowsExported?: number;
+  artifactSummary?: ExportArtifactSummary;
 };
+
+interface PassportPreviewState {
+  loading: boolean;
+  error: string | null;
+  records: ExportRecord[];
+  artifactSummary?: ExportArtifactSummary;
+}
 
 const exportFormats: Array<{
   value: ExportFormat;
@@ -83,6 +92,7 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
   const [exporting, setExporting] = useState(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
+  const [passportPreviews, setPassportPreviews] = useState<Record<string, PassportPreviewState>>({});
   const [jobs, setJobs] = useState<ExportJob[]>([
     {
       id: "exp_demo_001",
@@ -96,6 +106,18 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
   ]);
 
   const enabledFields = useMemo(() => fields.filter((field) => field.enabled), [fields]);
+
+  const refreshBackendExportJobs = async () => {
+    if (!taskId) return;
+    try {
+      const backendJobs = await listExportJobs(taskId);
+      if (backendJobs.length > 0) {
+        setJobs(backendJobs.map((job) => mapBackendExportJob(job as BackendExportJob, taskId)));
+      }
+    } catch (error) {
+      console.warn("导出历史刷新失败：", error);
+    }
+  };
 
   useEffect(() => {
     if (!taskId) return;
@@ -171,6 +193,8 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
         stage: "JOB_CREATED",
       });
       setJobs((current) => current.map((job) => (job.id === jobId ? backendJob : job)));
+      window.setTimeout(() => void refreshBackendExportJobs(), 1100);
+      window.setTimeout(() => void refreshBackendExportJobs(), 1600);
       setExporting(false);
       setExportNotice("导出任务已提交，进度可在下载历史中查看。");
       return;
@@ -210,6 +234,53 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
     anchor.download = job.fileName;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleLoadPassportPreview = async (job: ExportJob) => {
+    setPassportPreviews((current) => ({
+      ...current,
+      [job.id]: {
+        loading: true,
+        error: null,
+        records: current[job.id]?.records ?? [],
+        ...(current[job.id]?.artifactSummary !== undefined ? { artifactSummary: current[job.id].artifactSummary } : {}),
+      },
+    }));
+    try {
+      const response = await getExportArtifactRecords(job.id);
+      const nextState: PassportPreviewState = {
+        loading: false,
+        error: null,
+        records: response.records.slice(0, 3),
+      };
+      if (response.artifactSummary !== undefined) {
+        const artifactSummary = response.artifactSummary;
+        nextState.artifactSummary = artifactSummary;
+        setJobs((current) =>
+          current.map((item) =>
+            item.id === job.id
+              ? {
+                  ...item,
+                  artifactSummary,
+                  recordCount: artifactSummary.recordCount,
+                }
+              : item,
+          ),
+        );
+      }
+      setPassportPreviews((current) => ({ ...current, [job.id]: nextState }));
+    } catch (error) {
+      console.warn("查询质量护照摘要失败：", error);
+      setPassportPreviews((current) => ({
+        ...current,
+        [job.id]: {
+          loading: false,
+          error: "质量摘要加载失败，请稍后重试。",
+          records: current[job.id]?.records ?? [],
+          ...(current[job.id]?.artifactSummary !== undefined ? { artifactSummary: current[job.id].artifactSummary } : {}),
+        },
+      }));
+    }
   };
 
   if (!task) {
@@ -359,6 +430,13 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
               <Button type="button" disabled={job.status !== "DONE"} onClick={() => handleDownload(job)}>
                 下载
               </Button>
+              {job.artifactSummary ? (
+                <PassportSummaryBlock
+                  job={job}
+                  preview={passportPreviews[job.id]}
+                  onLoadPreview={() => void handleLoadPassportPreview(job)}
+                />
+              ) : null}
             </div>
           ))}
         </div>
@@ -396,8 +474,108 @@ function mapBackendExportJob(job: BackendExportJob, taskId: string): ExportJob {
     progress,
     createdAt: job.createdAt ?? new Date().toLocaleString("zh-CN", { hour12: false }),
     fileName: job.fileName ?? `${taskId}_${format.toLowerCase()}.${format === "EXCEL" ? "xlsx" : format.toLowerCase()}`,
-    recordCount: job.recordCount ?? job.rowsExported ?? done,
+    recordCount: job.artifactSummary?.recordCount ?? job.recordCount ?? job.rowsExported ?? done,
+    ...(job.artifactSummary !== undefined ? { artifactSummary: job.artifactSummary } : {}),
   };
+}
+
+function PassportSummaryBlock({
+  job,
+  preview,
+  onLoadPreview,
+}: {
+  job: ExportJob;
+  preview?: PassportPreviewState;
+  onLoadPreview: () => void;
+}) {
+  const summary = preview?.artifactSummary ?? job.artifactSummary;
+  if (summary === undefined) return null;
+  return (
+    <div className="owner-export-passport">
+      <div className="owner-export-passport__header">
+        <div>
+          <strong>数据质量护照</strong>
+          <span>记录数：{summary.recordCount} · 护照数：{summary.passportCount ?? 0} · 警告数：{summary.warningCount}</span>
+        </div>
+        <Button type="button" tone="ghost" onClick={onLoadPreview} disabled={preview?.loading === true}>
+          {preview?.loading ? "加载中..." : "查看质量摘要"}
+        </Button>
+      </div>
+      <div className="owner-export-passport__fingerprint">
+        <span>批次指纹</span>
+        <code title={summary.passportBatchHash ?? "暂无批次指纹"}>{formatHash(summary.passportBatchHash)}</code>
+      </div>
+      {summary.warningCount > 0 ? <p className="owner-export-passport__warning">部分记录缺少完整质量证据。</p> : null}
+      {preview?.error ? <p className="owner-export-passport__error">{preview.error}</p> : null}
+      {preview !== undefined && !preview.loading && preview.error === null ? (
+        preview.records.length > 0 ? (
+          <div className="owner-export-passport-preview">
+            {preview.records.map((record) => (
+              <PassportRecordPreview record={record} key={`${record.exportId}:${record.submissionId}:${record.recordIndex}`} />
+            ))}
+          </div>
+        ) : (
+          <p className="owner-export-passport__empty">暂无质量摘要记录。</p>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+function PassportRecordPreview({ record }: { record: ExportRecord }) {
+  const passport = record.passport;
+  if (passport === undefined) {
+    return (
+      <div className="owner-export-passport-record">
+        <strong>{record.submissionId}</strong>
+        <span>该记录暂无质量护照。</span>
+      </div>
+    );
+  }
+  return (
+    <div className="owner-export-passport-record">
+      <div>
+        <strong>{passport.submissionId}</strong>
+        <span>{reviewStatusLabel(passport.reviewStatus)} · 审计事件 {passport.auditEventCount ?? 0} 条</span>
+      </div>
+      <dl>
+        <div>
+          <dt>修订字段</dt>
+          <dd>{passport.reviewerPatchCount ?? 0}</dd>
+        </div>
+        <div>
+          <dt>AI 采纳</dt>
+          <dd>{passport.aiAcceptedCount ?? 0}</dd>
+        </div>
+        <div>
+          <dt>AI 忽略</dt>
+          <dd>{passport.aiDismissedCount ?? 0}</dd>
+        </div>
+        <div>
+          <dt>AI 后改</dt>
+          <dd>{passport.aiEditedCount ?? 0}</dd>
+        </div>
+      </dl>
+      <p>风险信号：{passport.riskCodes && passport.riskCodes.length > 0 ? passport.riskCodes.join("、") : "无"}</p>
+      <p>
+        答案指纹：
+        <code title={passport.finalAnswerHash ?? "暂无答案指纹"}>{formatHash(passport.finalAnswerHash)}</code>
+      </p>
+    </div>
+  );
+}
+
+function formatHash(hash: string | undefined): string {
+  if (hash === undefined || hash.length === 0) return "暂无";
+  if (hash.length <= 24) return hash;
+  return `${hash.slice(0, 12)}...${hash.slice(-8)}`;
+}
+
+function reviewStatusLabel(status: string): string {
+  if (status === "APPROVED") return "已通过";
+  if (status === "RETURNED") return "已打回";
+  if (status === "REJECTED") return "已拒绝";
+  return "未审核";
 }
 
 function buildPreview(format: ExportFormat, statusFilter: string, includeAudit: boolean, fields: ExportField[], taskId: string) {

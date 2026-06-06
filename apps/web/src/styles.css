@@ -3287,6 +3287,130 @@ a {
   background: var(--lh-gradient-primary);
 }
 
+.owner-export-passport {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(14, 165, 233, 0.24);
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.owner-export-passport__header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.owner-export-passport__header strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.owner-export-passport__fingerprint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.owner-export-passport__fingerprint code,
+.owner-export-passport-record code {
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: 8px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.owner-export-passport__warning,
+.owner-export-passport__error,
+.owner-export-passport__empty {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.5;
+}
+
+.owner-export-passport__warning {
+  color: #92400e;
+}
+
+.owner-export-passport__error {
+  color: #b91c1c;
+}
+
+.owner-export-passport__empty {
+  color: #64748b;
+}
+
+.owner-export-passport-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.owner-export-passport-record {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.owner-export-passport-record dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.owner-export-passport-record dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.owner-export-passport-record dt {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.owner-export-passport-record dd {
+  margin: 0;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.owner-export-passport-record p {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .owner-export-passport-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .owner-export-passport__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .owner-progress-cell {
   grid-template-columns: 1fr;
   gap: 7px;
