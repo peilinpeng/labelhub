@@ -10,6 +10,7 @@ import { DEMO_ASSIGNMENT_ID, submitDemoAssignment } from "../../mocks/demo-workf
 import { getAssignmentContext as getMockAssignmentContext } from "../../mocks/mock-db";
 import { datasetItemsMock } from "../../mocks/data/dataset-items.mock";
 import {
+  appendAiAssistEditedAuditSafely,
   appendAiAssistOutcomeAuditSafely,
   appendAiAssistTriggeredAuditSafely,
   extractAiAssistResponseMetadata,
@@ -32,6 +33,16 @@ interface AssignmentPageProps {
 }
 
 type LabelerNavigationStatus = "Submitted" | "Returned" | "Current" | "Draft" | "Pending";
+
+interface AcceptedAiAssistPatch {
+  callId: string;
+  nodeId: string;
+  metadata?: AiAssistResponseMetadata;
+  appliedPatchFieldNames: string[];
+  editedFieldNames: Set<string>;
+  editedReported: boolean;
+  acceptedOrder: number;
+}
 
 function getFallbackTaskItems(context: AssignmentContextResponse): DatasetItem[] {
   const sameTaskItems = datasetItemsMock.filter((item) => item.taskId === context.task.id);
@@ -77,7 +88,9 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const [taskItems, setTaskItems] = useState<DatasetItem[]>([]);
   const [submittedItemIds, setSubmittedItemIds] = useState<string[]>([]);
   const aiAssistMetadataByCallIdRef = useRef<Map<string, AiAssistResponseMetadata>>(new Map());
+  const acceptedAiAssistPatchesRef = useRef<Map<string, AcceptedAiAssistPatch>>(new Map());
   const aiAssistCallAttemptCounterRef = useRef(0);
+  const aiAssistAcceptedOrderCounterRef = useRef(0);
   const telemetry = useLabelingTelemetry({
     assignmentId,
     context,
@@ -116,7 +129,9 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
   useEffect(() => {
     aiAssistMetadataByCallIdRef.current.clear();
+    acceptedAiAssistPatchesRef.current.clear();
     aiAssistCallAttemptCounterRef.current = 0;
+    aiAssistAcceptedOrderCounterRef.current = 0;
   }, [assignmentId, context?.item.id]);
 
   const runtimeContext: LabelHubRuntimeContext = context
@@ -257,12 +272,71 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
   const handleAssistOutcome = (outcome: LLMAssistOutcome) => {
     if (!assignmentId || !context) return;
+    const metadata = aiAssistMetadataByCallIdRef.current.get(outcome.callId);
     appendAiAssistOutcomeAuditSafely({
       assignmentId,
       context,
       outcome,
-      metadata: aiAssistMetadataByCallIdRef.current.get(outcome.callId),
+      metadata,
     });
+
+    if (outcome.action !== "ACCEPTED" || outcome.appliedPatchFieldNames === undefined) {
+      return;
+    }
+
+    const appliedPatchFieldNames = [...new Set(outcome.appliedPatchFieldNames)].sort();
+    if (appliedPatchFieldNames.length === 0) {
+      return;
+    }
+
+    acceptedAiAssistPatchesRef.current.set(outcome.callId, {
+      callId: outcome.callId,
+      nodeId: outcome.nodeId,
+      metadata,
+      appliedPatchFieldNames,
+      editedFieldNames: new Set(),
+      editedReported: false,
+      acceptedOrder: (aiAssistAcceptedOrderCounterRef.current += 1),
+    });
+  };
+
+  const handleRendererAnswersChange = (nextAnswers: AnswerPayload) => {
+    const changedFieldNames = collectChangedAnswerFields(answers, nextAnswers);
+    telemetry.handleAnswersChange(nextAnswers);
+    reportAiAssistEditedFields(changedFieldNames);
+  };
+
+  const reportAiAssistEditedFields = (changedFieldNames: string[]) => {
+    if (!assignmentId || !context || changedFieldNames.length === 0) return;
+
+    const changedFieldSet = new Set(changedFieldNames);
+    const claimedFieldNames = new Set<string>();
+    const acceptedPatches = Array.from(acceptedAiAssistPatchesRef.current.values())
+      .filter((patch) => !patch.editedReported)
+      .sort((left, right) => right.acceptedOrder - left.acceptedOrder);
+
+    for (const patch of acceptedPatches) {
+      const editedFieldNames = patch.appliedPatchFieldNames.filter((fieldName) =>
+        changedFieldSet.has(fieldName) && !claimedFieldNames.has(fieldName),
+      );
+      if (editedFieldNames.length === 0) {
+        continue;
+      }
+
+      for (const fieldName of editedFieldNames) {
+        claimedFieldNames.add(fieldName);
+        patch.editedFieldNames.add(fieldName);
+      }
+      patch.editedReported = true;
+      appendAiAssistEditedAuditSafely({
+        assignmentId,
+        context,
+        callId: patch.callId,
+        nodeId: patch.nodeId,
+        metadata: patch.metadata,
+        editedFieldNames: Array.from(patch.editedFieldNames),
+      });
+    }
   };
 
   if (loading) {
@@ -411,7 +485,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                   mode="LABELING"
                   readonly={false}
                   errors={errors}
-                  onAnswersChange={telemetry.handleAnswersChange}
+                  onAnswersChange={handleRendererAnswersChange}
                   onSubmit={handleSubmit}
                   onLLMAssist={handleLLMAssist}
                   onAssistOutcome={handleAssistOutcome}
@@ -493,4 +567,17 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       />
     </div>
   );
+}
+
+function collectChangedAnswerFields(previous: AnswerPayload, next: AnswerPayload): string[] {
+  const fieldNames = new Set([...Object.keys(previous), ...Object.keys(next)]);
+  return Array.from(fieldNames).filter((fieldName) => !isSameAnswerValue(previous[fieldName], next[fieldName]));
+}
+
+function isSameAnswerValue(left: unknown, right: unknown): boolean {
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return Object.is(left, right);
+  }
 }

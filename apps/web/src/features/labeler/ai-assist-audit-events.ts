@@ -19,6 +19,7 @@ export type AiAssistResponseMetadata = Pick<
 type AiAssistAuditPayload = Partial<AiAssistOutcomeAuditPayload> & GenericAuditEventPayload & {
   callId?: string;
   appliedPatchFieldNames?: string[];
+  editedFieldNames?: string[];
 };
 
 export function extractAiAssistResponseMetadata(response: LLMRuntimeResponse): AiAssistResponseMetadata {
@@ -82,6 +83,37 @@ export function appendAiAssistOutcomeAuditSafely(input: {
     assignmentId: input.assignmentId,
     payload,
     idempotencyKey: `AI_ASSIST:${input.assignmentId}:${input.outcome.callId}:${input.outcome.action}`,
+  });
+}
+
+export function appendAiAssistEditedAuditSafely(input: {
+  assignmentId: string;
+  context: AssignmentContextResponse;
+  callId: string;
+  nodeId: string;
+  metadata?: AiAssistResponseMetadata;
+  editedFieldNames: string[];
+}): void {
+  const editedFieldNames = [...new Set(input.editedFieldNames)].sort();
+  const payload = createBasePayload(input.context, input.assignmentId, { id: input.nodeId }, "AI 辅助建议已被人工修改");
+  payload.callId = input.callId;
+  payload.codes = ["EDITED"];
+  payload.editedCount = 1;
+  payload.editedFieldNames = editedFieldNames;
+
+  const onlyFieldName = editedFieldNames.length === 1 ? editedFieldNames[0] : undefined;
+  if (onlyFieldName !== undefined) {
+    payload.fieldName = onlyFieldName;
+  }
+
+  applyMetadata(payload, input.metadata);
+
+  appendAiAssistEventSafely({
+    type: "AI_ASSIST_EDITED",
+    context: input.context,
+    assignmentId: input.assignmentId,
+    payload,
+    idempotencyKey: `AI_ASSIST:${input.assignmentId}:${input.callId}:EDITED`,
   });
 }
 
