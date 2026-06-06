@@ -1,14 +1,19 @@
 import { LifeCycleTypes, createForm } from "@formily/core";
-import { Field, FormProvider } from "@formily/react";
+import type { Field as FormilyField, Form } from "@formily/core";
+import { Field, FormProvider, useField } from "@formily/react";
 import { useEffect, useMemo, useRef } from "react";
 import type {
   AnswerPayload,
   ChoiceFieldNode,
   ContainerNode,
+  FieldLinkageEffect,
   FieldNode,
   SchemaNode,
 } from "@labelhub/contracts";
-import { resolveNodeDisabled, resolveNodeVisibility } from "@labelhub/schema-core";
+import { buildReactionPlan } from "@labelhub/schema-compiler";
+import type { ReactionPlan } from "@labelhub/schema-compiler";
+import { evaluateExpression, resolveNodeVisibility } from "@labelhub/schema-core";
+import type { RuntimeContextWithOutput } from "@labelhub/schema-core";
 import type { ComponentRegistry } from "./ComponentRegistry";
 import { COMPONENT_NAMES } from "./ComponentRegistry";
 import type { SchemaRendererProps } from "./types";
@@ -18,6 +23,43 @@ export interface FormilyRuntimeRendererProps extends SchemaRendererProps {
   registry?: ComponentRegistry;
 }
 
+// ---------------------------------------------------------------------------
+// FormilyFieldLabel：Formily decorator，通过 useField() 读取动态 required / errors
+// ---------------------------------------------------------------------------
+interface FormilyFieldLabelProps {
+  title: string;
+  children?: React.ReactNode;
+}
+
+function FormilyFieldLabel({ title, children }: FormilyFieldLabelProps) {
+  const field = useField<FormilyField>();
+  const errorMessages = (field.selfErrors as unknown[])
+    .map((m) => (typeof m === "string" ? m : String(m)))
+    .filter(Boolean);
+
+  return (
+    <div data-formily-field={String(field.path)}>
+      <label>
+        {title}
+        {field.required ? " *" : ""}
+      </label>
+      {children}
+      {errorMessages.length > 0 ? (
+        <ul>
+          {errorMessages.map((msg, i) => (
+            <li key={i} role="alert">
+              {msg}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FormilyRuntimeRenderer
+// ---------------------------------------------------------------------------
 export function FormilyRuntimeRenderer({
   schema,
   answers,
@@ -28,43 +70,78 @@ export function FormilyRuntimeRenderer({
 }: FormilyRuntimeRendererProps) {
   const isReadonly = mode === "REVIEW_READONLY" || mode === "REVIEW_DIFF";
 
+  const form = useMemo(
+    () => createForm({ initialValues: answers }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [schema.schemaId],
+  );
+
+  // 防止 reaction 写值（clearValue / setValue）再次触发 ON_FORM_VALUES_CHANGE → 无限递归
+  const applyingReactionsRef = useRef(false);
+
+  // 稳定化 context 和 onAnswersChange 引用
+  const contextRef = useRef(context);
+  contextRef.current = context;
+
+  const onAnswersChangeRef = useRef(onAnswersChange);
+  onAnswersChangeRef.current = onAnswersChange;
+
+  // 编译 reaction plan，只在 schema 变化时重新计算
+  const reactionPlan = useMemo(() => buildReactionPlan(schema), [schema]);
+
+  useEffect(() => {
+    function runReactions(currentAnswers: AnswerPayload): void {
+      const runtimeCtx: RuntimeContextWithOutput = {
+        ...contextRef.current,
+        answers: currentAnswers,
+      };
+      applyReactionPlan(form, reactionPlan, runtimeCtx);
+    }
+
+    // 初始化：基于初始 answers 立刻求值所有 reaction（guard 保护，防止 clearValue 引发递归）
+    applyingReactionsRef.current = true;
+    try {
+      runReactions(form.values as AnswerPayload);
+    } finally {
+      applyingReactionsRef.current = false;
+    }
+
+    const id = form.subscribe(({ type }) => {
+      if (type !== LifeCycleTypes.ON_FORM_VALUES_CHANGE) return;
+      // guard：reaction 执行期间 clearValue/setValue 会再次触发此回调，直接跳过
+      if (applyingReactionsRef.current) return;
+
+      applyingReactionsRef.current = true;
+      try {
+        runReactions(form.values as AnswerPayload);
+      } finally {
+        applyingReactionsRef.current = false;
+      }
+
+      // 在所有 reaction（含 clearValue）完成后，上报最终 answers
+      onAnswersChangeRef.current(form.values as AnswerPayload);
+    });
+    return () => {
+      form.unsubscribe(id);
+    };
+  }, [form, reactionPlan]);
+
   const contextWithAnswers = useMemo(
     () => ({ ...context, answers }),
     [context, answers],
   );
 
-  const form = useMemo(
-    () => createForm({ initialValues: answers }),
-    // 僅在 schema 換版本時重建；answers 同步由 subscribe 負責
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [schema.schemaId],
-  );
-
-  // 穩定化 onAnswersChange 引用，避免 subscribe 因函數 identity 頻繁重建
-  const onAnswersChangeRef = useRef(onAnswersChange);
-  onAnswersChangeRef.current = onAnswersChange;
-
-  useEffect(() => {
-    const id = form.subscribe(({ type }) => {
-      if (type === LifeCycleTypes.ON_FORM_VALUES_CHANGE) {
-        onAnswersChangeRef.current(form.values as AnswerPayload);
-      }
-    });
-    return () => {
-      form.unsubscribe(id);
-    };
-  }, [form]);
-
   const entries = registry?.entries ?? {};
 
   function renderSchemaNode(node: SchemaNode): React.ReactNode {
-    if (!resolveNodeVisibility(node, contextWithAnswers)) return null;
-
     if (node.kind === "FIELD") {
+      // FE-5：FieldNode 始终挂载，由 Formily field state.display 控制可见性
       return renderFieldNode(node);
     }
 
     if (node.kind === "CONTAINER") {
+      // ContainerNode 暂保留 legacy visibility gate（FE-5 不做 container reaction）
+      if (!resolveNodeVisibility(node, contextWithAnswers)) return null;
       return renderContainerNode(node);
     }
 
@@ -78,13 +155,14 @@ export function FormilyRuntimeRenderer({
     const AdapterComponent = entries[componentName];
     if (AdapterComponent === undefined) return null;
 
-    const disabled = resolveNodeDisabled(node, contextWithAnswers);
-
     return (
       <Field
         key={node.id}
         name={node.name}
-        component={[AdapterComponent, buildComponentProps(node, isReadonly, disabled)]}
+        required={node.required ?? false}
+        disabled={node.disabled ?? false}
+        decorator={[FormilyFieldLabel, { title: node.title }]}
+        component={[AdapterComponent, buildComponentProps(node, isReadonly)]}
       />
     );
   }
@@ -106,6 +184,84 @@ export function FormilyRuntimeRenderer({
   );
 }
 
+// ---------------------------------------------------------------------------
+// reaction 执行层
+// ---------------------------------------------------------------------------
+function applyReactionPlan(
+  form: Form,
+  plan: ReactionPlan,
+  runtimeCtx: RuntimeContextWithOutput,
+): void {
+  for (const reaction of plan.reactions) {
+    const matched = evaluateExpression(reaction.when, runtimeCtx);
+    applyEffects(form, matched ? reaction.effects : reaction.otherwise);
+  }
+}
+
+function applyEffects(form: Form, effects: FieldLinkageEffect[]): void {
+  for (const effect of effects) {
+    switch (effect.action) {
+      case "setVisible":
+        form.setFieldState(effect.target, (state) => {
+          state.display = effect.value ? "visible" : "hidden";
+        });
+        break;
+
+      case "setDisabled":
+        form.setFieldState(effect.target, (state) => {
+          // 同时更新 componentProps.disabled，使 adapter 感知禁用状态
+          state.componentProps = {
+            ...(state.componentProps as Record<string, unknown>),
+            disabled: effect.value,
+          };
+        });
+        break;
+
+      case "setRequired":
+        form.setFieldState(effect.target, (state) => {
+          // 更新 Formily field.required（FormilyFieldLabel decorator 通过 useField() 读取）
+          state.required = effect.value;
+        });
+        break;
+
+      case "clearValue": {
+        // idempotent check：只有字段有值时才清空，防止无意义写入再次触发 ON_FORM_VALUES_CHANGE
+        const current = form.getValuesIn(effect.target);
+        if (current !== undefined && current !== null && current !== "") {
+          form.deleteValuesIn(effect.target);
+        }
+        break;
+      }
+
+      case "setValue": {
+        // idempotent check：只有目标值与当前值不同时才写入
+        const current = form.getValuesIn(effect.target);
+        if (current !== effect.value) {
+          form.setValuesIn(effect.target, effect.value);
+        }
+        break;
+      }
+
+      case "setOptions":
+        form.setFieldState(effect.target, (state) => {
+          const prevField = (
+            state.componentProps as Record<string, unknown> | undefined
+          )?.["field"] as Record<string, unknown> | undefined;
+          state.componentProps = {
+            ...(state.componentProps as Record<string, unknown>),
+            field: { ...(prevField ?? {}), options: effect.options },
+          };
+        });
+        break;
+
+      // setWarning、setReadonly：FE-5 暂不实现 runtime，类型已保留
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 辅助函数
+// ---------------------------------------------------------------------------
 function getComponentName(node: FieldNode): string | undefined {
   switch (node.type) {
     case "input.text":
@@ -132,14 +288,18 @@ function getComponentName(node: FieldNode): string | undefined {
 function buildComponentProps(
   node: FieldNode,
   readOnly: boolean,
-  disabled: boolean,
 ): Record<string, unknown> {
-  const base = { readOnly, disabled };
+  const base = { readOnly };
   switch (node.type) {
     case "input.text":
       return { ...base, placeholder: node.placeholder };
     case "input.textarea":
-      return { ...base, placeholder: node.placeholder, minRows: node.minRows, maxRows: node.maxRows };
+      return {
+        ...base,
+        placeholder: node.placeholder,
+        minRows: node.minRows,
+        maxRows: node.maxRows,
+      };
     case "input.richtext":
       return { ...base, placeholder: node.placeholder };
     case "choice.radio":

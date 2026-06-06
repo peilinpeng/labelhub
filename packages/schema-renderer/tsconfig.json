@@ -15,6 +15,7 @@
     "baseUrl": ".",
     "paths": {
       "@labelhub/contracts": ["../contracts/src/index.ts"],
+      "@labelhub/schema-compiler": ["../schema-compiler/src/index.ts"],
       "@labelhub/schema-core": ["../schema-core/src/index.ts"]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
