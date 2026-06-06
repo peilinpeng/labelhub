@@ -1,3 +1,5 @@
+export * from "./ComponentRegistry";
+export * from "./FormilyRuntimeRenderer";
 export * from "./SchemaRenderer";
 export * from "./render-node";
 export * from "./types";

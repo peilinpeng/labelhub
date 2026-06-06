@@ -22,7 +22,9 @@
 | Phase B1 | QL-4 第一步 / RD-1 | Reviewer corrected answers + shallow patches（不写 audit） | ✅ 已完成（commit 31e4bac） |
 | Phase B2 | QL-4 第二步 / RD-2 | `REVIEW_DIFF_GENERATED` audit | ✅ 已完成（commit 436886f） |
 | Phase C | QL-5 | Export / Data Quality Passport contracts 与 mock | ✅ 已完成（contracts 6993e3b / web fcbccb4） |
-| **Phase D** | QL-7 | Read Model / Snapshot / risk fast path | ⬜ **当前下一步**（工业化阶段） |
+| **Phase D** | QL-7 | Read Model / Snapshot / risk fast path | ⬜ 暂缓（待 FE 轨道完成后评估） |
+| **FE-1** | Phase 1a | 安装 Formily + ComponentRegistry + FormilyRuntimeRenderer shell | ✅ 已完成（待 commit） |
+| **FE-2** | Phase 1b | 7 个 input adapter + feature flag 接入 SchemaRenderer | ⬜ **当前下一步** |
 
 > 维护规则：新任务追加到本表，**不要再引入新的编号体系**。
 
@@ -32,39 +34,49 @@
 
 ```txt
 分支：    feature/schema-governance-upgrade
-commit：  1e9ed33   docs: finalize quality layer handoff
-工作区：  clean
-更新时间：2026-06-06（Claude Code Handoff Audit 更新）
+commit：  9ef90c1   docs: add Formily arch decisions and competition priority principle
+工作区：  dirty（FE-1 未 commit：2 个新文件 + 2 个修改文件 + package-lock.json）
+更新时间：2026-06-06（Claude Code FE-1 更新）
 更新者：  Claude Code
 ```
 
-> 开班时：`git rev-parse HEAD` 应得到 1e9ed33；工作区应为 clean。
+> 开班时：`git rev-parse HEAD` 应得到 9ef90c1；工作区有 FE-1 待 commit 的改动（正常，等维护者 commit）。
+> 说明：维护者在上一次 HANDOFF 记录的 1e9ed33 之后，额外新增了 2 个 docs commit（39a967e + 9ef90c1）。
 
 ---
 
 ## 2. 当前任务（本轮范围，唯一权威）
 
-**Quality Layer 主体已全部完成（Phase A / A-tail / B1 / B2 / C）。下一步为 Phase D。**
+**Schema Runtime Engine FE 轨道已启动。FE-1 已完成（待 commit），下一步为 FE-2。**
 
-> 本轮无进行中任务。接手后直接阅读 Phase D 规格（待创建 `tasks/PD-1.md`）。
+> Quality Layer 主体（Phase A / A-tail / B1 / B2 / C）已全部完成。Phase D 暂缓，先完成 FE 轨道。
 
-**Phase D 目标（工业化阶段，尚未开始）：**
-- Read Model / Snapshot：将审计事件投影为可查询的质量快照，供 Export 和后端风控读取；
-- risk fast path：基于 Labeler 风险信号（`LabelerTrustLevel`、`riskSignals`）的前端快速路径提示。
+**FE-2 目标（Phase 1b）：**
+- 将 7 个现有 input 组件（Text / Textarea / Radio / Checkbox / Select / Tags / Json）包装为 Formily adapter（使用 @formily/react 的 `connect` + `mapProps`）；
+- 在 `SchemaRendererProps` 新增 `engine?: "legacy" | "formily-v2"` prop；
+- 在 `SchemaRenderer.tsx` 接入 feature flag：engine="legacy" 走现有路径，engine="formily-v2" 渲染 `FormilyRuntimeRenderer`；
+- feature flag 默认值必须是 `"legacy"`（不破坏现有用法）。
 
 **接手时明确不做（除非维护者另行指定）：**
-- 不修改 B1/B2/Phase C 已完成实现；
+- 不改 LLMAssistRenderer patch 逻辑（Phase 3 FE-8）；
 - 不修改 contracts 破坏性变更；
-- 不实现 `REVIEW_DEEP_DIFF_GENERATED` / `SERVER_*` diffMode（超出前端浅层范围）；
-- 不生成 fake hash。
+- 不在 schema-renderer 引入 dnd-kit；
+- 不改现有 13 个测试；
+- 不 commit，不 push。
 
-> Phase D 详细规格见未来的 `tasks/PD-1.md`。本文件只记状态，不重复全文。
+> FE-2 详细规格见 `FORMILY_ARCH_DECISIONS.md` 任务列表节。
 
 ---
 
 ## 3. 状态看板
 
 **已完成：**
+- FE-1（Phase 1a）：Formily 安装 + ComponentRegistry + FormilyRuntimeRenderer shell（待 commit）
+  - 新增 `packages/schema-renderer/src/ComponentRegistry.ts`（类型定义 + createRegistry + COMPONENT_NAMES）
+  - 新增 `packages/schema-renderer/src/FormilyRuntimeRenderer.tsx`（FormProvider shell，无 adapter）
+  - 修改 `packages/schema-renderer/package.json`（新增 @formily/core@^2 + @formily/react@^2）
+  - 修改 `packages/schema-renderer/src/index.ts`（新增两个导出）
+  - 验证：schema-renderer typecheck ✅；test ✅(13/13)；apps/web typecheck ✅；git diff --check ✅
 - Phase A：Prompt Feedback Loop 全链路
 - A-tail：mock prompt registry + 真实 SHA-256 `promptSnapshotHash` / `outputHash`（commit 73ec0bc）
   - 新增 `apps/web/src/mocks/ai-prompt-registry.ts`、`apps/web/src/mocks/hash-utils.ts`
@@ -91,12 +103,13 @@ commit：  1e9ed33   docs: finalize quality layer handoff
   - sub_1001–1004 迁移到 `apps/web/src/mocks/data/` 独立文件，固定 id / answers / timestamps
 
 **进行中：**
-- 无
+- FE-2（Phase 1b）：input adapter + feature flag（下一班执行）
 
 **暂缓 / 推迟：**
 - canonical-json-v1 + SHA-256 的前后端一致 test vectors（真实后端阶段再补）
 - mock-db.ts seed 审计记录中残留的 `sha256:mock-*` 佔位符（6 处，非 live 路径，非阻断性）
-- Phase D 全部
+- Phase D（QL-7 Read Model / Snapshot / risk fast path）—— FE 轨道优先
+- Vitest <4.1.0 critical CVE（GHSA-5xrq-8626-4rwp）—— 修复需 breaking change 升级 v4，由维护者决定时机
 
 ---
 
@@ -105,6 +118,27 @@ commit：  1e9ed33   docs: finalize quality layer handoff
 > 格式：日期时间 | 工具 | 改了哪些文件 | 是否触碰边界 | 验证结果 | 遗留问题
 
 ```txt
+### 2026-06-06 | Claude Code（FE-1 Phase 1a）
+- 任务：安装 @formily/core + @formily/react，新建 ComponentRegistry，建立 FormilyRuntimeRenderer shell
+- 改动文件：
+  - packages/schema-renderer/package.json（新增 @formily/core@^2, @formily/react@^2 到 dependencies）
+  - packages/schema-renderer/src/ComponentRegistry.ts（新增）
+  - packages/schema-renderer/src/FormilyRuntimeRenderer.tsx（新增）
+  - packages/schema-renderer/src/index.ts（追加 2 条 export）
+  - package-lock.json（npm install 更新，18 个新包）
+- 是否触碰边界：否
+  - SchemaRenderer.tsx 未动（feature flag 在 FE-2）
+  - types.ts 未动（engine prop 在 FE-2 加）
+  - 现有 renderers / components 全部未动
+  - contracts 未动
+  - apps/web 未动
+- 验证：schema-renderer typecheck ✅；test ✅(13/13 全部通过)；apps/web typecheck ✅；git diff --check ✅
+- commit：待维护者 commit 后回填
+- 遗留问题 / 卡点：
+  - Vitest <4.1.0 critical CVE（GHSA-5xrq-8626-4rwp）已记录至状态看板「暂缓」，非本次引入，非阻断
+  - FormilyRuntimeRenderer 目前只是 FormProvider shell，无 answers 双向同步（FE-3 实现）
+  - FormilyRuntimeRenderer 目前无 SchemaField 渲染（FE-2 接入 adapter 后完整激活）
+
 ### 2026-06-06 | Claude Code（Handoff Audit）
 - 任务：独立审查 handoff 状态一致性（只读，不改代码）
 - 审查结论：
@@ -175,24 +209,28 @@ commit：  1e9ed33   docs: finalize quality layer handoff
 > 上一班在收班时填写，给接手方一句话讲清「下一步立刻该做什么 + 有什么坑」。
 
 ```txt
-下一步：Phase D（QL-7）Read Model / Snapshot / risk fast path。
-        规格尚未创建，维护者需先补 tasks/PD-1.md。
+下一步：FE-2（Phase 1b）—— input adapter 包装 + feature flag 接入 SchemaRenderer。
 
 准备工作（接手前先确认）：
-  1) 工作区应为 clean，HEAD 应为 1e9ed33；
-  2) 阅读 docs/Labelhub_Quality_Layer.md 第 13 节（Read Model）和第 14 节（risk fast path）
-     了解目标态，但只实现维护者在 PD-1.md 指定的最小范围；
-  3) Phase D 是工业化阶段，涉及 snapshot 投影和风控逻辑，改动面可能较大；
-     接手前务必先做实施前审查并等维护者确认再动代码。
+  1) 工作区有 FE-1 未 commit 的改动（正常，等维护者 commit），HEAD 应为 9ef90c1；
+  2) 先读 docs/FORMILY_ARCH_DECISIONS.md 全文（必须，FE-2 的约束前提在里面）；
+  3) 先做实施前审查：读 packages/schema-renderer/src/components/ 的全部文件，
+     确认每个 input 组件的 props 接口，再设计 connect() 包裝策略。
 
-已知非阻断性技术债（不影响 Phase D，但可在 Phase D 前顺手修复）：
-  - mock-db.ts 中 3 条静态 seed 审计记录的 sha256:mock-* 佔位符（6 处）
-    可用 hashCanonicalJson 预计算结果替换，参考 DATA_QUALITY_PASSPORT_GENERATED seed 的做法。
+FE-2 核心改动（预计 5 个 adapter + 2 个修改）：
+  - 新增 src/adapters/ 目录，7 个 FormilyXxxAdapter.tsx（用 @formily/react connect + mapProps）
+  - 修改 src/types.ts：SchemaRendererProps 新增 engine?: "legacy" | "formily-v2"
+  - 修改 src/SchemaRenderer.tsx：接入 feature flag，engine="formily-v2" 走 FormilyRuntimeRenderer
 
-不要做的事：
-  - 不要实现 REVIEW_DEEP_DIFF_GENERATED / SERVER_* diffMode；
-  - 不要修改 B1/B2/Phase C 已完成实现；
-  - 不要 commit，不要 push。
+注意事项：
+  - feature flag 默认值必须是 "legacy"，不能默认开 formily-v2
+  - 不要改 LLMAssistRenderer（Phase 3b FE-8 才动）
+  - 不要在 schema-renderer 引入 dnd-kit
+  - 不要 commit，不要 push
+
+已知技术债（不阻断 FE-2）：
+  - Vitest <4.1.0 critical CVE，由维护者决定是否升级 v4
+  - FormilyRuntimeRenderer 内 answers 无双向同步（FE-3 做）
 ```
 
 ---
