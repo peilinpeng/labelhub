@@ -55,84 +55,131 @@ def _score_options(maxv: int = 5) -> list[dict]:
 
 
 def _count_nodes(schema: dict) -> int:
-    """递归统计 schema 节点总数（含容器子节点）。"""
+    """统计 canonical schema root 树下的节点总数（不含 root 容器本身）。"""
     def walk(nodes: list) -> int:
         total = 0
         for n in nodes:
             total += 1
             total += walk(n.get("children", []) or [])
         return total
-    return walk(schema.get("nodes", []))
+    root = schema.get("root") or {}
+    return walk(root.get("children", []) or [])
+
+
+# ---------------------------------------------------------------------------
+# canonical 节点构造助手（对齐 packages/contracts/src/schema.ts）
+# ---------------------------------------------------------------------------
+
+def _show(node_id: str, type_: str, title: str, source_path: str, transform: dict | None = None) -> dict:
+    n = {"id": node_id, "kind": "SHOW_ITEM", "type": type_, "title": title, "sourcePath": source_path}
+    if transform:
+        n["transform"] = transform
+    return n
+
+
+def _field(node_id: str, type_: str, name: str, title: str, *, required: bool = False,
+           options: list | None = None, validations: list | None = None, **extra) -> dict:
+    n = {"id": node_id, "kind": "FIELD", "type": type_, "name": name, "title": title}
+    if required:
+        n["required"] = True
+    if options is not None:
+        n["options"] = options
+    if validations:
+        n["validations"] = validations
+    n.update(extra)
+    return n
+
+
+def _container(node_id: str, type_: str, title: str, children: list, **extra) -> dict:
+    n = {"id": node_id, "kind": "CONTAINER", "type": type_, "title": title, "children": children}
+    n.update(extra)
+    return n
+
+
+def _llm(node_id: str, title: str, prompt_template: str, prompt_template_id: str,
+         model_policy_id: str, output_bindings: list, output_mode: str = "SUGGESTION") -> dict:
+    return {
+        "id": node_id, "kind": "LLM_ASSIST", "type": "llm.assist", "title": title,
+        "trigger": "MANUAL", "promptTemplate": prompt_template, "promptTemplateId": prompt_template_id,
+        "modelPolicyId": model_policy_id, "inputBindings": {},
+        "outputMode": output_mode, "outputBindings": output_bindings,
+    }
+
+
+def _schema(schema_id: str, name: str, task_id: str, children: list) -> dict:
+    """组装 canonical LabelHubSchema（root 为 container.section）。"""
+    return {
+        "contractVersion": "1.1",
+        "schemaId": schema_id,
+        "schemaDraftRevision": 1,
+        "status": "DRAFT",
+        "meta": {
+            "name": name, "taskId": task_id, "authorId": "usr_demo_owner",
+            "createdAt": "2026-06-07T00:00:00.000Z", "updatedAt": "2026-06-07T00:00:00.000Z",
+        },
+        "root": {"id": "root", "kind": "CONTAINER", "type": "container.section",
+                 "title": name, "children": children},
+    }
 
 
 # ---------------------------------------------------------------------------
 # Schema 1：大模型问答质量标注（qa_quality）—— 覆盖全部组件类型
 # ---------------------------------------------------------------------------
 
-_QA_SCHEMA = {
-    "nodes": [
+_QA_SCHEMA = _schema(
+    "schema_qa_quality", "大模型问答质量标注", "task_demo_qa_quality",
+    children=[
         # —— 原始数据展示（ShowItem，只读，不参与提交）——
-        {"id": "qa-show-prompt", "type": "show.text", "label": "用户输入（prompt）",
-         "sourcePath": "$.item.sourcePayload.prompt"},
-        {"id": "qa-show-answer", "type": "show.text", "label": "待评估回答（model_answer）",
-         "sourcePath": "$.item.sourcePayload.model_answer"},
-        {"id": "qa-show-reference", "type": "show.text", "label": "参考答案（reference）",
-         "sourcePath": "$.item.sourcePayload.reference"},
+        _show("qa-show-prompt", "show.text", "用户输入（prompt）",
+              "$.item.sourcePayload.prompt", {"type": "TEXT", "fallback": "（无）"}),
+        _show("qa-show-answer", "show.text", "待评估回答（model_answer）",
+              "$.item.sourcePayload.model_answer", {"type": "TEXT", "fallback": "（无）"}),
+        _show("qa-show-reference", "show.text", "参考答案（reference）",
+              "$.item.sourcePayload.reference", {"type": "TEXT", "fallback": "（无）"}),
         # 媒体素材：按 media_type 渲染（text 题对应字段为空，自然不展示）
-        {"id": "qa-show-image", "type": "show.image", "label": "图片素材（image 题）",
-         "sourcePath": "$.item.sourcePayload.media_url"},
-        {"id": "qa-show-markdown", "type": "show.richtext", "label": "图文正文（markdown 题）",
-         "sourcePath": "$.item.sourcePayload.content_markdown"},
-        {"id": "qa-show-video", "type": "show.file", "label": "视频/文件素材（video 题）",
-         "sourcePath": "$.item.sourcePayload.media_url"},
+        _show("qa-show-image", "show.image", "图片素材（image 题）",
+              "$.item.sourcePayload.media_url"),
+        _show("qa-show-markdown", "show.richtext", "图文正文（markdown 题）",
+              "$.item.sourcePayload.content_markdown"),
+        _show("qa-show-video", "show.file", "视频/文件素材（video 题）",
+              "$.item.sourcePayload.media_url"),
 
         # —— 评分维度（1–5 分单选）——
-        {"id": "qa-relevance", "type": "choice.radio", "name": "relevance", "label": "相关性评分",
-         "required": True, "options": _score_options()},
-        {"id": "qa-accuracy", "type": "choice.radio", "name": "accuracy", "label": "准确性评分",
-         "required": True, "options": _score_options()},
-        {"id": "qa-compliance", "type": "choice.radio", "name": "compliance", "label": "格式合规评分",
-         "required": True, "options": _score_options()},
-        {"id": "qa-safety", "type": "choice.radio", "name": "safety", "label": "安全性评分",
-         "required": True, "options": _score_options()},
+        _field("qa-relevance", "choice.radio", "relevance", "相关性评分", required=True, options=_score_options()),
+        _field("qa-accuracy", "choice.radio", "accuracy", "准确性评分", required=True, options=_score_options()),
+        _field("qa-compliance", "choice.radio", "compliance", "格式合规评分", required=True, options=_score_options()),
+        _field("qa-safety", "choice.radio", "safety", "安全性评分", required=True, options=_score_options()),
 
         # —— 问题类型（多选）——
-        {"id": "qa-issues", "type": "choice.checkbox", "name": "issue_types", "label": "问题类型标签",
-         "required": False, "options": [
-             {"value": "fact_error", "label": "事实错误"},
-             {"value": "off_topic", "label": "答非所问"},
-             {"value": "format", "label": "格式问题"},
-             {"value": "safety", "label": "安全违规"},
-             {"value": "missing", "label": "信息缺失"},
-         ]},
+        _field("qa-issues", "choice.checkbox", "issue_types", "问题类型标签", options=[
+            {"value": "fact_error", "label": "事实错误"},
+            {"value": "off_topic", "label": "答非所问"},
+            {"value": "format", "label": "格式问题"},
+            {"value": "safety", "label": "安全违规"},
+            {"value": "missing", "label": "信息缺失"},
+        ]),
 
         # —— 文本类采集 ——
-        {"id": "qa-summary", "type": "input.text", "name": "one_line_summary", "label": "一句话总评",
-         "required": False},
-        {"id": "qa-detail", "type": "input.textarea", "name": "detail_comment", "label": "详细评语 / 打回理由",
-         "required": True},
-        {"id": "qa-revision", "type": "input.richtext", "name": "revision_suggestion", "label": "修订建议",
-         "required": False},
-        {"id": "qa-corrected", "type": "data.json", "name": "corrected_answer", "label": "修正后的标准答案",
-         "required": False},
+        _field("qa-summary", "input.text", "one_line_summary", "一句话总评"),
+        _field("qa-detail", "input.textarea", "detail_comment", "详细评语 / 打回理由", required=True),
+        _field("qa-revision", "input.richtext", "revision_suggestion", "修订建议"),
+        _field("qa-corrected", "data.json", "corrected_answer", "修正后的标准答案"),
 
         # —— 证据素材（图片上传）——
-        {"id": "qa-evidence", "type": "upload.image", "name": "evidence", "label": "证据素材（截图）",
-         "required": False},
+        _field("qa-evidence", "upload.image", "evidence", "证据素材（截图）"),
 
         # —— AI 预评分（LLM 交互组件）——
-        {"id": "qa-ai-precheck", "type": "llm.assist", "label": "AI 预评分参考",
-         "promptTemplate": "请基于相关性、准确性、格式合规、安全性四个维度对该回答打分（1-5），并给出一句话结论。",
-         "promptTemplateId": "pt_qa_quality_v1", "modelPolicyId": "mp_doubao_pro",
-         "assistType": "QUALITY_CHECK",
-         "outputBindings": [
-             {"toFieldName": "relevance", "from": "$.relevance", "mode": "REPLACE", "requireUserConfirm": True},
-             {"toFieldName": "accuracy", "from": "$.accuracy", "mode": "REPLACE", "requireUserConfirm": True},
-             {"toFieldName": "compliance", "from": "$.compliance", "mode": "REPLACE", "requireUserConfirm": True},
-             {"toFieldName": "safety", "from": "$.safety", "mode": "REPLACE", "requireUserConfirm": True},
-         ]},
-    ]
-}
+        _llm("qa-ai-precheck", "AI 预评分参考",
+             "请基于相关性、准确性、格式合规、安全性四个维度对该回答打分（1-5），并给出一句话结论。",
+             "pt_qa_quality_v1", "mp_doubao_pro",
+             output_bindings=[
+                 {"from": "$.relevance", "toFieldName": "relevance", "mode": "REPLACE", "requireUserConfirm": True},
+                 {"from": "$.accuracy", "toFieldName": "accuracy", "mode": "REPLACE", "requireUserConfirm": True},
+                 {"from": "$.compliance", "toFieldName": "compliance", "mode": "REPLACE", "requireUserConfirm": True},
+                 {"from": "$.safety", "toFieldName": "safety", "mode": "REPLACE", "requireUserConfirm": True},
+             ]),
+    ],
+)
 
 _QA_REVIEW_DIMENSIONS = [
     {"key": "relevance", "label": "相关性", "weight": 0.3},
@@ -146,79 +193,70 @@ _QA_REVIEW_DIMENSIONS = [
 # Schema 2：偏好对比标注（preference_compare）—— 含 container.tabs A/B 并排
 # ---------------------------------------------------------------------------
 
-_PREF_SCHEMA = {
-    "nodes": [
-        {"id": "pc-show-prompt", "type": "show.text", "label": "用户输入（prompt）",
-         "sourcePath": "$.item.sourcePayload.prompt"},
+_PREF_SCHEMA = _schema(
+    "schema_pref_compare", "偏好对比标注（RLHF）", "task_demo_pref_compare",
+    children=[
+        _show("pc-show-prompt", "show.text", "用户输入（prompt）",
+              "$.item.sourcePayload.prompt", {"type": "TEXT", "fallback": "（无）"}),
         # container.tabs：A / B 并排展示（匿名标题避免偏向）
-        {"id": "pc-tabs", "type": "container.tabs", "label": "回答对比", "children": [
-            {"id": "pc-tab-a", "type": "container.section", "label": "模型 A", "children": [
-                {"id": "pc-show-a", "type": "show.text", "label": "回答 A（response_a）",
-                 "sourcePath": "$.item.sourcePayload.response_a"},
-            ]},
-            {"id": "pc-tab-b", "type": "container.section", "label": "模型 B", "children": [
-                {"id": "pc-show-b", "type": "show.text", "label": "回答 B（response_b）",
-                 "sourcePath": "$.item.sourcePayload.response_b"},
-            ]},
-        ]},
+        _container("pc-tabs", "container.tabs", "回答对比", layout={"tabStyle": "LINE"}, children=[
+            _container("pc-tab-a", "container.section", "模型 A", children=[
+                _show("pc-show-a", "show.text", "回答 A（response_a）",
+                      "$.item.sourcePayload.response_a", {"type": "TEXT", "fallback": "（无）"}),
+            ]),
+            _container("pc-tab-b", "container.section", "模型 B", children=[
+                _show("pc-show-b", "show.text", "回答 B（response_b）",
+                      "$.item.sourcePayload.response_b", {"type": "TEXT", "fallback": "（无）"}),
+            ]),
+        ]),
 
         # —— 单选采集 ——
-        {"id": "pc-preferred", "type": "choice.radio", "name": "preferred", "label": "偏好结论",
-         "required": True, "options": [
-             {"value": "A", "label": "A 更优"},
-             {"value": "B", "label": "B 更优"},
-             {"value": "tie", "label": "平局（tie）"},
-         ]},
-        {"id": "pc-margin", "type": "choice.radio", "name": "margin", "label": "优势程度",
-         "required": True, "options": [
-             {"value": "strong", "label": "明显优于"},
-             {"value": "slight", "label": "略优于"},
-             {"value": "equal", "label": "相当"},
-         ]},
-        {"id": "pc-safety", "type": "choice.radio", "name": "safety_flag", "label": "是否安全风险",
-         "required": True, "options": [
-             {"value": "yes", "label": "是"},
-             {"value": "no", "label": "否"},
-         ]},
+        _field("pc-preferred", "choice.radio", "preferred", "偏好结论", required=True, options=[
+            {"value": "A", "label": "A 更优"},
+            {"value": "B", "label": "B 更优"},
+            {"value": "tie", "label": "平局（tie）"},
+        ]),
+        _field("pc-margin", "choice.radio", "margin", "优势程度", required=True, options=[
+            {"value": "strong", "label": "明显优于"},
+            {"value": "slight", "label": "略优于"},
+            {"value": "equal", "label": "相当"},
+        ]),
+        _field("pc-safety", "choice.radio", "safety_flag", "是否安全风险", required=True, options=[
+            {"value": "yes", "label": "是"},
+            {"value": "no", "label": "否"},
+        ]),
 
         # —— 判断依据维度（多选）——
-        {"id": "pc-dimensions", "type": "choice.checkbox", "name": "judge_dimensions", "label": "判断依据维度",
-         "required": False, "options": [
-             {"value": "relevance", "label": "相关性"},
-             {"value": "accuracy", "label": "准确性"},
-             {"value": "safety", "label": "安全性"},
-             {"value": "completeness", "label": "完整性"},
-             {"value": "readability", "label": "可读性"},
-             {"value": "creativity", "label": "创意性"},
-             {"value": "idiomaticity", "label": "地道性"},
-         ]},
+        _field("pc-dimensions", "choice.checkbox", "judge_dimensions", "判断依据维度", options=[
+            {"value": "relevance", "label": "相关性"},
+            {"value": "accuracy", "label": "准确性"},
+            {"value": "safety", "label": "安全性"},
+            {"value": "completeness", "label": "完整性"},
+            {"value": "readability", "label": "可读性"},
+            {"value": "creativity", "label": "创意性"},
+            {"value": "idiomaticity", "label": "地道性"},
+        ]),
 
         # —— 文本类采集 ——
-        {"id": "pc-conclusion", "type": "input.text", "name": "one_line_conclusion", "label": "一句话结论",
-         "required": False},
-        {"id": "pc-note", "type": "input.textarea", "name": "annotator_note", "label": "判断理由",
-         "required": True,
-         "validations": [{"type": "minLength", "value": 30, "message": "判断理由至少 30 字"}]},
-        {"id": "pc-rewrite", "type": "input.richtext", "name": "rewrite_suggestion", "label": "改写 / 修订建议",
-         "required": False},
-        {"id": "pc-structured", "type": "data.json", "name": "structured_note", "label": "结构化批注",
-         "required": False},
+        _field("pc-conclusion", "input.text", "one_line_conclusion", "一句话结论"),
+        _field("pc-note", "input.textarea", "annotator_note", "判断理由", required=True,
+               validations=[{"type": "minLength", "value": 30, "message": "判断理由至少 30 字"}]),
+        _field("pc-rewrite", "input.richtext", "rewrite_suggestion", "改写 / 修订建议"),
+        _field("pc-structured", "data.json", "structured_note", "结构化批注"),
 
         # —— 证据素材（文件上传）——
-        {"id": "pc-evidence", "type": "upload.file", "name": "evidence", "label": "证据素材（附件）",
-         "required": False},
+        _field("pc-evidence", "upload.file", "evidence", "证据素材（附件）"),
 
         # —— AI 预判（LLM 交互组件）——
-        {"id": "pc-ai-predict", "type": "llm.assist", "label": "AI 预判参考",
-         "promptTemplate": "请比较回答 A 与回答 B，给出偏好结论（A/B/tie）、优势程度与简要理由。",
-         "promptTemplateId": "pt_pref_compare_v1", "modelPolicyId": "mp_doubao_pro",
-         "assistType": "PREFERENCE",
-         "outputBindings": [
-             {"toFieldName": "preferred", "from": "$.preferred", "mode": "REPLACE", "requireUserConfirm": True},
-             {"toFieldName": "margin", "from": "$.margin", "mode": "REPLACE", "requireUserConfirm": True},
-         ]},
-    ]
-}
+        _llm("pc-ai-predict", "AI 预判参考",
+             "请比较回答 A 与回答 B，给出偏好结论（A/B/tie）、优势程度与简要理由。",
+             "pt_pref_compare_v1", "mp_doubao_pro",
+             output_bindings=[
+                 {"from": "$.preferred", "toFieldName": "preferred", "mode": "REPLACE", "requireUserConfirm": True},
+                 {"from": "$.margin", "toFieldName": "margin", "mode": "REPLACE", "requireUserConfirm": True},
+             ]),
+    ],
+)
 
 _PREF_REVIEW_DIMENSIONS = [
     {"key": "relevance", "label": "相关性", "weight": 0.25},

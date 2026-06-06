@@ -46,6 +46,16 @@ def _collect_field_names(nodes: list, result: set) -> None:
             _collect_field_names(children, result)
 
 
+def _schema_entry_nodes(schema_json: dict) -> list:
+    """返回供递归遍历的入口节点列表。
+
+    契约 canonical 形状用 root（ContainerNode 树）；兼容历史扁平 nodes 形状。
+    """
+    if isinstance(schema_json, dict) and isinstance(schema_json.get("root"), dict):
+        return [schema_json["root"]]
+    return (schema_json or {}).get("nodes", [])
+
+
 def _find_node_by_id(nodes: list, node_id: str) -> dict | None:
     """在 schema nodes（可能嵌套 children）中递归查找指定 id 的节点。"""
     for node in nodes:
@@ -60,7 +70,7 @@ def _find_node_by_id(nodes: list, node_id: str) -> dict | None:
 
 
 def _validate_answers(schema_json: dict, answers: dict) -> dict:
-    nodes = schema_json.get("nodes", [])
+    nodes = _schema_entry_nodes(schema_json)
     valid_field_names: set[str] = set()
     _collect_field_names(nodes, valid_field_names)
     errors: list[str] = []
@@ -228,7 +238,7 @@ def llm_assist(db: Session, assignment_id: str, actor: object, req: object) -> d
         raise PermissionDeniedException("无权在该作答上调用 LLM 辅助")
 
     schema_version = db.query(SchemaVersion).filter_by(id=assignment.schema_version_id).first()
-    nodes = (schema_version.schema_json or {}).get("nodes", [])
+    nodes = _schema_entry_nodes(schema_version.schema_json or {})
     node = _find_node_by_id(nodes, req.nodeId)
     if not node:
         raise ValidationFailedException(f"节点 {req.nodeId!r} 不在当前 Schema 中")

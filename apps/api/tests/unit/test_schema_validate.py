@@ -71,3 +71,35 @@ def test_container_child_invalid_propagates():
     ]}
     result = validate_schema(schema)
     assert result["valid"] is False
+
+
+# —— canonical root 树形（契约权威形状）——
+
+def test_valid_canonical_root_schema():
+    """契约 canonical：root 为 ContainerNode 树，递归校验通过。"""
+    schema = {
+        "contractVersion": "1.1", "schemaId": "s1", "status": "DRAFT",
+        "meta": {"name": "t", "taskId": "task_1", "authorId": "u1"},
+        "root": {"id": "root", "kind": "CONTAINER", "type": "container.section", "title": "根",
+                 "children": [
+                     {"id": "s", "kind": "SHOW_ITEM", "type": "show.text", "title": "展示",
+                      "sourcePath": "$.item.sourcePayload.x"},
+                     {"id": "f", "kind": "FIELD", "type": "input.text", "name": "field1", "title": "字段1"},
+                 ]},
+    }
+    result = validate_schema(schema)
+    assert result["valid"] is True
+    assert result["errors"] == []
+
+
+def test_canonical_root_field_missing_name_invalid():
+    """canonical 树下的 FieldNode 缺 name 仍应报错。"""
+    schema = {
+        "root": {"id": "root", "kind": "CONTAINER", "type": "container.section", "title": "根",
+                 "children": [
+                     {"id": "f", "kind": "FIELD", "type": "input.text", "title": "缺 name"},
+                 ]},
+    }
+    result = validate_schema(schema)
+    assert result["valid"] is False
+    assert any("name" in e for e in result["errors"])

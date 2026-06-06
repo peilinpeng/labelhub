@@ -54,21 +54,34 @@ _DEMO_USERS = [
     {"id": "usr_demo_reviewer", "role": "REVIEWER", "email": "reviewer@labelhub.com", "display_name": "演示 Reviewer"},
 ]
 
-# 标注模板：ShowItem（只读展示）+ 单选 + 多行文本
+# 标注模板（canonical：root 树形，对齐 packages/contracts/src/schema.ts）：
+# ShowItem（只读展示）+ 单选 + 多行文本
 _DEMO_SCHEMA = {
-    "nodes": [
-        {"id": "show-title", "type": "show.text", "label": "原文标题",
-         "sourcePath": "$.item.sourcePayload.title"},
-        {"id": "q-quality", "type": "choice.radio", "name": "quality", "label": "质量评级",
-         "required": True,
-         "options": [
-             {"value": "high", "label": "高质量"},
-             {"value": "medium", "label": "中等"},
-             {"value": "low", "label": "低质量"},
-         ]},
-        {"id": "q-comment", "type": "input.textarea", "name": "comment", "label": "评语",
-         "required": False},
-    ]
+    "contractVersion": "1.1",
+    "schemaId": "schema_demo_news_quality",
+    "schemaDraftRevision": 1,
+    "status": "DRAFT",
+    "meta": {
+        "name": "新闻质量标注模板", "taskId": "task_demo_news_quality", "authorId": "usr_demo_owner",
+        "createdAt": "2026-06-06T00:00:00.000Z", "updatedAt": "2026-06-06T00:00:00.000Z",
+    },
+    "root": {
+        "id": "root", "kind": "CONTAINER", "type": "container.section", "title": "新闻质量标注",
+        "children": [
+            {"id": "show-title", "kind": "SHOW_ITEM", "type": "show.text", "title": "原文标题",
+             "sourcePath": "$.item.sourcePayload.title", "transform": {"type": "TEXT", "fallback": "无标题"}},
+            {"id": "show-body", "kind": "SHOW_ITEM", "type": "show.text", "title": "原文正文",
+             "sourcePath": "$.item.sourcePayload.body", "transform": {"type": "TEXT", "fallback": "无正文"}},
+            {"id": "q-quality", "kind": "FIELD", "type": "choice.radio", "name": "quality",
+             "title": "质量评级", "required": True, "options": [
+                 {"value": "high", "label": "高质量"},
+                 {"value": "medium", "label": "中等"},
+                 {"value": "low", "label": "低质量"},
+             ]},
+            {"id": "q-comment", "kind": "FIELD", "type": "input.textarea", "name": "comment",
+             "title": "评语"},
+        ],
+    },
 }
 
 _DEMO_REVIEW_DIMENSIONS = [

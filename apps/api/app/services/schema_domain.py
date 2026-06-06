@@ -112,13 +112,17 @@ def validate_schema(schema_json: dict) -> dict:
         errors.append("schema 必须是对象类型")
         return {"valid": False, "errors": errors}
 
-    # 顶层 nodes 字段必须存在
-    if "nodes" not in schema_json:
-        errors.append("缺少必填字段 nodes")
+    # 入口节点：契约 canonical 形状用 root（ContainerNode 树）；兼容历史扁平 nodes 形状
+    if isinstance(schema_json.get("root"), dict):
+        entry_nodes = [schema_json["root"]]
+    elif "nodes" in schema_json:
+        entry_nodes = schema_json["nodes"]
+    else:
+        errors.append("缺少必填字段 root（或兼容的 nodes）")
         return {"valid": False, "errors": errors}
 
     field_names: list[str] = []
-    _collect_nodes(schema_json["nodes"], errors, field_names)
+    _collect_nodes(entry_nodes, errors, field_names)
 
     # FieldNode name 唯一性检查
     seen: set[str] = set()
