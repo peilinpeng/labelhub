@@ -44,6 +44,13 @@ export interface SchemaVersionRef {
 
 export type JsonPath = string;
 
+export type SchemaVisibilityMode =
+  | "CREATE"
+  | "EDIT"
+  | "REVIEW"
+  | "READONLY"
+  | "HISTORICAL";
+
 export interface LabelHubRuntimeContext {
   task: TaskRuntimeContext;
   schema: SchemaRuntimeContext;
@@ -52,6 +59,11 @@ export interface LabelHubRuntimeContext {
   review?: ReviewRuntimeContext;
   system: SystemRuntimeContext;
   meta?: Record<string, unknown>;
+}
+
+export interface RuntimeContextWithOutput extends LabelHubRuntimeContext {
+  output?: unknown;
+  visibilityMode?: SchemaVisibilityMode;
 }
 
 export interface TaskRuntimeContext {

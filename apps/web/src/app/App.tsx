@@ -153,7 +153,7 @@ function LoginPage({ onLogin }: { onLogin: (role: Role, email: string, password:
 
         {activeAccount ? (
           <div className="login-dialog-backdrop" role="presentation">
-            <Card className="login-dialog" role="dialog" aria-modal="true" aria-labelledby="login-dialog-title">
+            <section className="lh-card login-dialog" role="dialog" aria-modal="true" aria-labelledby="login-dialog-title">
               <div className="login-dialog__header">
                 <div>
                   <span>{activeAccount.title}</span>
@@ -198,7 +198,7 @@ function LoginPage({ onLogin }: { onLogin: (role: Role, email: string, password:
                   </Button>
                 </div>
               </form>
-            </Card>
+            </section>
           </div>
         ) : null}
       </div>

@@ -1,14 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
-import { decideReview, getReviewDetail } from "../../api/reviewer";
+import { claimReview, decideReview, getReviewDetail } from "../../api/reviewer";
 import { getReviewDetail as getMockReviewDetail } from "../../mocks/mock-db";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import { applyDemoSubmissionState, DEMO_SUBMISSION_ID, reviewDemoSubmission } from "../../mocks/demo-workflow-store";
-import type { ReviewDecisionRequest, ReviewDetailResponse } from "@labelhub/contracts";
+import type { ID, ReviewDecisionRequest, ReviewDetailResponse } from "@labelhub/contracts";
 import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-display";
+import { computeReviewPatches } from "./reviewer-diff";
+import {
+  appendAiReviewFeedbackAuditSafely,
+  appendReviewDiffGeneratedAuditSafely,
+  appendReviewStartedAuditSafely,
+  appendReviewSubmittedAuditSafely,
+  type AiReviewFeedback,
+} from "./reviewer-audit-events";
 
 interface ReviewDetailPageProps {
   role: Role;
@@ -23,7 +31,7 @@ function getFallbackDetail(submissionId?: string): ReviewDetailResponse | undefi
     ...detail,
     submission: {
       ...detail.submission,
-      id: submissionId,
+      id: submissionId as ID,
     },
   };
 }
@@ -34,16 +42,8 @@ function valueText(value: unknown): string {
   return String(value);
 }
 
-function formatTime(value: string): string {
-  return new Date(value).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
+  void role;
   const { submissionId } = useParams<{ submissionId: string }>();
   const navigate = useNavigate();
   const [detail, setDetail] = useState<ReviewDetailResponse | null>(null);
@@ -53,8 +53,14 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<ReviewDecision | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([submissionId ?? DEMO_SUBMISSION_ID]);
+  const [aiReviewFeedback, setAiReviewFeedback] = useState<AiReviewFeedback>("NOT_USED");
+  const [correctedAnswersText, setCorrectedAnswersText] = useState("");
+  const [correctedAnswersParseError, setCorrectedAnswersParseError] = useState<string | null>(null);
+  const startedAuditSubmissionIdsRef = useRef<Set<string>>(new Set());
+  const reviewOpenedAtMsRef = useRef(Date.now());
 
   useEffect(() => {
+    reviewOpenedAtMsRef.current = Date.now();
     void (async () => {
       try {
         setLoading(true);
@@ -74,6 +80,25 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
     })();
   }, [submissionId]);
 
+  useEffect(() => {
+    setAiReviewFeedback("NOT_USED");
+  }, [submissionId]);
+
+  useEffect(() => {
+    if (!detail || startedAuditSubmissionIdsRef.current.has(detail.submission.id)) {
+      return;
+    }
+    startedAuditSubmissionIdsRef.current.add(detail.submission.id);
+    appendReviewStartedAuditSafely(detail);
+  }, [detail]);
+
+  useEffect(() => {
+    if (detail) {
+      setCorrectedAnswersText(JSON.stringify(detail.submission.answers ?? {}, null, 2));
+      setCorrectedAnswersParseError(null);
+    }
+  }, [detail]);
+
   const aiResult = detail?.aiResult?.aiResult;
   const answers = (detail?.submission.answers ?? {}) as Record<string, unknown>;
   const sourcePayload = (detail?.item.sourcePayload ?? {}) as Record<string, unknown>;
@@ -92,9 +117,28 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   );
 
   const handleDecision = async (decision: ReviewDecision) => {
-    if (!submissionId) return;
+    if (!submissionId || !detail) return;
+
+    // 解析修正答案并计算 patches
+    let patches: ReturnType<typeof computeReviewPatches> = [];
+    let parsedCorrectedAnswers: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = JSON.parse(correctedAnswersText);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        setCorrectedAnswersParseError("修正答案必须是 JSON 对象，无法提交。");
+        return;
+      }
+      parsedCorrectedAnswers = parsed as Record<string, unknown>;
+      patches = computeReviewPatches(answers, parsedCorrectedAnswers);
+      setCorrectedAnswersParseError(null);
+    } catch {
+      setCorrectedAnswersParseError("修正答案 JSON 格式不正确，无法提交。");
+      return;
+    }
+
     try {
       setDeciding(true);
+      const requestPatches = patches.length > 0 ? patches : undefined;
       const request: ReviewDecisionRequest =
         decision === "PASS"
           ? {
@@ -102,6 +146,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               stage: "HUMAN_REVIEW",
               decision,
               comments: comments ? [{ message: comments }] : undefined,
+              patches: requestPatches,
             }
           : {
               submissionId: submissionId as ReviewDecisionRequest["submissionId"],
@@ -109,11 +154,44 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               decision,
               reason: comments || "需要标注员重新修改后提交。",
               comments: comments ? [{ message: comments }] : undefined,
+              patches: requestPatches,
             };
+      await claimReview(submissionId).catch(() => undefined);
+      const response = await decideReview(submissionId, request);
       reviewDemoSubmission(decision);
       setDecisionMessage(decision === "PASS" ? "审核通过，结果已进入可导出数据。" : "已打回，等待标注员修改后重新提交。");
-      void decideReview(submissionId, request).catch(() => undefined);
+      const reviewDurationMs = Math.max(0, Date.now() - reviewOpenedAtMsRef.current);
+      appendReviewSubmittedAuditSafely({
+        detail,
+        decision,
+        response,
+        reviewDurationMs,
+        commentLength: comments.length,
+        patchCount: patches.length,
+      });
+      if (patches.length > 0) {
+        appendReviewDiffGeneratedAuditSafely({
+          detail,
+          decision,
+          response,
+          patches,
+          reviewDurationMs,
+          correctedAnswers: parsedCorrectedAnswers,
+        });
+      }
+      if (aiResult) {
+        appendAiReviewFeedbackAuditSafely({
+          detail,
+          response,
+          feedback: aiReviewFeedback,
+          aiConfidence: aiResult.confidence,
+          aiDimensionCount: aiResult.dimensionScores.length,
+        });
+      }
       window.setTimeout(() => navigate(RoutePath.REVIEWER_QUEUE), 650);
+    } catch (error) {
+      console.warn("提交审核决策失败：", error);
+      setDecisionMessage("审核提交失败，请稍后重试。");
     } finally {
       setDeciding(false);
     }
@@ -260,6 +338,73 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
             ))}
           </div>
           <p>{aiResult?.summary ?? display.issue}</p>
+          {aiResult ? (
+            <fieldset className="review-human-ai-feedback">
+              <legend>AI 预审是否对本次审核有帮助？</legend>
+              <label>
+                <input
+                  checked={aiReviewFeedback === "HELPFUL"}
+                  name={`ai-review-feedback-${detail.submission.id}`}
+                  onChange={() => setAiReviewFeedback("HELPFUL")}
+                  type="radio"
+                  value="HELPFUL"
+                />
+                有帮助
+              </label>
+              <label>
+                <input
+                  checked={aiReviewFeedback === "NOT_HELPFUL"}
+                  name={`ai-review-feedback-${detail.submission.id}`}
+                  onChange={() => setAiReviewFeedback("NOT_HELPFUL")}
+                  type="radio"
+                  value="NOT_HELPFUL"
+                />
+                没帮助
+              </label>
+              <label>
+                <input
+                  checked={aiReviewFeedback === "NOT_USED"}
+                  name={`ai-review-feedback-${detail.submission.id}`}
+                  onChange={() => setAiReviewFeedback("NOT_USED")}
+                  type="radio"
+                  value="NOT_USED"
+                />
+                未参考
+              </label>
+            </fieldset>
+          ) : null}
+        </Card>
+
+        <Card className="review-human-corrected-answers">
+          <h3>审核修正答案</h3>
+          <p className="review-human-corrected-answers__desc">
+            Reviewer 可以在这里修改标注答案；系统会在提交审核时生成字段级 patches。
+          </p>
+          <label className="review-human-corrected-answers__label">
+            <span>修正后的答案（JSON 格式）</span>
+            <Textarea
+              className="review-human-corrected-answers__textarea"
+              rows={8}
+              value={correctedAnswersText}
+              onChange={(event) => {
+                const text = event.target.value;
+                setCorrectedAnswersText(text);
+                try {
+                  const parsed: unknown = JSON.parse(text);
+                  setCorrectedAnswersParseError(
+                    typeof parsed !== "object" || parsed === null || Array.isArray(parsed)
+                      ? "必须是 JSON 对象"
+                      : null,
+                  );
+                } catch {
+                  setCorrectedAnswersParseError("JSON 格式不正确");
+                }
+              }}
+            />
+          </label>
+          {correctedAnswersParseError !== null && (
+            <p className="danger-text review-human-corrected-answers__error">{correctedAnswersParseError}</p>
+          )}
         </Card>
 
         <Card className="review-human-decision-card">

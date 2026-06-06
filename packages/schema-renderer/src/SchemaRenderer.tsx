@@ -30,6 +30,7 @@ export function SchemaRenderer(props: SchemaRendererProps) {
       onAnswersChange(normalized.answers);
     },
     onLLMAssist: props.onLLMAssist,
+    onAssistOutcome: props.onAssistOutcome,
     onApplySuggestedPatch: (patch) => {
       onAnswersChange(patch);
     },

@@ -2,16 +2,24 @@ import type {
   AIReviewJob,
   AIReviewJobSummary,
   AIReviewResultRecord,
+  AiAssistType,
+  AppendAuditEventRequest,
   AnswerPayload,
   Assignment,
   AssignmentContextResponse,
+  AuditEventQuery,
+  AuditEventRecord,
   AuditLogSummary,
   BatchReviewResponse,
   ClaimTaskResponse,
+  DataQualityPassport,
   DatasetItem,
   Draft,
+  ExportArtifactSummary,
   ExportJob,
   ExportMapping,
+  ExportRecord,
+  ExportRecordMetadata,
   FinalReviewResultRecord,
   FileObject,
   GenerateSchemaResponse,
@@ -24,6 +32,8 @@ import type {
   ReviewCommand,
   ReviewDecisionResponse,
   ReviewDetailResponse,
+  ReviewPatch,
+  RiskSignalCode,
   SaveDraftResponse,
   SaveSchemaDraftResponse,
   SchemaValidationResult,
@@ -33,6 +43,7 @@ import type {
   SubmitAssignmentResponse,
   Task,
   ValidationResult,
+  QueryAuditEventsResponse,
 } from "@labelhub/contracts";
 import {
   collectSchemaNodes,
@@ -50,6 +61,13 @@ import { aiReviewJobsMock, reviewResultsMock } from "./data/reviews.mock";
 import { newsQualitySchemaDraft, schemaVersionsMock } from "./data/schemas.mock";
 import { submissionsMock } from "./data/submissions.mock";
 import { tasksMock } from "./data/tasks.mock";
+import {
+  schemaGovernanceDemoSchemaDrafts,
+  schemaGovernanceDemoSchemaVersions,
+  schemaGovernanceDemoTasks,
+} from "./demo-schema-governance";
+import { getMockPromptSnapshot, hashPromptSnapshot } from "./ai-prompt-registry";
+import { hashCanonicalJson } from "./hash-utils";
 import { clone, nextId, now } from "./mock-utils";
 
 interface MockState {
@@ -63,14 +81,25 @@ interface MockState {
   aiReviewJobs: AIReviewJob[];
   reviewResults: Array<AIReviewResultRecord | HumanReviewResultRecord | FinalReviewResultRecord>;
   exportJobs: ExportJob[];
+  exportArtifacts: MockExportArtifact[];
   files: FileObject[];
   registry: ServerComponentRegistryItem[];
+  auditEvents: AuditEventRecord[];
 }
 
+interface MockExportArtifact {
+  summary: ExportArtifactSummary;
+  records: ExportRecord[];
+}
+
+type LLMAssistMockRequest = {
+  nodeId?: string;
+};
+
 export const mockDb: MockState = {
-  tasks: clone(tasksMock),
-  schemaDrafts: [clone(newsQualitySchemaDraft)],
-  schemaVersions: clone(schemaVersionsMock),
+  tasks: [...clone(tasksMock), ...clone(schemaGovernanceDemoTasks)],
+  schemaDrafts: [clone(newsQualitySchemaDraft), ...clone(schemaGovernanceDemoSchemaDrafts)],
+  schemaVersions: [...clone(schemaVersionsMock), ...clone(schemaGovernanceDemoSchemaVersions)],
   datasetItems: clone(datasetItemsMock),
   assignments: clone(assignmentsMock),
   drafts: clone(draftsMock),
@@ -78,8 +107,10 @@ export const mockDb: MockState = {
   aiReviewJobs: clone(aiReviewJobsMock),
   reviewResults: clone(reviewResultsMock) as Array<AIReviewResultRecord | HumanReviewResultRecord | FinalReviewResultRecord>,
   exportJobs: clone(exportJobsMock),
+  exportArtifacts: [],
   files: clone(filesMock),
   registry: clone(componentRegistryMock),
+  auditEvents: createSeedAuditEvents(),
 };
 
 export function audit(action: AuditLogSummary["action"]): AuditLogSummary {
@@ -88,6 +119,316 @@ export function audit(action: AuditLogSummary["action"]): AuditLogSummary {
     action,
     createdAt: now(),
   };
+}
+
+export function appendAuditEvent(request: AppendAuditEventRequest): AuditEventRecord {
+  if (request.idempotencyKey !== undefined) {
+    const existing = mockDb.auditEvents.find((event) => event.idempotencyKey === request.idempotencyKey);
+    if (existing !== undefined) {
+      return clone(existing);
+    }
+  }
+
+  const record: AuditEventRecord = {
+    id: nextId("audit"),
+    type: request.type,
+    severity: request.severity ?? "INFO",
+    source: request.source,
+    actor: request.actor,
+    target: request.target,
+    payload: sanitizeAuditPayload(request.payload),
+    createdAt: now(),
+  };
+  if (request.requestId !== undefined) record.requestId = request.requestId;
+  if (request.idempotencyKey !== undefined) record.idempotencyKey = request.idempotencyKey;
+  if (request.checksum !== undefined) record.checksum = request.checksum;
+
+  mockDb.auditEvents.push(record);
+  return clone(record);
+}
+
+export function queryAuditEvents(query: AuditEventQuery = {}): QueryAuditEventsResponse {
+  const events = mockDb.auditEvents
+    .filter((event) => matchesAuditQuery(event, query))
+    .sort(compareAuditEventsDesc)
+    .slice(0, query.limit ?? mockDb.auditEvents.length)
+    .map((event) => clone(event));
+
+  return { events };
+}
+
+function createSeedAuditEvents(): AuditEventRecord[] {
+  const createdAt = now();
+  return [
+    {
+      id: nextId("audit"),
+      type: "SCHEMA_DRAFT_SAVED",
+      severity: "INFO",
+      source: "SYSTEM",
+      actor: {
+        id: "usr_owner",
+        role: "OWNER",
+        displayName: "Owner",
+      },
+      target: {
+        entityType: "SCHEMA",
+        entityId: newsQualitySchemaDraft.schemaId,
+        taskId: newsQualitySchemaDraft.meta.taskId,
+        schemaId: newsQualitySchemaDraft.schemaId,
+      },
+      payload: {
+        schemaDraftRevision: newsQualitySchemaDraft.schemaDraftRevision,
+        fieldCount: collectAnswerFieldCount(newsQualitySchemaDraft),
+        validationErrorCount: 0,
+        validationWarningCount: 0,
+      },
+      createdAt,
+    },
+    {
+      id: nextId("audit"),
+      type: "EXPORT_GENERATED",
+      severity: "INFO",
+      source: "SYSTEM",
+      actor: {
+        id: "usr_owner",
+        role: "OWNER",
+        displayName: "Owner",
+      },
+      target: {
+        entityType: "EXPORT",
+        entityId: "job_seed_export",
+        taskId: "task_news_quality",
+        exportId: "job_seed_export",
+        schemaVersionId: "sv_news_quality_1",
+      },
+      payload: {
+        exportId: "job_seed_export",
+        format: "JSONL",
+        rowCount: 128,
+        warningCount: 0,
+        mappingChecksum: "sha256:mock-export-mapping",
+      },
+      checksum: "sha256:mock-export-event",
+      createdAt,
+    },
+    {
+      id: nextId("audit"),
+      type: "LABELING_SESSION_SUMMARY",
+      severity: "INFO",
+      source: "WEB",
+      actor: {
+        id: "usr_labeler",
+        role: "LABELER",
+        displayName: "标注员",
+      },
+      target: {
+        entityType: "ASSIGNMENT",
+        entityId: "asn_seed_quality",
+        taskId: "task_news_quality",
+        assignmentId: "asn_seed_quality",
+        schemaVersionId: "sv_news_quality_1",
+      },
+      payload: sanitizeAuditPayload({
+        taskId: "task_news_quality",
+        assignmentId: "asn_seed_quality",
+        labelerId: "usr_labeler",
+        schemaVersionId: "sv_news_quality_1",
+        totalWallTimeMs: 245000,
+        activeTimeMs: 182000,
+        idleTimeMs: 63000,
+        blurCount: 1,
+        focusLossCount: 1,
+        pasteCount: 0,
+        changedFieldCount: 4,
+        fieldEditCount: 7,
+        riskSignals: [],
+        answerHash: "sha256:mock-answer-summary",
+      }),
+      createdAt,
+    },
+    {
+      id: nextId("audit"),
+      type: "REVIEW_DIFF_GENERATED",
+      severity: "INFO",
+      source: "WEB",
+      actor: {
+        id: "usr_reviewer",
+        role: "REVIEWER",
+        displayName: "审核员",
+      },
+      target: {
+        entityType: "REVIEW",
+        entityId: "rev_seed_quality",
+        taskId: "task_news_quality",
+        submissionId: "sub_seed_quality",
+        reviewId: "rev_seed_quality",
+        schemaVersionId: "sv_news_quality_1",
+      },
+      payload: sanitizeAuditPayload({
+        taskId: "task_news_quality",
+        submissionId: "sub_seed_quality",
+        reviewId: "rev_seed_quality",
+        reviewerId: "usr_reviewer",
+        labelerId: "usr_labeler",
+        schemaVersionId: "sv_news_quality_1",
+        decision: "APPROVED_WITH_CHANGES",
+        patchedFieldNames: ["summary", "qualityRating"],
+        patchCount: 2,
+        beforeAnswerHash: "sha256:mock-before-answer",
+        afterAnswerHash: "sha256:mock-after-answer",
+        diffSummaryHash: "sha256:mock-diff-summary",
+        diffMode: "FRONTEND_SHALLOW",
+      }),
+      createdAt,
+    },
+    {
+      id: nextId("audit"),
+      type: "AI_ASSIST_ACCEPTED",
+      severity: "INFO",
+      source: "WEB",
+      actor: {
+        id: "usr_labeler",
+        role: "LABELER",
+        displayName: "标注员",
+      },
+      target: {
+        entityType: "ASSIGNMENT",
+        entityId: "asn_seed_quality",
+        taskId: "task_news_quality",
+        assignmentId: "asn_seed_quality",
+        schemaVersionId: "sv_news_quality_1",
+      },
+      payload: sanitizeAuditPayload({
+        taskId: "task_news_quality",
+        assignmentId: "asn_seed_quality",
+        schemaVersionId: "sv_news_quality_1",
+        nodeId: "ai_rewrite_suggestion",
+        fieldName: "rewriteSuggestion",
+        promptVersionId: "prompt_quality_assist_v1",
+        modelId: "mock-ai-assist",
+        assistType: "REWRITE",
+        triggeredCount: 1,
+        acceptedCount: 1,
+        dismissedCount: 0,
+        editedCount: 1,
+        averageLatencyMs: 920,
+      }),
+      createdAt,
+    },
+    {
+      id: nextId("audit"),
+      type: "DATA_QUALITY_PASSPORT_GENERATED",
+      severity: "INFO",
+      source: "WORKER",
+      actor: {
+        id: "usr_system",
+        role: "SYSTEM",
+        displayName: "Export Worker",
+      },
+      target: {
+        entityType: "EXPORT",
+        entityId: "job_seed_export",
+        taskId: "task_news_quality",
+        exportId: "job_seed_export",
+        schemaVersionId: "sv_news_quality_1",
+      },
+      payload: sanitizeAuditPayload({
+        exportId: "job_seed_export",
+        passportCount: 128,
+        passportBatchHash: "aca626a201b9d65560ef78fd91933451f1edaf1ff0ec05c7b9010ab7de44701d",
+        warningCount: 0,
+      }),
+      createdAt,
+    },
+  ];
+}
+
+function matchesAuditQuery(event: AuditEventRecord, query: AuditEventQuery): boolean {
+  if (query.taskId !== undefined && event.target.taskId !== query.taskId) return false;
+  if (query.entityType !== undefined && event.target.entityType !== query.entityType) return false;
+  if (query.entityId !== undefined && event.target.entityId !== query.entityId) return false;
+  if (query.schemaVersionId !== undefined && event.target.schemaVersionId !== query.schemaVersionId) return false;
+  if (query.assignmentId !== undefined && event.target.assignmentId !== query.assignmentId) return false;
+  if (query.submissionId !== undefined && event.target.submissionId !== query.submissionId) return false;
+  if (query.reviewId !== undefined && event.target.reviewId !== query.reviewId) return false;
+  if (query.exportId !== undefined && event.target.exportId !== query.exportId) return false;
+  if (query.migrationPlanId !== undefined && event.target.migrationPlanId !== query.migrationPlanId) return false;
+  if (query.actorId !== undefined && event.actor.id !== query.actorId) return false;
+  if (query.types !== undefined && !query.types.includes(event.type)) return false;
+  if (query.severities !== undefined && !query.severities.includes(event.severity)) return false;
+  if (query.source !== undefined && event.source !== query.source) return false;
+  if (query.createdFrom !== undefined && event.createdAt < query.createdFrom) return false;
+  if (query.createdTo !== undefined && event.createdAt > query.createdTo) return false;
+  return true;
+}
+
+function compareAuditEventsDesc(left: AuditEventRecord, right: AuditEventRecord): number {
+  const byCreatedAt = right.createdAt.localeCompare(left.createdAt);
+  return byCreatedAt === 0 ? String(right.id).localeCompare(String(left.id)) : byCreatedAt;
+}
+
+function sanitizeAuditPayload(payload: AppendAuditEventRequest["payload"]): AppendAuditEventRequest["payload"] {
+  return sanitizeAuditValue(payload) as AppendAuditEventRequest["payload"];
+}
+
+function sanitizeAuditValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeAuditValue);
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, childValue] of Object.entries(value)) {
+    if (isSensitiveAuditPayloadKey(key)) {
+      continue;
+    }
+    sanitized[key] = sanitizeAuditValue(childValue);
+  }
+  return sanitized;
+}
+
+function isSensitiveAuditPayloadKey(key: string): boolean {
+  return [
+    "answers",
+    "beforeAnswers",
+    "afterAnswers",
+    "fullAnswers",
+    "sourcePayload",
+    "rawOutput",
+    "rawLlmOutput",
+    "rawPrompt",
+    "rawResponse",
+    "fullOutput",
+    "prompt",
+    "renderedPrompt",
+    "exportContent",
+    "fileContent",
+  ].includes(key);
+}
+
+function collectAnswerFieldCount(schema: LabelHubSchema): number {
+  return collectSchemaNodes(schema).filter(isAnswerFieldNode).length;
+}
+
+function inferAiAssistType(nodeId: string | undefined): AiAssistType {
+  const normalized = nodeId?.toLowerCase() ?? "";
+  if (normalized.includes("summary")) return "SUMMARY";
+  if (normalized.includes("category") || normalized.includes("classification")) return "CLASSIFICATION";
+  if (normalized.includes("quality") || normalized.includes("check")) return "QUALITY_CHECK";
+  return "REWRITE";
+}
+
+function latencyForAiAssistType(assistType: AiAssistType): number {
+  if (assistType === "SUMMARY") return 420;
+  if (assistType === "CLASSIFICATION") return 650;
+  if (assistType === "QUALITY_CHECK") return 800;
+  return 650;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 export function listMarketplaceTasks(): Task[] {
@@ -430,16 +771,38 @@ export function submitAssignment(assignmentId: string, answers: AnswerPayload): 
   };
 }
 
-export function callLLMAssist(): LLMRuntimeResponse {
-  return {
-    output: {
-      summary: "建议检查新闻来源是否充分，并补充事实依据。",
-    },
-    suggestedPatch: {
-      rewriteSuggestion: "建议补充统计口径、来源链接和第三方证据。",
-    },
-    callId: nextId("llm"),
+export async function callLLMAssist(request: LLMAssistMockRequest = {}): Promise<LLMRuntimeResponse> {
+  const assistType = inferAiAssistType(request.nodeId);
+  const promptSnapshot = getMockPromptSnapshot(assistType);
+  const output = {
+    summary: "建议检查新闻来源是否充分，并补充事实依据。",
   };
+  const suggestedPatch = {
+    rewriteSuggestion: "建议补充统计口径、来源链接和第三方证据。",
+  };
+  const callId = nextId("llm");
+  const [promptSnapshotHash, outputHash] = await Promise.all([
+    hashPromptSnapshot(promptSnapshot),
+    hashCanonicalJson({
+      kind: "LLM_ASSIST_OUTPUT",
+      canonicalSerializationVersion: "canonical-json-v1",
+      callId,
+      output,
+      suggestedPatch,
+    }),
+  ]);
+  const response: LLMRuntimeResponse = {
+    output,
+    suggestedPatch,
+    callId,
+    promptVersionId: promptSnapshot.promptVersionId,
+    modelId: promptSnapshot.modelId,
+    assistType: promptSnapshot.assistType,
+    latencyMs: latencyForAiAssistType(assistType),
+  };
+  if (promptSnapshotHash !== undefined) response.promptSnapshotHash = promptSnapshotHash;
+  if (outputHash !== undefined) response.outputHash = outputHash;
+  return response;
 }
 
 export function listMySubmissions(): Submission[] {
@@ -563,6 +926,7 @@ export function batchDecideReview(commands: ReviewCommand[]): BatchReviewRespons
 }
 
 export function createExport(taskId: string, mapping: ExportMapping): ExportJob {
+  const exportSubmissions = selectExportSubmissions(taskId, mapping);
   const exportJob: ExportJob = {
     id: nextId("job"),
     taskId: taskId as ExportJob["taskId"],
@@ -570,7 +934,7 @@ export function createExport(taskId: string, mapping: ExportMapping): ExportJob 
     status: "PENDING",
     mapping,
     progress: {
-      total: mockDb.submissions.filter((submission) => submission.taskId === taskId && submission.status === "ACCEPTED").length,
+      total: exportSubmissions.length,
       done: 0,
     },
     createdBy: "usr_owner",
@@ -599,8 +963,355 @@ export function createExport(taskId: string, mapping: ExportMapping): ExportJob 
     exportJob.progress.done = exportJob.progress.total;
     exportJob.fileId = file.id;
     exportJob.finishedAt = now();
+    void generateExportArtifact(exportJob, exportSubmissions).catch((error: unknown) => {
+      console.warn("生成导出质量护照失败：", error);
+    });
   }, 900);
   return exportJob;
+}
+
+export function getExportArtifactSummary(exportId: string): ExportArtifactSummary | undefined {
+  const artifact = mockDb.exportArtifacts.find((item) => item.summary.exportId === exportId);
+  return artifact === undefined ? undefined : clone(artifact.summary);
+}
+
+export function listExportRecords(exportId: string): ExportRecord[] {
+  const artifact = mockDb.exportArtifacts.find((item) => item.summary.exportId === exportId);
+  return artifact === undefined ? [] : clone(artifact.records);
+}
+
+function selectExportSubmissions(taskId: string, mapping: ExportMapping): Submission[] {
+  const requestedStatuses = mapping.filters?.submissionStatus;
+  const allowedStatuses = requestedStatuses?.length === 0 ? undefined : requestedStatuses;
+  const defaultAcceptedOnly = mapping.filters === undefined || mapping.filters.acceptedOnly !== false;
+
+  return mockDb.submissions.filter((submission) => {
+    if (submission.taskId !== taskId) return false;
+    if (allowedStatuses !== undefined) return allowedStatuses.includes(submission.status);
+    return defaultAcceptedOnly ? submission.status === "ACCEPTED" : true;
+  });
+}
+
+async function generateExportArtifact(exportJob: ExportJob, submissions: Submission[]): Promise<void> {
+  const generatedAt = now();
+  let warningCount = 0;
+  const preparedRecords: Array<{
+    submission: Submission;
+    finalAnswers: Record<string, unknown>;
+    passport: DataQualityPassport;
+  }> = [];
+
+  for (const submission of submissions) {
+    const latestPatches = findLatestReviewPatches(submission.id);
+    const fallbackDiffSummary = getLatestReviewDiffSummary(submission.id);
+    const finalAnswers = applyReviewPatches(submission.answers, latestPatches);
+    const finalAnswerHash = await hashCanonicalJson(finalAnswers);
+    if (finalAnswerHash === undefined) warningCount += 1;
+    const passport = buildDataQualityPassport({
+      exportJob,
+      submission,
+      finalAnswerHash,
+      patchCount: latestPatches.length > 0 ? latestPatches.length : fallbackDiffSummary.patchCount,
+      changedFieldNames: latestPatches.length > 0 ? latestPatches.map((patch) => patch.fieldName) : fallbackDiffSummary.patchedFieldNames,
+    });
+    preparedRecords.push({ submission, finalAnswers, passport });
+  }
+
+  const passportBatchHash = preparedRecords.length > 0 ? await hashCanonicalJson(preparedRecords.map((item) => item.passport)) : undefined;
+  if (preparedRecords.length > 0 && passportBatchHash === undefined) warningCount += 1;
+
+  const summary = buildExportArtifactSummary({
+    exportJob,
+    recordCount: preparedRecords.length,
+    warningCount,
+    passportCount: preparedRecords.length,
+    passportBatchHash,
+    generatedAt,
+  });
+  const metadata = buildExportRecordMetadata({
+    exportJob,
+    rowCount: preparedRecords.length,
+    warningCount,
+    checksum: passportBatchHash,
+    exportedAt: generatedAt,
+  });
+  const records: ExportRecord[] = preparedRecords.map((item, index) => ({
+    exportId: exportJob.id,
+    submissionId: item.submission.id,
+    schemaVersionId: item.submission.schemaVersionId,
+    recordIndex: index,
+    data: item.finalAnswers,
+    metadata,
+    passport: item.passport,
+  }));
+
+  exportJob.artifactSummary = summary;
+  upsertExportArtifact({ summary, records });
+  appendDataQualityPassportGeneratedAudit(summary);
+}
+
+function buildDataQualityPassport(input: {
+  exportJob: ExportJob;
+  submission: Submission;
+  finalAnswerHash: string | undefined;
+  patchCount: number;
+  changedFieldNames: string[];
+}): DataQualityPassport {
+  const relatedEvents = findRelatedAuditEvents(input.submission, input.exportJob.id);
+  const labelingEvent = findLatestAuditEvent(relatedEvents, "LABELING_SESSION_SUMMARY");
+  const reviewEvent = findLatestAuditEvent(relatedEvents, "REVIEW_SUBMITTED");
+  const reviewDiffEvent = findLatestAuditEvent(relatedEvents, "REVIEW_DIFF_GENERATED");
+  const exportEvent = findLatestAuditEvent(relatedEvents, "EXPORT_GENERATED");
+  const aiAssistEvents = relatedEvents.filter((event) => ["AI_ASSIST_ACCEPTED", "AI_ASSIST_DISMISSED", "AI_ASSIST_EDITED"].includes(event.type));
+  const aiReviewEvents = relatedEvents.filter((event) =>
+    ["AI_REVIEW_CONFIRMED_BY_REVIEWER", "AI_REVIEW_REJECTED_BY_REVIEWER"].includes(event.type),
+  );
+  const schemaGovernanceEvents = relatedEvents.filter((event) => isSchemaGovernanceAuditType(event.type));
+  const qualityLedgerRef = buildQualityLedgerRef({
+    labelingEvent,
+    reviewEvent,
+    reviewDiffEvent,
+    exportEvent,
+    aiAssistEvents,
+    aiReviewEvents,
+    schemaGovernanceEvents,
+  });
+  const passport: DataQualityPassport = {
+    submissionId: input.submission.id,
+    schemaVersionId: input.submission.schemaVersionId,
+    reviewStatus: inferPassportReviewStatus(input.submission),
+    reviewerPatchCount: input.patchCount,
+    changedFieldNames: input.changedFieldNames,
+    aiAssistUsed: aiAssistEvents.length > 0,
+    aiAcceptedCount: countAuditEvents(relatedEvents, "AI_ASSIST_ACCEPTED"),
+    aiDismissedCount: countAuditEvents(relatedEvents, "AI_ASSIST_DISMISSED"),
+    aiEditedCount: countAuditEvents(relatedEvents, "AI_ASSIST_EDITED"),
+    riskCodes: extractRiskCodes(labelingEvent),
+    auditEventCount: relatedEvents.length,
+    qualityLedgerRef,
+  };
+  if (input.finalAnswerHash !== undefined) {
+    passport.finalAnswerHash = input.finalAnswerHash;
+    passport.answerHashAlgorithm = "canonical-json-v1+SHA-256";
+  }
+  return passport;
+}
+
+function buildQualityLedgerRef(input: {
+  labelingEvent: AuditEventRecord | undefined;
+  reviewEvent: AuditEventRecord | undefined;
+  reviewDiffEvent: AuditEventRecord | undefined;
+  exportEvent: AuditEventRecord | undefined;
+  aiAssistEvents: AuditEventRecord[];
+  aiReviewEvents: AuditEventRecord[];
+  schemaGovernanceEvents: AuditEventRecord[];
+}): NonNullable<DataQualityPassport["qualityLedgerRef"]> {
+  const qualityLedgerRef: NonNullable<DataQualityPassport["qualityLedgerRef"]> = {};
+  if (input.labelingEvent !== undefined) qualityLedgerRef.labelingEventId = input.labelingEvent.id;
+  if (input.reviewEvent !== undefined) qualityLedgerRef.reviewEventId = input.reviewEvent.id;
+  if (input.reviewDiffEvent !== undefined) qualityLedgerRef.reviewDiffEventId = input.reviewDiffEvent.id;
+  if (input.exportEvent !== undefined) qualityLedgerRef.exportEventId = input.exportEvent.id;
+  if (input.aiAssistEvents.length > 0) qualityLedgerRef.aiAssistEventIds = input.aiAssistEvents.map((event) => event.id);
+  if (input.aiReviewEvents.length > 0) qualityLedgerRef.aiReviewEventIds = input.aiReviewEvents.map((event) => event.id);
+  if (input.schemaGovernanceEvents.length > 0) {
+    qualityLedgerRef.schemaGovernanceEventIds = input.schemaGovernanceEvents.slice(0, 8).map((event) => event.id);
+    qualityLedgerRef.totalSchemaGovernanceEventCount = input.schemaGovernanceEvents.length;
+  }
+  return qualityLedgerRef;
+}
+
+function buildExportArtifactSummary(input: {
+  exportJob: ExportJob;
+  recordCount: number;
+  warningCount: number;
+  passportCount: number;
+  passportBatchHash: string | undefined;
+  generatedAt: string;
+}): ExportArtifactSummary {
+  const summary: ExportArtifactSummary = {
+    exportId: input.exportJob.id,
+    taskId: input.exportJob.taskId,
+    format: input.exportJob.mapping.format,
+    recordCount: input.recordCount,
+    warningCount: input.warningCount,
+    passportCount: input.passportCount,
+    createdAt: input.generatedAt,
+  };
+  if (input.exportJob.schemaVersionId !== undefined) summary.schemaVersionId = input.exportJob.schemaVersionId;
+  if (input.passportBatchHash !== undefined) summary.passportBatchHash = input.passportBatchHash;
+  if (input.exportJob.fileId !== undefined) summary.fileId = input.exportJob.fileId;
+  return summary;
+}
+
+function buildExportRecordMetadata(input: {
+  exportJob: ExportJob;
+  rowCount: number;
+  warningCount: number;
+  checksum: string | undefined;
+  exportedAt: string;
+}): ExportRecordMetadata {
+  const metadata: ExportRecordMetadata = {
+    exportId: input.exportJob.id,
+    exportMode: input.exportJob.mapping.exportMode ?? "VERSIONED",
+    includedSchemaVersionIds: input.exportJob.mapping.includedSchemaVersionIds ?? [input.exportJob.schemaVersionId],
+    exportedBy: input.exportJob.createdBy,
+    exportedAt: input.exportedAt,
+    rowCount: input.rowCount,
+    warningCount: input.warningCount,
+  };
+  if (input.exportJob.mapping.targetSchemaVersionId !== undefined) metadata.targetSchemaVersionId = input.exportJob.mapping.targetSchemaVersionId;
+  if (input.exportJob.mapping.migrationId !== undefined) metadata.migrationId = input.exportJob.mapping.migrationId;
+  if (input.checksum !== undefined) metadata.checksum = input.checksum;
+  return metadata;
+}
+
+function upsertExportArtifact(artifact: MockExportArtifact): void {
+  mockDb.exportArtifacts = mockDb.exportArtifacts.filter((item) => item.summary.exportId !== artifact.summary.exportId);
+  mockDb.exportArtifacts.push(artifact);
+}
+
+function appendDataQualityPassportGeneratedAudit(summary: ExportArtifactSummary): void {
+  if (summary.passportBatchHash === undefined) {
+    console.warn("质量护照批次 hash 缺失，跳过 DATA_QUALITY_PASSPORT_GENERATED 审计事件。");
+    return;
+  }
+  const target: AppendAuditEventRequest["target"] = {
+    entityType: "EXPORT",
+    entityId: summary.exportId,
+    taskId: summary.taskId,
+    exportId: summary.exportId,
+  };
+  if (summary.schemaVersionId !== undefined) target.schemaVersionId = summary.schemaVersionId;
+
+  appendAuditEvent({
+    type: "DATA_QUALITY_PASSPORT_GENERATED",
+    severity: summary.warningCount > 0 ? "WARNING" : "INFO",
+    source: "SYSTEM",
+    actor: {
+      id: "mock-export-worker",
+      role: "SYSTEM",
+      displayName: "Mock Export Worker",
+    },
+    target,
+    payload: {
+      exportId: summary.exportId,
+      passportCount: summary.passportCount ?? 0,
+      passportBatchHash: summary.passportBatchHash,
+      warningCount: summary.warningCount,
+    },
+    idempotencyKey: `DATA_QUALITY_PASSPORT:${summary.exportId}:GENERATED`,
+  });
+}
+
+function applyReviewPatches(answers: AnswerPayload, patches: ReviewPatch[]): Record<string, unknown> {
+  const finalAnswers: Record<string, unknown> = { ...answers };
+  for (const patch of patches) {
+    if (patch.nextValue === undefined) {
+      delete finalAnswers[patch.fieldName];
+      continue;
+    }
+    finalAnswers[patch.fieldName] = patch.nextValue;
+  }
+  return finalAnswers;
+}
+
+function findLatestReviewPatches(submissionId: string): ReviewPatch[] {
+  for (let index = mockDb.reviewResults.length - 1; index >= 0; index -= 1) {
+    const reviewResult = mockDb.reviewResults[index];
+    if (reviewResult.submissionId !== submissionId || reviewResult.stage === "AI_PRECHECK") continue;
+    if (reviewResult.patches !== undefined && reviewResult.patches.length > 0) {
+      return reviewResult.patches;
+    }
+  }
+  return [];
+}
+
+function getLatestReviewDiffSummary(submissionId: string): { patchCount: number; patchedFieldNames: string[] } {
+  const reviewDiffEvent = findLatestAuditEvent(
+    mockDb.auditEvents.filter((event) => event.target.submissionId === submissionId),
+    "REVIEW_DIFF_GENERATED",
+  );
+  const payload = getAuditPayloadRecord(reviewDiffEvent);
+  const patchedFieldNames = Array.isArray(payload?.patchedFieldNames) ? payload.patchedFieldNames.filter((fieldName): fieldName is string => typeof fieldName === "string") : [];
+  const patchCount = typeof payload?.patchCount === "number" ? payload.patchCount : patchedFieldNames.length;
+  return { patchCount, patchedFieldNames };
+}
+
+function inferPassportReviewStatus(submission: Submission): DataQualityPassport["reviewStatus"] {
+  const latestReview = findLatestHumanReviewResult(submission.id);
+  if (submission.status === "ACCEPTED" || latestReview?.decision === "PASS") return "APPROVED";
+  if (submission.status === "RETURNED" || latestReview?.decision === "RETURN") return "RETURNED";
+  if (submission.status === "REJECTED" || latestReview?.decision === "REJECT") return "REJECTED";
+  return "UNREVIEWED";
+}
+
+function findLatestHumanReviewResult(submissionId: string): HumanReviewResultRecord | FinalReviewResultRecord | undefined {
+  for (let index = mockDb.reviewResults.length - 1; index >= 0; index -= 1) {
+    const reviewResult = mockDb.reviewResults[index];
+    if (reviewResult.submissionId === submissionId && reviewResult.stage !== "AI_PRECHECK") {
+      return reviewResult;
+    }
+  }
+  return undefined;
+}
+
+function findRelatedAuditEvents(submission: Submission, exportId: string): AuditEventRecord[] {
+  return mockDb.auditEvents.filter((event) => {
+    const target = event.target;
+    if (target.submissionId === submission.id) return true;
+    if (target.assignmentId === submission.assignmentId) return true;
+    if (target.exportId === exportId) return true;
+    return target.taskId === submission.taskId && isSchemaGovernanceAuditType(event.type);
+  });
+}
+
+function findLatestAuditEvent(events: AuditEventRecord[], type: AuditEventRecord["type"]): AuditEventRecord | undefined {
+  return events
+    .filter((event) => event.type === type)
+    .sort(compareAuditEventsDesc)
+    .at(0);
+}
+
+function countAuditEvents(events: AuditEventRecord[], type: AuditEventRecord["type"]): number {
+  return events.filter((event) => event.type === type).length;
+}
+
+function getAuditPayloadRecord(event: AuditEventRecord | undefined): Record<string, unknown> | undefined {
+  return isRecord(event?.payload) ? event.payload : undefined;
+}
+
+function extractRiskCodes(labelingEvent: AuditEventRecord | undefined): RiskSignalCode[] {
+  const payload = getAuditPayloadRecord(labelingEvent);
+  if (!Array.isArray(payload?.riskSignals)) return [];
+  return payload.riskSignals.filter(isRiskSignalCode);
+}
+
+function isRiskSignalCode(value: unknown): value is RiskSignalCode {
+  return (
+    value === "FAST_SUBMIT" ||
+    value === "LOW_ACTIVE_TIME" ||
+    value === "HIGH_PASTE_COUNT" ||
+    value === "LOW_FIELD_CHANGE_COUNT" ||
+    value === "REPEATED_ANSWER_HASH" ||
+    value === "HIGH_FOCUS_LOSS_COUNT" ||
+    value === "SCRIPT_LIKE_SUBMISSION_PATTERN" ||
+    value === "CLIENT_TIME_DRIFT"
+  );
+}
+
+function isSchemaGovernanceAuditType(type: AuditEventRecord["type"]): boolean {
+  return [
+    "SCHEMA_DRAFT_SAVED",
+    "SCHEMA_PUBLISH_REQUESTED",
+    "SCHEMA_COMPATIBILITY_CHECKED",
+    "SCHEMA_PUBLISH_BLOCKED",
+    "SCHEMA_PUBLISH_FAILED",
+    "SCHEMA_VERSION_PUBLISHED",
+    "DEPRECATION_WARNING_GENERATED",
+    "MIGRATION_PLAN_CREATED",
+    "MIGRATION_DRY_RUN_COMPLETED",
+    "MIGRATION_EXECUTED",
+  ].includes(type);
 }
 
 export function createUploadFile(input: Pick<FileObject, "mimeType" | "size" | "purpose" | "ownerType" | "ownerId">): FileObject {

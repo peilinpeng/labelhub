@@ -134,6 +134,139 @@ describe("SchemaRenderer", () => {
     );
   });
 
+  test("LLMAssist 展示 AI 输出时触发 SHOWN outcome", async () => {
+    const onAssistOutcome = vi.fn();
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 建议摘要",
+      callId: "llm_shown_test",
+    });
+
+    renderRenderer({ onAssistOutcome, onLLMAssist });
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+
+    await waitFor(() =>
+      expect(onAssistOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "SHOWN",
+          callId: "llm_shown_test",
+          nodeId: expect.any(String),
+        }),
+      ),
+    );
+  });
+
+  test("LLMAssist 确认应用建议后触发 ACCEPTED outcome", async () => {
+    const onAnswersChange = vi.fn();
+    const onAssistOutcome = vi.fn();
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 建议摘要",
+      suggestedPatch: {
+        summary: "AI 生成的摘要",
+      },
+      callId: "llm_accepted_test",
+    });
+
+    renderRenderer({ onAnswersChange, onAssistOutcome, onLLMAssist });
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+
+    const acceptedOutcome = onAssistOutcome.mock.calls
+      .map((call) => call[0])
+      .find((outcome) => outcome.action === "ACCEPTED");
+
+    expect(onAnswersChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        summary: "AI 生成的摘要",
+      }),
+    );
+    expect(acceptedOutcome).toEqual({
+      action: "ACCEPTED",
+      appliedPatchFieldNames: ["summary"],
+      callId: "llm_accepted_test",
+      nodeId: expect.any(String),
+    });
+    expect(Object.keys(acceptedOutcome ?? {}).includes("suggestedPatch")).toBe(false);
+  });
+
+  test("LLMAssist 忽略建议后触发 DISMISSED outcome 且不应用 patch", async () => {
+    const onAnswersChange = vi.fn();
+    const onAssistOutcome = vi.fn();
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 建议摘要",
+      suggestedPatch: {
+        summary: "AI 生成的摘要",
+      },
+      callId: "llm_dismissed_test",
+    });
+
+    renderRenderer({ onAnswersChange, onAssistOutcome, onLLMAssist });
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "忽略建议" }));
+
+    expect(screen.queryByText("AI 建议摘要")).toBeNull();
+    expect(onAnswersChange).not.toHaveBeenCalled();
+    expect(onAssistOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "DISMISSED",
+        callId: "llm_dismissed_test",
+      }),
+    );
+  });
+
+  test("LLMAssist 同一 callId 不重复触发同一 outcome", async () => {
+    const onAssistOutcome = vi.fn();
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 建议摘要",
+      callId: "llm_duplicate_test",
+    });
+
+    renderRenderer({ onAssistOutcome, onLLMAssist });
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    await waitFor(() => expect(onLLMAssist).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    await waitFor(() => expect(onLLMAssist).toHaveBeenCalledTimes(2));
+
+    const shownOutcomes = onAssistOutcome.mock.calls
+      .map((call) => call[0])
+      .filter((outcome) => outcome.action === "SHOWN");
+
+    expect(shownOutcomes).toHaveLength(1);
+  });
+
+  test("LLMAssist outcome callback 失败不影响 patch 应用", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const onAnswersChange = vi.fn();
+    const onAssistOutcome = vi.fn(() => {
+      throw new Error("callback failed");
+    });
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 建议摘要",
+      suggestedPatch: {
+        summary: "AI 生成的摘要",
+      },
+      callId: "llm_callback_error_test",
+    });
+
+    renderRenderer({ onAnswersChange, onAssistOutcome, onLLMAssist });
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+
+    expect(onAnswersChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        summary: "AI 生成的摘要",
+      }),
+    );
+    warn.mockRestore();
+  });
+
   test("unknown node type 会显示 fallback", () => {
     const schema = cloneSchema();
     schema.root.children.push({
@@ -155,6 +288,7 @@ interface RenderOptions {
   mode?: "PREVIEW" | "LABELING" | "REVIEW_READONLY" | "REVIEW_DIFF";
   onAnswersChange?: (answers: Record<string, unknown>) => void;
   onLLMAssist?: Parameters<typeof SchemaRenderer>[0]["onLLMAssist"];
+  onAssistOutcome?: Parameters<typeof SchemaRenderer>[0]["onAssistOutcome"];
 }
 
 function renderRenderer(options: RenderOptions = {}) {
@@ -169,6 +303,12 @@ function renderRenderer(options: RenderOptions = {}) {
       : {
           onLLMAssist: options.onLLMAssist,
         };
+  const assistOutcomeProps =
+    options.onAssistOutcome === undefined
+      ? {}
+      : {
+          onAssistOutcome: options.onAssistOutcome,
+        };
 
   return render(
     <SchemaRenderer
@@ -177,6 +317,7 @@ function renderRenderer(options: RenderOptions = {}) {
       mode={options.mode ?? "LABELING"}
       schema={schema}
       onAnswersChange={options.onAnswersChange ?? (() => undefined)}
+      {...assistOutcomeProps}
       {...llmProps}
     />,
   );

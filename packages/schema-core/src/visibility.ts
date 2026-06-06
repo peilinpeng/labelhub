@@ -1,11 +1,34 @@
-import type { BaseNode } from "@labelhub/contracts";
+import type {
+  BaseNode,
+  FieldNode,
+  RuntimeContextWithOutput,
+  SchemaVisibilityMode,
+} from "@labelhub/contracts";
 import { evaluateExpression } from "./expression.ts";
-import type { RuntimeContextWithOutput } from "./json-path.ts";
 
-export function resolveNodeVisibility(node: BaseNode, context: RuntimeContextWithOutput): boolean {
+export interface VisibilityResolveOptions {
+  visibilityMode?: SchemaVisibilityMode;
+}
+
+export function resolveNodeVisibility(
+  node: BaseNode,
+  context: RuntimeContextWithOutput,
+  options: VisibilityResolveOptions = {},
+): boolean {
   if (node.hidden === true) {
     return false;
   }
+
+  const visibilityMode = options.visibilityMode ?? context.visibilityMode;
+  if (
+    visibilityMode === "CREATE" &&
+    isFieldNode(node) &&
+    node.deprecation?.deprecated === true &&
+    node.deprecation.hideForNewSubmissions === true
+  ) {
+    return false;
+  }
+
   if (node.visibleWhen !== undefined) {
     return evaluateExpression(node.visibleWhen, context);
   }
@@ -20,4 +43,8 @@ export function resolveNodeDisabled(node: BaseNode, context: RuntimeContextWithO
     return evaluateExpression(node.disabledWhen, context);
   }
   return false;
+}
+
+function isFieldNode(node: BaseNode): node is FieldNode {
+  return "kind" in node && node.kind === "FIELD";
 }

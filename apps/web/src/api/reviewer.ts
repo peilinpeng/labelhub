@@ -40,13 +40,6 @@ function unwrapList<T>(response: PageList<T>): T[] {
   return response.items ?? response.submissions ?? [];
 }
 
-function unwrapProp<T, K extends string>(response: T | Record<K, T>, key: K): T {
-  if (response && typeof response === "object" && key in response) {
-    return (response as Record<K, T>)[key];
-  }
-  return response as T;
-}
-
 export async function listReviewQueue(params: { page?: number; pageSize?: number; status?: string } = {}): Promise<ReviewQueueItem[]> {
   const search = new URLSearchParams();
   if (params.page) search.set("page", String(params.page));
@@ -61,12 +54,12 @@ export async function getReviewDetail(submissionId: string): Promise<ReviewDetai
   const res = await apiGet<ReviewDetailResponse | { detail: ReviewDetailResponse }>(
     `/api/v1/review/submissions/${submissionId}`
   );
-  return unwrapProp(res, "detail");
+  return isRecord(res) && "detail" in res ? (res as { detail: ReviewDetailResponse }).detail : res;
 }
 
 export async function claimReview(submissionId: string): Promise<Submission> {
   const res = await apiPost<Submission | { submission: Submission }>(`/api/v1/review/submissions/${submissionId}/claim`, {});
-  return unwrapProp(res, "submission");
+  return isRecord(res) && "submission" in res ? (res as { submission: Submission }).submission : res;
 }
 
 export async function decideReview(submissionId: string, request: ReviewDecisionRequest): Promise<ReviewDecisionResponse> {
@@ -75,4 +68,8 @@ export async function decideReview(submissionId: string, request: ReviewDecision
 
 export async function batchDecideReview(request: BatchReviewRequest): Promise<BatchReviewResponse> {
   return apiPost<BatchReviewResponse>("/api/v1/review/batch-decision", request);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

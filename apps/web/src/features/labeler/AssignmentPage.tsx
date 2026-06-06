@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { SchemaRenderer } from "@labelhub/schema-renderer";
+import { SchemaRenderer, type LLMAssistOutcome } from "@labelhub/schema-renderer";
 import { Role } from "../../app/routes";
 import { callLLMAssist, getAssignmentContext, listAssignmentItems, saveDraft, submitAssignment } from "../../api/labeler";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
@@ -9,6 +9,14 @@ import { Badge, Button, Card } from "../../ui/primitives";
 import { DEMO_ASSIGNMENT_ID, submitDemoAssignment } from "../../mocks/demo-workflow-store";
 import { getAssignmentContext as getMockAssignmentContext } from "../../mocks/mock-db";
 import { datasetItemsMock } from "../../mocks/data/dataset-items.mock";
+import {
+  appendAiAssistEditedAuditSafely,
+  appendAiAssistOutcomeAuditSafely,
+  appendAiAssistTriggeredAuditSafely,
+  extractAiAssistResponseMetadata,
+  type AiAssistResponseMetadata,
+} from "./ai-assist-audit-events";
+import { useLabelingTelemetry } from "./useLabelingTelemetry";
 import type {
   AnswerPayload,
   AssignmentContextResponse,
@@ -25,6 +33,16 @@ interface AssignmentPageProps {
 }
 
 type LabelerNavigationStatus = "Submitted" | "Returned" | "Current" | "Draft" | "Pending";
+
+interface AcceptedAiAssistPatch {
+  callId: string;
+  nodeId: string;
+  metadata?: AiAssistResponseMetadata;
+  appliedPatchFieldNames: string[];
+  editedFieldNames: Set<string>;
+  editedReported: boolean;
+  acceptedOrder: number;
+}
 
 function getFallbackTaskItems(context: AssignmentContextResponse): DatasetItem[] {
   const sameTaskItems = datasetItemsMock.filter((item) => item.taskId === context.task.id);
@@ -69,6 +87,16 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const [pendingSubmitAnswers, setPendingSubmitAnswers] = useState<AnswerPayload | null>(null);
   const [taskItems, setTaskItems] = useState<DatasetItem[]>([]);
   const [submittedItemIds, setSubmittedItemIds] = useState<string[]>([]);
+  const aiAssistMetadataByCallIdRef = useRef<Map<string, AiAssistResponseMetadata>>(new Map());
+  const acceptedAiAssistPatchesRef = useRef<Map<string, AcceptedAiAssistPatch>>(new Map());
+  const aiAssistCallAttemptCounterRef = useRef(0);
+  const aiAssistAcceptedOrderCounterRef = useRef(0);
+  const telemetry = useLabelingTelemetry({
+    assignmentId,
+    context,
+    answers,
+    onAnswersChange: setAnswers,
+  });
 
   useEffect(() => {
     void (async () => {
@@ -98,6 +126,13 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       }
     })();
   }, [assignmentId]);
+
+  useEffect(() => {
+    aiAssistMetadataByCallIdRef.current.clear();
+    acceptedAiAssistPatchesRef.current.clear();
+    aiAssistCallAttemptCounterRef.current = 0;
+    aiAssistAcceptedOrderCounterRef.current = 0;
+  }, [assignmentId, context?.item.id]);
 
   const runtimeContext: LabelHubRuntimeContext = context
     ? {
@@ -163,13 +198,12 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
   const confirmDemoSubmit = async (submitAnswers: AnswerPayload = answers) => {
     if (!context || !assignmentId) return;
-    let submittedToBackend = false;
     try {
       await submitAssignment(assignmentId, { answers: submitAnswers, clientRevision: 0 });
-      submittedToBackend = true;
     } catch (error) {
       console.warn("Backend submit unavailable, using local workflow fallback:", error);
     }
+    telemetry.appendSubmissionSummary(submitAnswers);
     submitDemoAssignment(submitAnswers);
     const currentItemId = context.item.id;
     const nextAnswersByItem = { ...answersByItemId, [currentItemId]: submitAnswers };
@@ -211,13 +245,97 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     _runtimeCtx: LabelHubRuntimeContext,
     currentAnswers: AnswerPayload,
   ): Promise<LLMRuntimeResponse> => {
-    if (!assignmentId) {
+    if (!assignmentId || !context) {
       return { output: { summary: "请先选择任务" }, suggestedPatch: {}, callId: "llm_demo" };
     }
+    const callAttemptId = String((aiAssistCallAttemptCounterRef.current += 1));
+    appendAiAssistTriggeredAuditSafely({
+      assignmentId,
+      context,
+      node,
+      callAttemptId,
+    });
     try {
-      return await callLLMAssist(assignmentId, { nodeId: node.id, answers: currentAnswers });
+      const response = await callLLMAssist(assignmentId, { nodeId: node.id, answers: currentAnswers });
+      aiAssistMetadataByCallIdRef.current.set(response.callId, extractAiAssistResponseMetadata(response));
+      return response;
     } catch {
-      return { output: { summary: "LLM 辅助暂时不可用" }, suggestedPatch: {}, callId: "llm_demo" };
+      const fallbackResponse: LLMRuntimeResponse = {
+        output: { summary: "LLM 辅助暂时不可用" },
+        suggestedPatch: {},
+        callId: `llm_demo_${callAttemptId}` as LLMRuntimeResponse["callId"],
+      };
+      aiAssistMetadataByCallIdRef.current.set(fallbackResponse.callId, extractAiAssistResponseMetadata(fallbackResponse));
+      return fallbackResponse;
+    }
+  };
+
+  const handleAssistOutcome = (outcome: LLMAssistOutcome) => {
+    if (!assignmentId || !context) return;
+    const metadata = aiAssistMetadataByCallIdRef.current.get(outcome.callId);
+    appendAiAssistOutcomeAuditSafely({
+      assignmentId,
+      context,
+      outcome,
+      metadata,
+    });
+
+    if (outcome.action !== "ACCEPTED" || outcome.appliedPatchFieldNames === undefined) {
+      return;
+    }
+
+    const appliedPatchFieldNames = [...new Set(outcome.appliedPatchFieldNames)].sort();
+    if (appliedPatchFieldNames.length === 0) {
+      return;
+    }
+
+    acceptedAiAssistPatchesRef.current.set(outcome.callId, {
+      callId: outcome.callId,
+      nodeId: outcome.nodeId,
+      metadata,
+      appliedPatchFieldNames,
+      editedFieldNames: new Set(),
+      editedReported: false,
+      acceptedOrder: (aiAssistAcceptedOrderCounterRef.current += 1),
+    });
+  };
+
+  const handleRendererAnswersChange = (nextAnswers: AnswerPayload) => {
+    const changedFieldNames = collectChangedAnswerFields(answers, nextAnswers);
+    telemetry.handleAnswersChange(nextAnswers);
+    reportAiAssistEditedFields(changedFieldNames);
+  };
+
+  const reportAiAssistEditedFields = (changedFieldNames: string[]) => {
+    if (!assignmentId || !context || changedFieldNames.length === 0) return;
+
+    const changedFieldSet = new Set(changedFieldNames);
+    const claimedFieldNames = new Set<string>();
+    const acceptedPatches = Array.from(acceptedAiAssistPatchesRef.current.values())
+      .filter((patch) => !patch.editedReported)
+      .sort((left, right) => right.acceptedOrder - left.acceptedOrder);
+
+    for (const patch of acceptedPatches) {
+      const editedFieldNames = patch.appliedPatchFieldNames.filter((fieldName) =>
+        changedFieldSet.has(fieldName) && !claimedFieldNames.has(fieldName),
+      );
+      if (editedFieldNames.length === 0) {
+        continue;
+      }
+
+      for (const fieldName of editedFieldNames) {
+        claimedFieldNames.add(fieldName);
+        patch.editedFieldNames.add(fieldName);
+      }
+      patch.editedReported = true;
+      appendAiAssistEditedAuditSafely({
+        assignmentId,
+        context,
+        callId: patch.callId,
+        nodeId: patch.nodeId,
+        metadata: patch.metadata,
+        editedFieldNames: Array.from(patch.editedFieldNames),
+      });
     }
   };
 
@@ -280,7 +398,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   });
 
   return (
-    <div className="labeler-runner">
+    <div className="labeler-runner" onClick={telemetry.handleActivity} onPaste={telemetry.handlePaste}>
       <header className="labeler-runner-topbar">
         <div className="labeler-runner-brand">
           <span className="brand-mark brand-mark--small" />
@@ -367,9 +485,10 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                   mode="LABELING"
                   readonly={false}
                   errors={errors}
-                  onAnswersChange={setAnswers}
+                  onAnswersChange={handleRendererAnswersChange}
                   onSubmit={handleSubmit}
                   onLLMAssist={handleLLMAssist}
+                  onAssistOutcome={handleAssistOutcome}
                 />
               </div>
             </section>
@@ -448,4 +567,17 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       />
     </div>
   );
+}
+
+function collectChangedAnswerFields(previous: AnswerPayload, next: AnswerPayload): string[] {
+  const fieldNames = new Set([...Object.keys(previous), ...Object.keys(next)]);
+  return Array.from(fieldNames).filter((fieldName) => !isSameAnswerValue(previous[fieldName], next[fieldName]));
+}
+
+function isSameAnswerValue(left: unknown, right: unknown): boolean {
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return Object.is(left, right);
+  }
 }
