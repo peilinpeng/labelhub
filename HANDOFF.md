@@ -19,10 +19,10 @@
 |---|---|---|---|
 | Phase A | QL-6 / AI-1~AI-6 | Prompt Feedback Loop（metadata、renderer callback、Labeler 事件、AI_ASSIST_EDITED、Reviewer AI feedback） | ✅ 已完成 |
 | A-tail | AI-7 | mock prompt registry / 真实 SHA-256 `promptSnapshotHash` / `outputHash` | ✅ 已完成（commit 73ec0bc） |
-| Phase B1 | QL-4 第一步 / RD-1 | Reviewer corrected answers + shallow patches（不写 audit） | ✅ 已完成（未 commit，工作区 dirty） |
-| **Phase B2** | QL-4 第二步 / **RD-2** | `REVIEW_DIFF_GENERATED` audit | 🔵 当前任务（下一步） |
-| Phase C | QL-5 | Export / Data Quality Passport contracts 与 mock | ⬜ 未开始 |
-| Phase D | QL-7 | Read Model / Snapshot / risk fast path | ⬜ 未开始（工业化阶段） |
+| Phase B1 | QL-4 第一步 / RD-1 | Reviewer corrected answers + shallow patches（不写 audit） | ✅ 已完成（commit 31e4bac） |
+| Phase B2 | QL-4 第二步 / RD-2 | `REVIEW_DIFF_GENERATED` audit | ✅ 已完成（commit 436886f） |
+| Phase C | QL-5 | Export / Data Quality Passport contracts 与 mock | ✅ 已完成（contracts 6993e3b / web fcbccb4） |
+| **Phase D** | QL-7 | Read Model / Snapshot / risk fast path | ⬜ **当前下一步**（工业化阶段） |
 
 > 维护规则：新任务追加到本表，**不要再引入新的编号体系**。
 
@@ -32,37 +32,33 @@
 
 ```txt
 分支：    feature/schema-governance-upgrade
-commit：  4e84977   docs: add multi-agent handoff files for schema arch work
-工作区：  dirty（Phase B1 改动未 commit，含下方 4 个文件）
-          - apps/web/src/features/reviewer/reviewer-diff.ts（新增）
-          - apps/web/src/features/reviewer/ReviewDetailPage.tsx（修改）
-          - apps/web/src/features/reviewer/reviewer-audit-events.ts（修改）
-          - apps/web/src/styles.css（修改）
-更新时间：2026-06-06（本班 Claude Code 完成 Phase B1）
+commit：  1e9ed33   docs: finalize quality layer handoff
+工作区：  clean
+更新时间：2026-06-06（Claude Code Handoff Audit 更新）
 更新者：  Claude Code
 ```
 
-> 注：HEAD 4e84977 是维护者做的文档基础设施 commit（在 73ec0bc A-tail 之上）。
-> 开班时：`git rev-parse HEAD` 应得到 4e84977；工作区 dirty 是预期状态（B1 改动未 commit）。
+> 开班时：`git rev-parse HEAD` 应得到 1e9ed33；工作区应为 clean。
 
 ---
 
 ## 2. 当前任务（本轮范围，唯一权威）
 
-**当前任务：Phase B1（= RD-1）Reviewer corrected answers / shallow patches 最小实现**
+**Quality Layer 主体已全部完成（Phase A / A-tail / B1 / B2 / C）。下一步为 Phase D。**
 
-本轮目标：
-- 让 Reviewer 在审核详情页基于原始 submission answers 生成 corrected answers；
-- 在 PASS / RETURN 提交时带上结构化 patches。
+> 本轮无进行中任务。接手后直接阅读 Phase D 规格（待创建 `tasks/PD-1.md`）。
 
-**本轮明确不做：**
-- 不写 `REVIEW_DIFF_GENERATED` / `REVIEW_DEEP_DIFF_GENERATED`（留给 B2）；
-- 不生成 beforeAnswerHash / afterAnswerHash，不生成 fake hash；
-- 不修改 contracts（除非 `ReviewDecisionRequest.patches` 根本不存在，那种情况先停下报告）；
-- 不修改 schema-core / docs；
-- 不影响 Owner / Labeler / Export / AI Assist 现有链路。
+**Phase D 目标（工业化阶段，尚未开始）：**
+- Read Model / Snapshot：将审计事件投影为可查询的质量快照，供 Export 和后端风控读取；
+- risk fast path：基于 Labeler 风险信号（`LabelerTrustLevel`、`riskSignals`）的前端快速路径提示。
 
-> 详细任务规格见 `tasks/RD-1.md`。本文件只记状态，不重复全文。
+**接手时明确不做（除非维护者另行指定）：**
+- 不修改 B1/B2/Phase C 已完成实现；
+- 不修改 contracts 破坏性变更；
+- 不实现 `REVIEW_DEEP_DIFF_GENERATED` / `SERVER_*` diffMode（超出前端浅层范围）；
+- 不生成 fake hash。
+
+> Phase D 详细规格见未来的 `tasks/PD-1.md`。本文件只记状态，不重复全文。
 
 ---
 
@@ -73,20 +69,34 @@ commit：  4e84977   docs: add multi-agent handoff files for schema arch work
 - A-tail：mock prompt registry + 真实 SHA-256 `promptSnapshotHash` / `outputHash`（commit 73ec0bc）
   - 新增 `apps/web/src/mocks/ai-prompt-registry.ts`、`apps/web/src/mocks/hash-utils.ts`
   - 无 fake hash，response 不返回完整 prompt
-- Phase B1（RD-1）：Reviewer corrected answers / shallow patches（未 commit，工作区 dirty）
+- Phase B1（RD-1）：Reviewer corrected answers / shallow patches（commit 31e4bac）
   - 新增 `apps/web/src/features/reviewer/reviewer-diff.ts`（`computeReviewPatches`）
   - 复用 contracts `ReviewPatch`（`previousValue`/`nextValue`），无新增类型
   - `ReviewDetailPage.tsx` 加 correctedAnswers JSON textarea UI，handleDecision 提交时带 patches
-  - `reviewer-audit-events.ts` `appendReviewSubmittedAuditSafely` 加 `patchCount` 参数（`ReviewSubmittedAuditPayload.patchCount` 已存在，未改 contracts）
-  - 未写 `REVIEW_DIFF_GENERATED`，未生成 hash，未把完整 answers 写入 audit
-  - 验证：web typecheck ✅ build ✅；contracts typecheck ✅ test ✅(65)；git diff --check ✅
+  - `reviewer-audit-events.ts` `appendReviewSubmittedAuditSafely` 加 `patchCount` 参数
+  - 验证：web typecheck ✅ build ✅；contracts typecheck ✅ test ✅(74)；git diff --check ✅
+- Phase B2（RD-2）：`REVIEW_DIFF_GENERATED` audit（commit 436886f）
+  - 新增 `appendReviewDiffGeneratedAuditSafely`，async IIFE fire-and-forget
+  - payload 只含 patchedFieldNames（字段名）+ patchCount + hash + 索引字段，无完整 answers
+  - `beforeAnswerHash` / `afterAnswerHash` / `diffSummaryHash` 复用 `hashCanonicalJson`（真实 SHA-256）
+  - `mapDecisionForDiffAudit`：PASS → APPROVED_WITH_CHANGES，RETURN → REJECTED
+  - patches.length === 0 时不写 diff audit
+  - 验证：web typecheck ✅ build ✅；contracts typecheck ✅ test ✅(74)；git diff --check ✅
+- Phase C（QL-5）：Data Quality Passport contracts 与 mock（commits 6993e3b–fcbccb4）
+  - contracts `export.ts` 新增 `DataQualityPassport` interface 及关联类型
+  - `mock-db.ts` `generateExportArtifact` 生成 passport、`finalAnswerHash`（真实 SHA-256）、`passportBatchHash`
+  - `OwnerExportPage.tsx` 展示 passport 摘要
+  - `DATA_QUALITY_PASSPORT_GENERATED` audit 事件写入（passportBatchHash 为真实 SHA-256）
+- Reviewer demo seed 稳定化（commit adae1ab）
+  - sub_1001–1004 迁移到 `apps/web/src/mocks/data/` 独立文件，固定 id / answers / timestamps
 
 **进行中：**
-- Phase B2（RD-2）：尚未开始，下一班接手
+- 无
 
 **暂缓 / 推迟：**
 - canonical-json-v1 + SHA-256 的前后端一致 test vectors（真实后端阶段再补）
-- Phase C / D 全部
+- mock-db.ts seed 审计记录中残留的 `sha256:mock-*` 佔位符（6 处，非 live 路径，非阻断性）
+- Phase D 全部
 
 ---
 
@@ -95,6 +105,38 @@ commit：  4e84977   docs: add multi-agent handoff files for schema arch work
 > 格式：日期时间 | 工具 | 改了哪些文件 | 是否触碰边界 | 验证结果 | 遗留问题
 
 ```txt
+### 2026-06-06 | Claude Code（Handoff Audit）
+- 任务：独立审查 handoff 状态一致性（只读，不改代码）
+- 审查结论：
+  - B2 代码实现正确，payload 安全边界满足，hash 真实
+  - Phase C passport 实现完整，passportBatchHash 为真实 SHA-256
+  - 全部验证通过：web ✅ contracts test ✅(74) schema-core ✅(132) schema-renderer ✅(13)
+  - 发现并记录 3 项非阻断性问题（见状态看板「暂缓」列）
+  - 更新本文件 Section 0/1/2/3/4/5 以反映实际完成状态
+
+### 2026-06-06 | 维护者（项目推进）
+- 任务：Phase B2（RD-2）REVIEW_DIFF_GENERATED + Phase C Data Quality Passport + seed 稳定化
+- 改动文件（B2）：
+  - apps/web/src/features/reviewer/reviewer-audit-events.ts（新增 appendReviewDiffGeneratedAuditSafely）
+  - apps/web/src/features/reviewer/ReviewDetailPage.tsx（handleDecision 调用 diff audit）
+- 改动文件（Phase C）：
+  - packages/contracts/src/export.ts（新增 DataQualityPassport 及关联类型）
+  - packages/contracts/src/audit.ts（新增 DataQualityPassportGeneratedAuditPayload）
+  - apps/web/src/mocks/mock-db.ts（generateExportArtifact + passport 生成 + audit 写入）
+  - apps/web/src/features/owner/OwnerExportPage.tsx（passport 摘要展示）
+  - apps/web/src/styles.css（passport 相关样式）
+- 改动文件（seed 稳定化）：
+  - apps/web/src/mocks/data/assignments.mock.ts（新增）
+  - apps/web/src/mocks/data/dataset-items.mock.ts（修改）
+  - apps/web/src/mocks/data/reviews.mock.ts（新增，sub_1001–1004 AI review results）
+  - apps/web/src/mocks/data/submissions.mock.ts（新增，sub_1001–1004 固定种子）
+- 是否触碰边界：否（contracts 为最小新增，无破坏性变更；禁改文件未碰）
+- 验证：web typecheck ✅ build ✅；contracts typecheck ✅ test ✅(74)；git diff --check ✅
+- 遗留问题 / 卡点：
+  - mock-db.ts 中 REVIEW_DIFF_GENERATED / LABELING_SESSION_SUMMARY / EXPORT_GENERATED
+    的静态种子审计记录仍含 sha256:mock-* 佔位符（6 处），非 live 路径，非阻断
+  - 手动 QA 需维护者在浏览器验证 MSW 链路
+
 ### 2026-06-06 | Claude Code
 - 任务：Phase B1（RD-1）Reviewer corrected answers / shallow patches
 - 改动文件：
@@ -104,7 +146,7 @@ commit：  4e84977   docs: add multi-agent handoff files for schema arch work
   - apps/web/src/styles.css（修改）
 - 是否触碰边界：否
   - contracts：未改，`ReviewPatch` / `ReviewDecisionRequest.patches` / `ReviewSubmittedAuditPayload.patchCount` 均已存在
-  - mock-db / handlers：未改，patches 已被支持（mock-db:882）
+  - mock-db / handlers：未改，patches 已被支持
   - schema-core / docs / labeler / owner：未碰
 - 验证：web typecheck ✅ build ✅；contracts typecheck ✅ test ✅(65)；git diff --check ✅
   - `.contract-test-dist` 生成产物已 `git checkout --` 恢复
@@ -133,16 +175,24 @@ commit：  4e84977   docs: add multi-agent handoff files for schema arch work
 > 上一班在收班时填写，给接手方一句话讲清「下一步立刻该做什么 + 有什么坑」。
 
 ```txt
-下一步：开始 Phase B2（RD-2），完整规格待补充 tasks/RD-2.md（尚未创建）。
-        B2 目标：基于 B1 生成的真实 patches 写 REVIEW_DIFF_GENERATED audit 事件。
+下一步：Phase D（QL-7）Read Model / Snapshot / risk fast path。
+        规格尚未创建，维护者需先补 tasks/PD-1.md。
 
-注意坑：
-  1) B1 改动尚未 commit，接手前可先让维护者 commit 或自行 commit（commit 时注意不要 push）；
-  2) B2 需要写 REVIEW_DIFF_GENERATED，要复用 contracts 现有 ReviewDiffGeneratedAuditPayload
-     （字段：taskId、submissionId、reviewId、reviewerId、patchedFieldNames、patchCount、decision 等）；
-  3) beforeAnswerHash / afterAnswerHash 本轮 B1 未生成，B2 可选填（不生成 fake hash）；
-  4) B1 实现是 JSON textarea，B2 可依赖 handleDecision 里已计算好的 patches，不需要重新 diff；
-  5) 不影响 Owner / Labeler / Export / AI Assist 链路。
+准备工作（接手前先确认）：
+  1) 工作区应为 clean，HEAD 应为 1e9ed33；
+  2) 阅读 docs/Labelhub_Quality_Layer.md 第 13 节（Read Model）和第 14 节（risk fast path）
+     了解目标态，但只实现维护者在 PD-1.md 指定的最小范围；
+  3) Phase D 是工业化阶段，涉及 snapshot 投影和风控逻辑，改动面可能较大；
+     接手前务必先做实施前审查并等维护者确认再动代码。
+
+已知非阻断性技术债（不影响 Phase D，但可在 Phase D 前顺手修复）：
+  - mock-db.ts 中 3 条静态 seed 审计记录的 sha256:mock-* 佔位符（6 处）
+    可用 hashCanonicalJson 预计算结果替换，参考 DATA_QUALITY_PASSPORT_GENERATED seed 的做法。
+
+不要做的事：
+  - 不要实现 REVIEW_DEEP_DIFF_GENERATED / SERVER_* diffMode；
+  - 不要修改 B1/B2/Phase C 已完成实现；
+  - 不要 commit，不要 push。
 ```
 
 ---
