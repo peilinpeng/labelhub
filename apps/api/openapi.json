@@ -1,0 +1,5702 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "LabelHub API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "description": "POST /api/v1/auth/login — 邮箱密码登录，公开接口无需鉴权。\n\n失败场景：\n- 邮箱不存在 → 401 PERMISSION_DENIED（不区分\"用户不存在\"和\"密码错误\"，防枚举）\n- 密码错误   → 401 PERMISSION_DENIED\n- status 非 ACTIVE → 401 PERMISSION_DENIED，message 说明账号状态",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schema/component-registry": {
+      "get": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "获取服务端权威组件注册表",
+        "description": "返回服务端允许使用的全部 NodeType 注册信息（契约 §13）。\n仅 OWNER 角色可访问（契约 §23.1），返回静态配置，无 DB 访问，共 19 种 NodeType。",
+        "operationId": "get_component_registry_api_v1_schema_component_registry_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ServerComponentRegistryItem"
+                  },
+                  "type": "array",
+                  "title": "Response Get Component Registry Api V1 Schema Component Registry Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks": {
+      "post": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "创建任务",
+        "description": "createTask 命令（契约 §18.1）：创建 DRAFT 状态任务，写入 TASK_CREATED audit log。",
+        "operationId": "create_task_api_v1_tasks_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateTaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "获取任务列表（OWNER）",
+        "operationId": "list_tasks_api_v1_tasks_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Pagesize"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "查询任务详情",
+        "description": "获取任务详情（契约 §23.1：OWNER/REVIEWER/LABELER 均可访问）。",
+        "operationId": "get_task_api_v1_tasks__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "更新任务（仅 DRAFT 状态）",
+        "description": "更新 DRAFT 任务字段（契约 §23.1）。非 DRAFT 状态返回 409。",
+        "operationId": "update_task_api_v1_tasks__task_id__patch",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/publish": {
+      "post": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "发布任务",
+        "description": "publishTask 命令（契约 §16 / §18.1）：DRAFT → PUBLISHED，校验 schemaVersionId。",
+        "operationId": "publish_task_api_v1_tasks__task_id__publish_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishTaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/pause": {
+      "post": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "暂停任务",
+        "description": "pauseTask 命令（契约 §18.1）：PUBLISHED → PAUSED。",
+        "operationId": "pause_task_api_v1_tasks__task_id__pause_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskTransitionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/resume": {
+      "post": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "恢复任务",
+        "description": "resumeTask 命令（契约 §18.1）：PAUSED → PUBLISHED。",
+        "operationId": "resume_task_api_v1_tasks__task_id__resume_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskTransitionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/end": {
+      "post": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "结束任务",
+        "description": "endTask 命令（契约 §18.1）：PUBLISHED/PAUSED → ENDED。",
+        "operationId": "end_task_api_v1_tasks__task_id__end_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskTransitionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/archive": {
+      "post": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "归档任务（终态）",
+        "description": "archiveTask 命令（契约 §18.1）：ENDED → ARCHIVED（终态）。\n不得从 DRAFT/PUBLISHED/PAUSED 直接归档（状态机保证）。",
+        "operationId": "archive_task_api_v1_tasks__task_id__archive_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskTransitionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/schema/draft": {
+      "put": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "保存 Schema 草稿",
+        "description": "保存（创建或覆盖）Schema 草稿（契约 §23.1）。\nschemaDraftRevision 每次保存自动递增。\n传入 baseSchemaDraftRevision 且与当前修订号不一致时返回 409 SCHEMA_DRAFT_CONFLICT。",
+        "operationId": "save_schema_draft_api_v1_tasks__task_id__schema_draft_put",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveSchemaDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveSchemaDraftResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "获取当前 Schema 草稿",
+        "description": "获取任务当前 Schema 草稿（契约 §23.1）。草稿不存在时返回 404。",
+        "operationId": "get_schema_draft_api_v1_tasks__task_id__schema_draft_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaDraftResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/schema/publish": {
+      "post": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "发布 Schema 版本（不可变快照）",
+        "description": "将当前 Schema 草稿发布为不可变版本快照（契约 §16 / §23.1）。\nschemaDraftRevision 不一致时返回 409；草稿校验失败时返回 422。",
+        "operationId": "publish_schema_version_api_v1_tasks__task_id__schema_publish_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishSchemaVersionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishSchemaVersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schema-versions/{schema_version_id}": {
+      "get": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "获取 Schema 版本快照",
+        "description": "获取不可变 Schema 版本快照（契约 §23.1：OWNER/REVIEWER/LABELER 均可访问）。",
+        "operationId": "get_schema_version_api_v1_schema_versions__schema_version_id__get",
+        "parameters": [
+          {
+            "name": "schema_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Schema Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaVersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schema/validate": {
+      "post": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "校验 Schema 结构",
+        "description": "校验 LabelHubSchema 结构合法性（契约 §23.1）：节点类型、FieldNode name 唯一性。\n无 DB 访问，纯内存校验，不写 audit log。",
+        "operationId": "validate_schema_api_v1_schema_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateSchemaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateSchemaResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/dataset/import": {
+      "post": {
+        "tags": [
+          "dataset"
+        ],
+        "summary": "导入数据集（JSON / JSONL / Excel）",
+        "description": "从已上传文件导入数据集（契约 §23.2）。文件必须 purpose=DATASET_IMPORT、status=READY。",
+        "operationId": "import_dataset_api_v1_tasks__task_id__dataset_import_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportDatasetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportDatasetResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/items": {
+      "get": {
+        "tags": [
+          "dataset"
+        ],
+        "summary": "获取题目列表（分页）",
+        "operationId": "list_items_api_v1_tasks__task_id__items_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "页码，从 1 开始",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "页码，从 1 开始"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "每页数量",
+              "default": 20,
+              "title": "Pagesize"
+            },
+            "description": "每页数量"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListItemsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/items/{item_id}": {
+      "get": {
+        "tags": [
+          "dataset"
+        ],
+        "summary": "获取题目详情",
+        "description": "OWNER / REVIEWER / LABELER 均可访问（契约 §23.2）。",
+        "operationId": "get_item_api_v1_items__item_id__get",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "dataset"
+        ],
+        "summary": "编辑题目",
+        "description": "更新题目 sourcePayload 或 status（status 仅限 AVAILABLE/DISABLED）。",
+        "operationId": "update_item_api_v1_items__item_id__patch",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDatasetItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/marketplace/tasks": {
+      "get": {
+        "tags": [
+          "marketplace"
+        ],
+        "summary": "任务广场：获取可领取任务列表",
+        "operationId": "list_marketplace_tasks_api_v1_marketplace_tasks_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按标题/描述模糊搜索",
+              "title": "Keyword"
+            },
+            "description": "按标题/描述模糊搜索"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按任务状态筛选（广场仅 PUBLISHED 可见）",
+              "title": "Status"
+            },
+            "description": "按任务状态筛选（广场仅 PUBLISHED 可见）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/claim": {
+      "post": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "领取题目（Labeler）",
+        "operationId": "claim_item_api_v1_tasks__task_id__claim_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimTaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignments/{assignment_id}": {
+      "get": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "获取作答上下文（Assignment + Task + Item + Schema + Draft）",
+        "operationId": "get_assignment_api_v1_assignments__assignment_id__get",
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentContextResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignments/{assignment_id}/items": {
+      "get": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "作答工作台左侧题目导航（任务全部题目 + 当前下标）",
+        "operationId": "list_assignment_items_api_v1_assignments__assignment_id__items_get",
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentItemsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignments/{assignment_id}/draft": {
+      "put": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "保存草稿",
+        "description": "clientRevision 必须等于当前 serverRevision，不一致返回 409 REVISION_CONFLICT。",
+        "operationId": "save_draft_api_v1_assignments__assignment_id__draft_put",
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveDraftResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignments/{assignment_id}/submit": {
+      "post": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "提交答案",
+        "description": "答案存为不可变快照；自动触发 AI 审核入队（契约 §18.2 submitAssignment）。",
+        "operationId": "submit_assignment_api_v1_assignments__assignment_id__submit_post",
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitAssignmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitAssignmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assignments/{assignment_id}/llm-assist": {
+      "post": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "LLM 辅助：调用 llm.assist 节点生成建议（30s 超时）",
+        "operationId": "llm_assist_api_v1_assignments__assignment_id__llm_assist_post",
+        "parameters": [
+          {
+            "name": "assignment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assignment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LLMAssistRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LLMAssistResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/submissions": {
+      "get": {
+        "tags": [
+          "assignments"
+        ],
+        "summary": "我的作答记录（分页）",
+        "operationId": "get_my_assignments_api_v1_me_submissions_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Pagesize"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAssignmentsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/review/queue": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "审核队列：获取待审核/审核中的 Submission 列表",
+        "operationId": "get_review_queue_api_v1_review_queue_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按 Submission 状态精确筛选（前端 Tab）",
+              "title": "Status"
+            },
+            "description": "按 Submission 状态精确筛选（前端 Tab）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueueResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/review/submissions/{submission_id}": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "审核详情：获取指定 Submission 的完整审核信息",
+        "operationId": "get_review_detail_api_v1_review_submissions__submission_id__get",
+        "parameters": [
+          {
+            "name": "submission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Submission Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/review/submissions/{submission_id}/claim": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "领取审核：将 AI_PASSED/NEEDS_HUMAN_REVIEW 的 Submission 迁移为 HUMAN_REVIEWING",
+        "operationId": "claim_review_api_v1_review_submissions__submission_id__claim_post",
+        "parameters": [
+          {
+            "name": "submission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Submission Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/review/submissions/{submission_id}/decision": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "审核决策：对 HUMAN_REVIEWING 或 FINAL_REVIEWING 提交 PASS/RETURN/REJECT",
+        "operationId": "submit_review_decision_api_v1_review_submissions__submission_id__decision_post",
+        "parameters": [
+          {
+            "name": "submission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Submission Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewDecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDecisionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/review/batch-decision": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "批量审核：逐条处理，单条失败不阻断整体，每条独立写 audit log",
+        "operationId": "batch_decision_api_v1_review_batch_decision_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/review-config": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "创建任务 AI 审核配置（每个任务最多一份）",
+        "operationId": "create_review_config_api_v1_tasks__task_id__review_config_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReviewConfigRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateReviewConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "获取任务 AI 审核配置",
+        "operationId": "get_review_config_api_v1_tasks__task_id__review_config_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetReviewConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "review"
+        ],
+        "summary": "更新任务 AI 审核配置（部分更新，字段均为可选）",
+        "operationId": "update_review_config_api_v1_tasks__task_id__review_config_put",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateReviewConfigRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateReviewConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/exports": {
+      "post": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "创建导出任务（异步，立即返回 PENDING 状态的 ExportJob）",
+        "operationId": "create_export_job_api_v1_tasks__task_id__exports_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExportJobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateExportJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "导出历史：查询任务的所有导出记录",
+        "operationId": "list_export_jobs_api_v1_tasks__task_id__exports_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Pagesize"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListExportJobsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exports/{export_job_id}": {
+      "get": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "导出状态：查询指定导出任务详情",
+        "operationId": "get_export_job_api_v1_exports__export_job_id__get",
+        "parameters": [
+          {
+            "name": "export_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Export Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetExportJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/exports/{export_job_id}/download": {
+      "get": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "下载信息：获取已完成导出任务的下载 URL（本地存储 MVP）",
+        "operationId": "get_download_info_api_v1_exports__export_job_id__download_get",
+        "parameters": [
+          {
+            "name": "export_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Export Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadExportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/files/upload-url": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "生成上传 URL（MVP：返回本地存储接收端点）",
+        "operationId": "create_upload_url_api_v1_files_upload_url_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUploadUrlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateUploadUrlResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/files/{file_id}/confirm": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "summary": "确认上传完成：status→READY，写 FILE_CONFIRMED audit log",
+        "operationId": "confirm_upload_api_v1_files__file_id__confirm_post",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/files/{file_id}": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "查询文件元数据",
+        "operationId": "get_file_api_v1_files__file_id__get",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileObjectResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "files"
+        ],
+        "summary": "软删除文件：status→DELETED，不物理删除",
+        "operationId": "delete_file_api_v1_files__file_id__delete",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Api V1 Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AITraceResponse": {
+        "properties": {
+          "callId": {
+            "type": "string",
+            "title": "Callid"
+          },
+          "modelPolicyId": {
+            "type": "string",
+            "title": "Modelpolicyid"
+          },
+          "promptSnapshotHash": {
+            "type": "string",
+            "title": "Promptsnapshothash"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "promptTokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompttokens"
+          },
+          "completionTokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completiontokens"
+          },
+          "totalTokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totaltokens"
+          },
+          "latencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latencyms"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "callId",
+          "modelPolicyId",
+          "promptSnapshotHash",
+          "status",
+          "createdAt"
+        ],
+        "title": "AITraceResponse",
+        "description": "AI 预审可追溯信息（TC-AI-07）：模型 ID、Prompt 快照哈希、Token 用量、耗时。"
+      },
+      "ActorResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "displayName": {
+            "type": "string",
+            "title": "Displayname"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "displayName"
+        ],
+        "title": "ActorResponse"
+      },
+      "ArchiveTaskRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "title": "ArchiveTaskRequest"
+      },
+      "AssignmentContextResponse": {
+        "properties": {
+          "assignment": {
+            "$ref": "#/components/schemas/AssignmentResponse"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskResponse"
+          },
+          "item": {
+            "$ref": "#/components/schemas/DatasetItemResponse"
+          },
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schema"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastReturnReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastreturnreason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assignment",
+          "task",
+          "item",
+          "schemaVersionId",
+          "schema",
+          "draft",
+          "lastReturnReason"
+        ],
+        "title": "AssignmentContextResponse"
+      },
+      "AssignmentItemsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "currentIndex": {
+            "type": "integer",
+            "title": "Currentindex"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "currentIndex"
+        ],
+        "title": "AssignmentItemsResponse",
+        "description": "Labeler 作答工作台左侧题目导航：返回该任务全部题目 + 当前题目下标。"
+      },
+      "AssignmentResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "itemId": {
+            "type": "string",
+            "title": "Itemid"
+          },
+          "labelerId": {
+            "type": "string",
+            "title": "Labelerid"
+          },
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "lockedUntil": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lockeduntil"
+          },
+          "latestSubmissionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestsubmissionid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "taskId",
+          "itemId",
+          "labelerId",
+          "schemaVersionId",
+          "status",
+          "lockedUntil",
+          "latestSubmissionId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "AssignmentResponse"
+      },
+      "AssignmentStrategy": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "ASSIGNMENT",
+            "title": "Type"
+          },
+          "assigneeIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Assigneeids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "assigneeIds"
+        ],
+        "title": "AssignmentStrategy"
+      },
+      "AuditLogSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "actorId": {
+            "type": "string",
+            "title": "Actorid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "actorId",
+          "createdAt"
+        ],
+        "title": "AuditLogSummary"
+      },
+      "AuditLogSummaryResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "createdAt"
+        ],
+        "title": "AuditLogSummaryResponse",
+        "description": "契约 §25 AuditLogSummary（响应时使用）"
+      },
+      "BatchReviewItem": {
+        "properties": {
+          "submissionId": {
+            "type": "string",
+            "title": "Submissionid"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewComment"
+            },
+            "type": "array",
+            "title": "Comments",
+            "default": []
+          },
+          "patches": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewPatch"
+            },
+            "type": "array",
+            "title": "Patches",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "submissionId",
+          "stage",
+          "decision"
+        ],
+        "title": "BatchReviewItem"
+      },
+      "BatchReviewRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BatchReviewItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "BatchReviewRequest"
+      },
+      "BatchReviewResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BatchReviewResultItem"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "BatchReviewResponse"
+      },
+      "BatchReviewResultItem": {
+        "properties": {
+          "submissionId": {
+            "type": "string",
+            "title": "Submissionid"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "submission": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubmissionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewResult": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewResultResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "submissionId",
+          "success"
+        ],
+        "title": "BatchReviewResultItem"
+      },
+      "ClaimReviewResponse": {
+        "properties": {
+          "submission": {
+            "$ref": "#/components/schemas/SubmissionSummary"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "submission",
+          "auditLog"
+        ],
+        "title": "ClaimReviewResponse"
+      },
+      "ClaimTaskRequest": {
+        "properties": {
+          "preferredItemId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferreditemid",
+            "description": "优先领取的题目 ID，不可用时自动回退"
+          }
+        },
+        "type": "object",
+        "title": "ClaimTaskRequest"
+      },
+      "ClaimTaskResponse": {
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/AssignmentContextResponse"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "context",
+          "auditLog"
+        ],
+        "title": "ClaimTaskResponse"
+      },
+      "ConclusionMappingInput": {
+        "properties": {
+          "passWhen": {
+            "type": "string",
+            "title": "Passwhen",
+            "default": ""
+          },
+          "returnWhen": {
+            "type": "string",
+            "title": "Returnwhen",
+            "default": ""
+          },
+          "humanReviewOtherwise": {
+            "type": "boolean",
+            "title": "Humanreviewotherwise",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "ConclusionMappingInput"
+      },
+      "ConfirmUploadRequest": {
+        "properties": {
+          "storageKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storagekey"
+          },
+          "checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checksum"
+          }
+        },
+        "type": "object",
+        "title": "ConfirmUploadRequest"
+      },
+      "ConfirmUploadResponse": {
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileObjectResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "ConfirmUploadResponse"
+      },
+      "CreateExportJobRequest": {
+        "properties": {
+          "mapping": {
+            "$ref": "#/components/schemas/ExportMapping"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mapping"
+        ],
+        "title": "CreateExportJobRequest"
+      },
+      "CreateExportJobResponse": {
+        "properties": {
+          "exportJob": {
+            "$ref": "#/components/schemas/ExportJobResponse"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exportJob",
+          "auditLog"
+        ],
+        "title": "CreateExportJobResponse"
+      },
+      "CreateReviewConfigRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "modelPolicyId": {
+            "type": "string",
+            "title": "Modelpolicyid"
+          },
+          "promptTemplate": {
+            "type": "string",
+            "title": "Prompttemplate"
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDimensionInput"
+            },
+            "type": "array",
+            "title": "Dimensions"
+          },
+          "thresholds": {
+            "$ref": "#/components/schemas/ThresholdsInput"
+          },
+          "conclusionMapping": {
+            "$ref": "#/components/schemas/ConclusionMappingInput"
+          },
+          "maxRetries": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Maxretries",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "required": [
+          "modelPolicyId",
+          "promptTemplate",
+          "dimensions",
+          "thresholds",
+          "conclusionMapping"
+        ],
+        "title": "CreateReviewConfigRequest"
+      },
+      "CreateReviewConfigResponse": {
+        "properties": {
+          "reviewConfig": {
+            "$ref": "#/components/schemas/ReviewConfigResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reviewConfig"
+        ],
+        "title": "CreateReviewConfigResponse"
+      },
+      "CreateTaskRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "instructionRichText": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructionrichtext"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "default": []
+          },
+          "rewardRule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RewardRuleSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quota": {
+            "$ref": "#/components/schemas/QuotaSchema"
+          },
+          "deadlineAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadlineat"
+          },
+          "distributionStrategy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FirstComeFirstServedStrategy"
+              },
+              {
+                "$ref": "#/components/schemas/AssignmentStrategy"
+              },
+              {
+                "$ref": "#/components/schemas/QuotaClaimStrategy"
+              }
+            ],
+            "title": "Distributionstrategy",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "ASSIGNMENT": "#/components/schemas/AssignmentStrategy",
+                "FIRST_COME_FIRST_SERVED": "#/components/schemas/FirstComeFirstServedStrategy",
+                "QUOTA_CLAIM": "#/components/schemas/QuotaClaimStrategy"
+              }
+            }
+          },
+          "reviewPolicy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SingleReviewPolicy"
+              },
+              {
+                "$ref": "#/components/schemas/DoubleReviewPolicy"
+              }
+            ],
+            "title": "Reviewpolicy",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "DOUBLE_REVIEW": "#/components/schemas/DoubleReviewPolicy",
+                "SINGLE_REVIEW": "#/components/schemas/SingleReviewPolicy"
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "quota",
+          "distributionStrategy",
+          "reviewPolicy"
+        ],
+        "title": "CreateTaskRequest",
+        "description": "createTask 命令入参（契约 §18.1：required title）"
+      },
+      "CreateTaskResponse": {
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/TaskResponse"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task",
+          "auditLog"
+        ],
+        "title": "CreateTaskResponse"
+      },
+      "CreateUploadUrlRequest": {
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "mimeType": {
+            "type": "string",
+            "title": "Mimetype"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "ownerType": {
+            "type": "string",
+            "title": "Ownertype"
+          },
+          "ownerId": {
+            "type": "string",
+            "title": "Ownerid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fileName",
+          "mimeType",
+          "size",
+          "purpose",
+          "ownerType",
+          "ownerId"
+        ],
+        "title": "CreateUploadUrlRequest"
+      },
+      "CreateUploadUrlResponse": {
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileObjectResponse"
+          },
+          "uploadUrl": {
+            "type": "string",
+            "title": "Uploadurl"
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headers"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expiresat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "uploadUrl",
+          "expiresAt"
+        ],
+        "title": "CreateUploadUrlResponse"
+      },
+      "DatasetItemResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "externalKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalkey"
+          },
+          "sourcePayload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Sourcepayload"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "currentAssignmentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentassignmentid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "taskId",
+          "externalKey",
+          "sourcePayload",
+          "status",
+          "currentAssignmentId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "DatasetItemResponse"
+      },
+      "DoubleReviewPolicy": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "DOUBLE_REVIEW",
+            "title": "Type"
+          },
+          "requireFinalReview": {
+            "type": "boolean",
+            "const": true,
+            "title": "Requirefinalreview"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "requireFinalReview"
+        ],
+        "title": "DoubleReviewPolicy"
+      },
+      "DownloadExportResponse": {
+        "properties": {
+          "exportJob": {
+            "$ref": "#/components/schemas/ExportJobResponse"
+          },
+          "file": {
+            "$ref": "#/components/schemas/FileObjectResponse"
+          },
+          "downloadUrl": {
+            "type": "string",
+            "title": "Downloadurl"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expiresat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exportJob",
+          "file",
+          "downloadUrl",
+          "expiresAt"
+        ],
+        "title": "DownloadExportResponse"
+      },
+      "DraftResponse": {
+        "properties": {
+          "assignmentId": {
+            "type": "string",
+            "title": "Assignmentid"
+          },
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "answers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Answers"
+          },
+          "clientRevision": {
+            "type": "integer",
+            "title": "Clientrevision"
+          },
+          "serverRevision": {
+            "type": "integer",
+            "title": "Serverrevision"
+          },
+          "validationErrors": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validationerrors"
+          },
+          "savedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Savedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assignmentId",
+          "schemaVersionId",
+          "answers",
+          "clientRevision",
+          "serverRevision",
+          "validationErrors",
+          "savedAt"
+        ],
+        "title": "DraftResponse"
+      },
+      "EndTaskRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "title": "EndTaskRequest"
+      },
+      "ExportColumn": {
+        "properties": {
+          "header": {
+            "type": "string",
+            "title": "Header"
+          },
+          "sourcePath": {
+            "type": "string",
+            "title": "Sourcepath"
+          },
+          "transform": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TransformSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "defaultValue": {
+            "title": "Defaultvalue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "header",
+          "sourcePath"
+        ],
+        "title": "ExportColumn"
+      },
+      "ExportFilters": {
+        "properties": {
+          "submissionStatus": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submissionstatus"
+          },
+          "acceptedOnly": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptedonly"
+          }
+        },
+        "type": "object",
+        "title": "ExportFilters"
+      },
+      "ExportJobResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "mapping": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Mapping"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ExportProgressResponse"
+          },
+          "fileId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fileid"
+          },
+          "errorMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errormessage"
+          },
+          "createdBy": {
+            "type": "string",
+            "title": "Createdby"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "taskId",
+          "schemaVersionId",
+          "status",
+          "mapping",
+          "progress",
+          "fileId",
+          "errorMessage",
+          "createdBy",
+          "createdAt",
+          "finishedAt"
+        ],
+        "title": "ExportJobResponse"
+      },
+      "ExportMapping": {
+        "properties": {
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "answerSource": {
+            "type": "string",
+            "title": "Answersource"
+          },
+          "allowPatchedAnswers": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowpatchedanswers"
+          },
+          "includeReviewRecords": {
+            "type": "boolean",
+            "title": "Includereviewrecords",
+            "default": false
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ExportColumn"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportFilters"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "schemaVersionId",
+          "format",
+          "answerSource",
+          "columns"
+        ],
+        "title": "ExportMapping"
+      },
+      "ExportProgressResponse": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "done"
+        ],
+        "title": "ExportProgressResponse"
+      },
+      "FileObjectResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "ownerId": {
+            "type": "string",
+            "title": "Ownerid"
+          },
+          "ownerType": {
+            "type": "string",
+            "title": "Ownertype"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "mimeType": {
+            "type": "string",
+            "title": "Mimetype"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "storageKey": {
+            "type": "string",
+            "title": "Storagekey"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "confirmedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ownerId",
+          "ownerType",
+          "purpose",
+          "mimeType",
+          "size",
+          "storageKey",
+          "status",
+          "createdAt",
+          "confirmedAt"
+        ],
+        "title": "FileObjectResponse"
+      },
+      "FirstComeFirstServedStrategy": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "FIRST_COME_FIRST_SERVED",
+            "title": "Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "FirstComeFirstServedStrategy"
+      },
+      "GetExportJobResponse": {
+        "properties": {
+          "exportJob": {
+            "$ref": "#/components/schemas/ExportJobResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exportJob"
+        ],
+        "title": "GetExportJobResponse"
+      },
+      "GetReviewConfigResponse": {
+        "properties": {
+          "reviewConfig": {
+            "$ref": "#/components/schemas/ReviewConfigResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reviewConfig"
+        ],
+        "title": "GetReviewConfigResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImportDatasetRequest": {
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "title": "Fileid"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "JSON",
+              "JSONL",
+              "EXCEL"
+            ],
+            "title": "Format"
+          },
+          "externalKeyPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalkeypath",
+            "description": "点分路径，如 'id' 或 'meta.id'"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fileId",
+          "format"
+        ],
+        "title": "ImportDatasetRequest"
+      },
+      "ImportDatasetResponse": {
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "importedCount": {
+            "type": "integer",
+            "title": "Importedcount"
+          },
+          "skippedCount": {
+            "type": "integer",
+            "title": "Skippedcount"
+          },
+          "failedCount": {
+            "type": "integer",
+            "title": "Failedcount"
+          },
+          "previewItems": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetItemResponse"
+            },
+            "type": "array",
+            "title": "Previewitems"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ImportError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "taskId",
+          "importedCount",
+          "skippedCount",
+          "failedCount",
+          "previewItems",
+          "auditLog"
+        ],
+        "title": "ImportDatasetResponse"
+      },
+      "ImportError": {
+        "properties": {
+          "row": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ImportError"
+      },
+      "LLMAssistRequest": {
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "title": "Nodeid"
+          },
+          "answers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Answers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nodeId"
+        ],
+        "title": "LLMAssistRequest",
+        "description": "契约 LLMRuntimeRequest：标注作答时触发 llm.assist 节点。"
+      },
+      "LLMAssistResponse": {
+        "properties": {
+          "output": {
+            "title": "Output"
+          },
+          "suggestedPatch": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestedpatch"
+          },
+          "callId": {
+            "type": "string",
+            "title": "Callid"
+          },
+          "latencyMs": {
+            "type": "integer",
+            "title": "Latencyms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "output",
+          "callId",
+          "latencyMs"
+        ],
+        "title": "LLMAssistResponse",
+        "description": "契约 LLMRuntimeResponse + latencyMs（前端据此显示 loading/超时）。"
+      },
+      "ListAssignmentsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssignmentResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "title": "ListAssignmentsResponse"
+      },
+      "ListExportJobsResponse": {
+        "properties": {
+          "exportJobs": {
+            "items": {
+              "$ref": "#/components/schemas/ExportJobResponse"
+            },
+            "type": "array",
+            "title": "Exportjobs"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exportJobs",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "ListExportJobsResponse"
+      },
+      "ListItemsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "title": "ListItemsResponse"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "LoginResponse": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/ActorResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "actor"
+        ],
+        "title": "LoginResponse"
+      },
+      "MarketplaceResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceTaskItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "title": "MarketplaceResponse"
+      },
+      "MarketplaceTaskItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "quota": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Quota"
+          },
+          "distributionStrategy": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Distributionstrategy"
+          },
+          "reviewPolicy": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Reviewpolicy"
+          },
+          "deadlineAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadlineat"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "description",
+          "status",
+          "quota",
+          "distributionStrategy",
+          "reviewPolicy",
+          "deadlineAt",
+          "createdAt"
+        ],
+        "title": "MarketplaceTaskItem"
+      },
+      "PauseTaskRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "title": "PauseTaskRequest"
+      },
+      "PublishSchemaVersionRequest": {
+        "properties": {
+          "schemaDraftRevision": {
+            "type": "integer",
+            "title": "Schemadraftrevision",
+            "description": "发布时必须与当前 draft 修订号一致（并发控制）"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schemaDraftRevision"
+        ],
+        "title": "PublishSchemaVersionRequest",
+        "description": "POST /tasks/{taskId}/schema/publish 请求体"
+      },
+      "PublishSchemaVersionResponse": {
+        "properties": {
+          "schemaVersion": {
+            "$ref": "#/components/schemas/SchemaVersionResponse"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "auditLog"
+        ],
+        "title": "PublishSchemaVersionResponse",
+        "description": "POST /tasks/{taskId}/schema/publish 响应体"
+      },
+      "PublishTaskRequest": {
+        "properties": {
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid",
+            "description": "待激活的 SchemaVersion ID"
+          },
+          "reviewConfigId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewconfigid",
+            "description": "AI 审核配置 ID，可选"
+          },
+          "reviewDisabledExplicitly": {
+            "type": "boolean",
+            "title": "Reviewdisabledexplicitly",
+            "description": "显式声明不使用 AI 审核",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "schemaVersionId"
+        ],
+        "title": "PublishTaskRequest",
+        "description": "publishTask 命令入参（契约 §16 / §18.1）"
+      },
+      "PublishTaskResponse": {
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/TaskResponse"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task",
+          "auditLog"
+        ],
+        "title": "PublishTaskResponse"
+      },
+      "QuotaClaimStrategy": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "QUOTA_CLAIM",
+            "title": "Type"
+          },
+          "claimBatchSize": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Claimbatchsize"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "claimBatchSize"
+        ],
+        "title": "QuotaClaimStrategy"
+      },
+      "QuotaSchema": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Total",
+            "description": "总配额"
+          },
+          "perLabeler": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Perlabeler",
+            "description": "单 Labeler 最大领取数"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total"
+        ],
+        "title": "QuotaSchema",
+        "description": "契约 Task.quota"
+      },
+      "ReviewComment": {
+        "properties": {
+          "fieldName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fieldname"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ReviewComment"
+      },
+      "ReviewConfigResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "modelPolicyId": {
+            "type": "string",
+            "title": "Modelpolicyid"
+          },
+          "promptTemplate": {
+            "type": "string",
+            "title": "Prompttemplate"
+          },
+          "dimensions": {
+            "items": {},
+            "type": "array",
+            "title": "Dimensions"
+          },
+          "thresholds": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Thresholds"
+          },
+          "conclusionMapping": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Conclusionmapping"
+          },
+          "maxRetries": {
+            "type": "integer",
+            "title": "Maxretries"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "taskId",
+          "enabled",
+          "modelPolicyId",
+          "promptTemplate",
+          "dimensions",
+          "thresholds",
+          "conclusionMapping",
+          "maxRetries",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "ReviewConfigResponse"
+      },
+      "ReviewDecisionRequest": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewComment"
+            },
+            "type": "array",
+            "title": "Comments",
+            "default": []
+          },
+          "patches": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewPatch"
+            },
+            "type": "array",
+            "title": "Patches",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "decision"
+        ],
+        "title": "ReviewDecisionRequest"
+      },
+      "ReviewDecisionResponse": {
+        "properties": {
+          "submission": {
+            "$ref": "#/components/schemas/SubmissionSummary"
+          },
+          "reviewResult": {
+            "$ref": "#/components/schemas/ReviewResultResponse"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "submission",
+          "reviewResult",
+          "auditLog"
+        ],
+        "title": "ReviewDecisionResponse"
+      },
+      "ReviewDetailResponse": {
+        "properties": {
+          "submission": {
+            "$ref": "#/components/schemas/SubmissionSummary"
+          },
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "taskTitle": {
+            "type": "string",
+            "title": "Tasktitle"
+          },
+          "itemId": {
+            "type": "string",
+            "title": "Itemid"
+          },
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "schemaJson": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schemajson"
+          },
+          "aiResult": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewResultResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aiTrace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AITraceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewResultResponse"
+            },
+            "type": "array",
+            "title": "History"
+          },
+          "auditLogs": {
+            "items": {
+              "$ref": "#/components/schemas/AuditLogSummary"
+            },
+            "type": "array",
+            "title": "Auditlogs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "submission",
+          "taskId",
+          "taskTitle",
+          "itemId",
+          "schemaVersionId",
+          "schemaJson",
+          "history",
+          "auditLogs"
+        ],
+        "title": "ReviewDetailResponse"
+      },
+      "ReviewDimensionInput": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "weight": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Weight"
+          },
+          "scoreRange": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Scorerange"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description",
+          "weight",
+          "scoreRange"
+        ],
+        "title": "ReviewDimensionInput"
+      },
+      "ReviewPatch": {
+        "properties": {
+          "fieldName": {
+            "type": "string",
+            "title": "Fieldname"
+          },
+          "previousValue": {
+            "title": "Previousvalue"
+          },
+          "nextValue": {
+            "title": "Nextvalue"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fieldName",
+          "previousValue",
+          "nextValue",
+          "reason"
+        ],
+        "title": "ReviewPatch"
+      },
+      "ReviewQueueItem": {
+        "properties": {
+          "submission": {
+            "$ref": "#/components/schemas/SubmissionSummary"
+          },
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "taskTitle": {
+            "type": "string",
+            "title": "Tasktitle"
+          },
+          "itemId": {
+            "type": "string",
+            "title": "Itemid"
+          },
+          "aiDecision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aidecision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "submission",
+          "taskId",
+          "taskTitle",
+          "itemId"
+        ],
+        "title": "ReviewQueueItem"
+      },
+      "ReviewQueueResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "ReviewQueueResponse"
+      },
+      "ReviewResultResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "submissionId": {
+            "type": "string",
+            "title": "Submissionid"
+          },
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "resultJson": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Resultjson"
+          },
+          "actorId": {
+            "type": "string",
+            "title": "Actorid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "submissionId",
+          "schemaVersionId",
+          "stage",
+          "decision",
+          "resultJson",
+          "actorId",
+          "createdAt"
+        ],
+        "title": "ReviewResultResponse"
+      },
+      "RewardRuleSchema": {
+        "properties": {
+          "unit": {
+            "type": "string",
+            "enum": [
+              "PER_ACCEPTED_ITEM",
+              "PER_SUBMISSION",
+              "FIXED"
+            ],
+            "title": "Unit"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Amount"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "unit",
+          "amount"
+        ],
+        "title": "RewardRuleSchema",
+        "description": "契约 Task.rewardRule（可选）"
+      },
+      "SaveDraftRequest": {
+        "properties": {
+          "answers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Answers"
+          },
+          "clientRevision": {
+            "type": "integer",
+            "title": "Clientrevision",
+            "description": "必须等于当前 draft.serverRevision；首次保存传 0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answers",
+          "clientRevision"
+        ],
+        "title": "SaveDraftRequest"
+      },
+      "SaveDraftResponse": {
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/DraftResponse"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/AssignmentResponse"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationResultResponse"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "draft",
+          "assignment",
+          "validation",
+          "auditLog"
+        ],
+        "title": "SaveDraftResponse"
+      },
+      "SaveSchemaDraftRequest": {
+        "properties": {
+          "schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schema",
+            "description": "完整 LabelHubSchema JSON"
+          },
+          "baseSchemaDraftRevision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseschemadraftrevision",
+            "description": "并发控制：客户端持有的修订号，传入则校验冲突"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schema"
+        ],
+        "title": "SaveSchemaDraftRequest",
+        "description": "PUT /tasks/{taskId}/schema/draft 请求体"
+      },
+      "SaveSchemaDraftResponse": {
+        "properties": {
+          "schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schema"
+          },
+          "schemaDraftRevision": {
+            "type": "integer",
+            "title": "Schemadraftrevision"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/SchemaValidationResultResponse"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schema",
+          "schemaDraftRevision",
+          "validation",
+          "auditLog"
+        ],
+        "title": "SaveSchemaDraftResponse",
+        "description": "PUT /tasks/{taskId}/schema/draft 响应体"
+      },
+      "SchemaDraftResponse": {
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schema"
+          },
+          "schemaDraftRevision": {
+            "type": "integer",
+            "title": "Schemadraftrevision"
+          },
+          "updatedBy": {
+            "type": "string",
+            "title": "Updatedby"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "taskId",
+          "schema",
+          "schemaDraftRevision",
+          "updatedBy",
+          "updatedAt"
+        ],
+        "title": "SchemaDraftResponse",
+        "description": "GET /tasks/{taskId}/schema/draft 响应体"
+      },
+      "SchemaValidationResultResponse": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid",
+          "errors"
+        ],
+        "title": "SchemaValidationResultResponse",
+        "description": "契约 §7 SchemaValidationResult"
+      },
+      "SchemaVersionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "schemaId": {
+            "type": "string",
+            "title": "Schemaid"
+          },
+          "schemaVersionNo": {
+            "type": "integer",
+            "title": "Schemaversionno"
+          },
+          "contractVersion": {
+            "type": "string",
+            "title": "Contractversion"
+          },
+          "schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schema"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Publishedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "taskId",
+          "schemaId",
+          "schemaVersionNo",
+          "contractVersion",
+          "schema",
+          "publishedAt"
+        ],
+        "title": "SchemaVersionResponse",
+        "description": "契约 §7 SchemaVersion 响应体（GET /schema-versions/{id} 使用）"
+      },
+      "ServerComponentRegistryItem": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "INPUT",
+              "CHOICE",
+              "UPLOAD",
+              "DATA",
+              "SHOW",
+              "AI",
+              "LAYOUT"
+            ],
+            "title": "Category"
+          },
+          "valueKind": {
+            "type": "string",
+            "enum": [
+              "NONE",
+              "STRING",
+              "STRING_ARRAY",
+              "FILE_ARRAY",
+              "JSON",
+              "RICH_TEXT"
+            ],
+            "title": "Valuekind"
+          },
+          "normalizer": {
+            "type": "string",
+            "title": "Normalizer"
+          },
+          "validators": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Validators"
+          },
+          "exportValueType": {
+            "type": "string",
+            "enum": [
+              "TEXT",
+              "NUMBER",
+              "BOOLEAN",
+              "JSON",
+              "FILE_URLS"
+            ],
+            "title": "Exportvaluetype"
+          },
+          "allowedValidationRules": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "required",
+                "minLength",
+                "maxLength",
+                "regex",
+                "minItems",
+                "maxItems",
+                "jsonSchema",
+                "file",
+                "custom",
+                "conditional"
+              ]
+            },
+            "type": "array",
+            "title": "Allowedvalidationrules"
+          },
+          "defaultSubmitEnabled": {
+            "type": "boolean",
+            "title": "Defaultsubmitenabled"
+          },
+          "defaultExportEnabled": {
+            "type": "boolean",
+            "title": "Defaultexportenabled"
+          },
+          "defaultAiReviewEnabled": {
+            "type": "boolean",
+            "title": "Defaultaireviewenabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "category",
+          "valueKind",
+          "normalizer",
+          "validators",
+          "exportValueType",
+          "allowedValidationRules",
+          "defaultSubmitEnabled",
+          "defaultExportEnabled",
+          "defaultAiReviewEnabled"
+        ],
+        "title": "ServerComponentRegistryItem",
+        "description": "服务端权威组件注册表条目，对应契约 §13 ServerComponentRegistryItem。"
+      },
+      "SingleReviewPolicy": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "SINGLE_REVIEW",
+            "title": "Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "SingleReviewPolicy"
+      },
+      "SubmissionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "assignmentId": {
+            "type": "string",
+            "title": "Assignmentid"
+          },
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "itemId": {
+            "type": "string",
+            "title": "Itemid"
+          },
+          "labelerId": {
+            "type": "string",
+            "title": "Labelerid"
+          },
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "attemptNo": {
+            "type": "integer",
+            "title": "Attemptno"
+          },
+          "answers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Answers"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "validationSnapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Validationsnapshot"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "assignmentId",
+          "taskId",
+          "itemId",
+          "labelerId",
+          "schemaVersionId",
+          "attemptNo",
+          "answers",
+          "status",
+          "validationSnapshot",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "SubmissionResponse"
+      },
+      "SubmissionSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "assignmentId": {
+            "type": "string",
+            "title": "Assignmentid"
+          },
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "itemId": {
+            "type": "string",
+            "title": "Itemid"
+          },
+          "labelerId": {
+            "type": "string",
+            "title": "Labelerid"
+          },
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "attemptNo": {
+            "type": "integer",
+            "title": "Attemptno"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "assignmentId",
+          "taskId",
+          "itemId",
+          "labelerId",
+          "schemaVersionId",
+          "attemptNo",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "SubmissionSummary"
+      },
+      "SubmitAssignmentRequest": {
+        "properties": {
+          "answers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Answers"
+          },
+          "clientRevision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clientrevision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answers"
+        ],
+        "title": "SubmitAssignmentRequest"
+      },
+      "SubmitAssignmentResponse": {
+        "properties": {
+          "submission": {
+            "$ref": "#/components/schemas/SubmissionResponse"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/AssignmentResponse"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationResultResponse"
+          },
+          "nextStatus": {
+            "type": "string",
+            "title": "Nextstatus"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "submission",
+          "assignment",
+          "validation",
+          "nextStatus",
+          "auditLog"
+        ],
+        "title": "SubmitAssignmentResponse"
+      },
+      "TaskResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "instructionRichText": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructionrichtext"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "rewardRule": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rewardrule"
+          },
+          "quota": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Quota"
+          },
+          "deadlineAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadlineat"
+          },
+          "distributionStrategy": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Distributionstrategy"
+          },
+          "reviewPolicy": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Reviewpolicy"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "activeSchemaVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activeschemaversionid"
+          },
+          "ownerId": {
+            "type": "string",
+            "title": "Ownerid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "description",
+          "tags",
+          "quota",
+          "distributionStrategy",
+          "reviewPolicy",
+          "status",
+          "ownerId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "TaskResponse",
+        "description": "契约 §6.1 Task 完整响应，JSON 字段以原始 dict 透传，camelCase 与契约对齐。"
+      },
+      "TaskTransitionResponse": {
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/TaskResponse"
+          },
+          "auditLog": {
+            "$ref": "#/components/schemas/AuditLogSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task",
+          "auditLog"
+        ],
+        "title": "TaskTransitionResponse",
+        "description": "pauseTask / resumeTask / endTask / archiveTask 统一响应结构"
+      },
+      "ThresholdsInput": {
+        "properties": {
+          "passScore": {
+            "type": "number",
+            "title": "Passscore"
+          },
+          "returnScore": {
+            "type": "number",
+            "title": "Returnscore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passScore",
+          "returnScore"
+        ],
+        "title": "ThresholdsInput"
+      },
+      "TransformSpec": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "fallback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback"
+          },
+          "space": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Space"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "TransformSpec"
+      },
+      "UpdateDatasetItemRequest": {
+        "properties": {
+          "sourcePayload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepayload"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "AVAILABLE",
+                  "DISABLED"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "仅允许手动设置 AVAILABLE/DISABLED；LOCKED/COMPLETED 由分配系统管理"
+          }
+        },
+        "type": "object",
+        "title": "UpdateDatasetItemRequest"
+      },
+      "UpdateReviewConfigRequest": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "modelPolicyId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modelpolicyid"
+          },
+          "promptTemplate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompttemplate"
+          },
+          "dimensions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReviewDimensionInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimensions"
+          },
+          "thresholds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThresholdsInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "conclusionMapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConclusionMappingInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxRetries": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxretries"
+          }
+        },
+        "type": "object",
+        "title": "UpdateReviewConfigRequest"
+      },
+      "UpdateReviewConfigResponse": {
+        "properties": {
+          "reviewConfig": {
+            "$ref": "#/components/schemas/ReviewConfigResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reviewConfig"
+        ],
+        "title": "UpdateReviewConfigResponse"
+      },
+      "UpdateTaskRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "instructionRichText": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructionrichtext"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "rewardRule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RewardRuleSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quota": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuotaSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deadlineAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadlineat"
+          },
+          "distributionStrategy": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/FirstComeFirstServedStrategy"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AssignmentStrategy"
+                  },
+                  {
+                    "$ref": "#/components/schemas/QuotaClaimStrategy"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "ASSIGNMENT": "#/components/schemas/AssignmentStrategy",
+                    "FIRST_COME_FIRST_SERVED": "#/components/schemas/FirstComeFirstServedStrategy",
+                    "QUOTA_CLAIM": "#/components/schemas/QuotaClaimStrategy"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distributionstrategy"
+          },
+          "reviewPolicy": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SingleReviewPolicy"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DoubleReviewPolicy"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "DOUBLE_REVIEW": "#/components/schemas/DoubleReviewPolicy",
+                    "SINGLE_REVIEW": "#/components/schemas/SingleReviewPolicy"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewpolicy"
+          }
+        },
+        "type": "object",
+        "title": "UpdateTaskRequest",
+        "description": "所有字段均可选，仅更新传入的字段，不传的字段保持不变。"
+      },
+      "ValidateSchemaRequest": {
+        "properties": {
+          "schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schema",
+            "description": "待校验的 LabelHubSchema JSON"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schema"
+        ],
+        "title": "ValidateSchemaRequest",
+        "description": "POST /schema/validate 请求体"
+      },
+      "ValidateSchemaResponse": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid",
+          "errors"
+        ],
+        "title": "ValidateSchemaResponse",
+        "description": "POST /schema/validate 响应体"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ValidationResultResponse": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid",
+          "errors"
+        ],
+        "title": "ValidationResultResponse"
+      }
+    }
+  }
+}
