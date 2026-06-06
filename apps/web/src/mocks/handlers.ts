@@ -236,7 +236,7 @@ export const handlers = [
 
   http.post("/api/v1/assignments/:assignmentId/llm-assist", async ({ request }) => {
     const body = await readJson<unknown>(request);
-    return withIdempotency(request, body, () => ({ body: callLLMAssist(readLLMAssistRequest(body)) }));
+    return withIdempotency(request, body, async () => ({ body: await callLLMAssist(readLLMAssistRequest(body)) }));
   }),
 
   http.get("/api/v1/me/submissions", () => okJson(listMySubmissions())),
@@ -334,10 +334,12 @@ interface MockHandlerResult {
   status?: number;
 }
 
-function withIdempotency(request: Request, body: unknown, create: () => MockHandlerResult): Response {
+type MaybePromise<T> = T | Promise<T>;
+
+async function withIdempotency(request: Request, body: unknown, create: () => MaybePromise<MockHandlerResult>): Promise<Response> {
   const scope = idempotencyScope(request);
   if (scope === undefined) {
-    const result = create();
+    const result = await create();
     return HttpResponse.json(result.body as never, { status: result.status ?? 200 });
   }
   const hash = requestHash(body);
@@ -348,7 +350,7 @@ function withIdempotency(request: Request, body: unknown, create: () => MockHand
     }
     return HttpResponse.json(existing.response as never, { status: existing.status });
   }
-  const result = create();
+  const result = await create();
   const status = result.status ?? 200;
   idempotencyRecords.set(scope, {
     requestHash: hash,

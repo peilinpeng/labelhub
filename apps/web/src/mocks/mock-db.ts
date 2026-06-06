@@ -60,6 +60,8 @@ import {
   schemaGovernanceDemoSchemaVersions,
   schemaGovernanceDemoTasks,
 } from "./demo-schema-governance";
+import { getMockPromptSnapshot, hashPromptSnapshot } from "./ai-prompt-registry";
+import { hashCanonicalJson } from "./hash-utils";
 import { clone, nextId, now } from "./mock-utils";
 
 interface MockState {
@@ -81,9 +83,6 @@ interface MockState {
 type LLMAssistMockRequest = {
   nodeId?: string;
 };
-
-const AI_ASSIST_PROMPT_VERSION_ID = "prompt_labeler_assist_v1";
-const AI_ASSIST_MODEL_ID = "mock-llm-v1";
 
 export const mockDb: MockState = {
   tasks: [...clone(tasksMock), ...clone(schemaGovernanceDemoTasks)],
@@ -300,8 +299,6 @@ function createSeedAuditEvents(): AuditEventRecord[] {
         dismissedCount: 0,
         editedCount: 1,
         averageLatencyMs: 920,
-        outputHash: "sha256:mock-ai-output",
-        promptSnapshotHash: "sha256:mock-prompt",
       }),
       createdAt,
     },
@@ -761,21 +758,38 @@ export function submitAssignment(assignmentId: string, answers: AnswerPayload): 
   };
 }
 
-export function callLLMAssist(request: LLMAssistMockRequest = {}): LLMRuntimeResponse {
+export async function callLLMAssist(request: LLMAssistMockRequest = {}): Promise<LLMRuntimeResponse> {
   const assistType = inferAiAssistType(request.nodeId);
-  return {
-    output: {
-      summary: "建议检查新闻来源是否充分，并补充事实依据。",
-    },
-    suggestedPatch: {
-      rewriteSuggestion: "建议补充统计口径、来源链接和第三方证据。",
-    },
-    callId: nextId("llm"),
-    promptVersionId: AI_ASSIST_PROMPT_VERSION_ID,
-    modelId: AI_ASSIST_MODEL_ID,
-    assistType,
+  const promptSnapshot = getMockPromptSnapshot(assistType);
+  const output = {
+    summary: "建议检查新闻来源是否充分，并补充事实依据。",
+  };
+  const suggestedPatch = {
+    rewriteSuggestion: "建议补充统计口径、来源链接和第三方证据。",
+  };
+  const callId = nextId("llm");
+  const [promptSnapshotHash, outputHash] = await Promise.all([
+    hashPromptSnapshot(promptSnapshot),
+    hashCanonicalJson({
+      kind: "LLM_ASSIST_OUTPUT",
+      canonicalSerializationVersion: "canonical-json-v1",
+      callId,
+      output,
+      suggestedPatch,
+    }),
+  ]);
+  const response: LLMRuntimeResponse = {
+    output,
+    suggestedPatch,
+    callId,
+    promptVersionId: promptSnapshot.promptVersionId,
+    modelId: promptSnapshot.modelId,
+    assistType: promptSnapshot.assistType,
     latencyMs: latencyForAiAssistType(assistType),
   };
+  if (promptSnapshotHash !== undefined) response.promptSnapshotHash = promptSnapshotHash;
+  if (outputHash !== undefined) response.outputHash = outputHash;
+  return response;
 }
 
 export function listMySubmissions(): Submission[] {
