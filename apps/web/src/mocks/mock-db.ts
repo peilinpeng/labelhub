@@ -2,6 +2,7 @@ import type {
   AIReviewJob,
   AIReviewJobSummary,
   AIReviewResultRecord,
+  AiAssistType,
   AppendAuditEventRequest,
   AnswerPayload,
   Assignment,
@@ -76,6 +77,13 @@ interface MockState {
   registry: ServerComponentRegistryItem[];
   auditEvents: AuditEventRecord[];
 }
+
+type LLMAssistMockRequest = {
+  nodeId?: string;
+};
+
+const AI_ASSIST_PROMPT_VERSION_ID = "prompt_labeler_assist_v1";
+const AI_ASSIST_MODEL_ID = "mock-llm-v1";
 
 export const mockDb: MockState = {
   tasks: [...clone(tasksMock), ...clone(schemaGovernanceDemoTasks)],
@@ -392,6 +400,21 @@ function isSensitiveAuditPayloadKey(key: string): boolean {
 
 function collectAnswerFieldCount(schema: LabelHubSchema): number {
   return collectSchemaNodes(schema).filter(isAnswerFieldNode).length;
+}
+
+function inferAiAssistType(nodeId: string | undefined): AiAssistType {
+  const normalized = nodeId?.toLowerCase() ?? "";
+  if (normalized.includes("summary")) return "SUMMARY";
+  if (normalized.includes("category") || normalized.includes("classification")) return "CLASSIFICATION";
+  if (normalized.includes("quality") || normalized.includes("check")) return "QUALITY_CHECK";
+  return "REWRITE";
+}
+
+function latencyForAiAssistType(assistType: AiAssistType): number {
+  if (assistType === "SUMMARY") return 420;
+  if (assistType === "CLASSIFICATION") return 650;
+  if (assistType === "QUALITY_CHECK") return 800;
+  return 650;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -738,7 +761,8 @@ export function submitAssignment(assignmentId: string, answers: AnswerPayload): 
   };
 }
 
-export function callLLMAssist(): LLMRuntimeResponse {
+export function callLLMAssist(request: LLMAssistMockRequest = {}): LLMRuntimeResponse {
+  const assistType = inferAiAssistType(request.nodeId);
   return {
     output: {
       summary: "建议检查新闻来源是否充分，并补充事实依据。",
@@ -747,6 +771,10 @@ export function callLLMAssist(): LLMRuntimeResponse {
       rewriteSuggestion: "建议补充统计口径、来源链接和第三方证据。",
     },
     callId: nextId("llm"),
+    promptVersionId: AI_ASSIST_PROMPT_VERSION_ID,
+    modelId: AI_ASSIST_MODEL_ID,
+    assistType,
+    latencyMs: latencyForAiAssistType(assistType),
   };
 }
 

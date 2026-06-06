@@ -236,7 +236,7 @@ export const handlers = [
 
   http.post("/api/v1/assignments/:assignmentId/llm-assist", async ({ request }) => {
     const body = await readJson<unknown>(request);
-    return withIdempotency(request, body, () => ({ body: callLLMAssist() }));
+    return withIdempotency(request, body, () => ({ body: callLLMAssist(readLLMAssistRequest(body)) }));
   }),
 
   http.get("/api/v1/me/submissions", () => okJson(listMySubmissions())),
@@ -364,6 +364,14 @@ function validationError(message: string): { code: "VALIDATION_FAILED"; message:
     message,
     traceId: `trace_${Date.now()}`,
   };
+}
+
+function readLLMAssistRequest(body: unknown): { nodeId?: string } {
+  if (typeof body !== "object" || body === null || !("nodeId" in body)) {
+    return {};
+  }
+  const nodeId = (body as { nodeId?: unknown }).nodeId;
+  return typeof nodeId === "string" ? { nodeId } : {};
 }
 
 function apiErrorBody(code: Parameters<typeof errorJson>[0], message: string, details?: unknown): { code: Parameters<typeof errorJson>[0]; message: string; details?: unknown; traceId: string } {
