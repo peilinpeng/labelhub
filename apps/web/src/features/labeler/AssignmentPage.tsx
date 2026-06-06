@@ -78,6 +78,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const { assignmentId } = useParams<{ assignmentId: string }>();
   const [context, setContext] = useState<AssignmentContextResponse | null>(null);
   const [answers, setAnswers] = useState<AnswerPayload>({});
+  const [rendererEngine, setRendererEngine] = useState<"legacy" | "formily-v2">("legacy");
   const [answersByItemId, setAnswersByItemId] = useState<Record<string, AnswerPayload>>({});
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [loading, setLoading] = useState(true);
@@ -477,6 +478,19 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
             </section>
 
             <section className="labeler-runner-form">
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "4px 0" }}>
+                <span style={{ fontSize: 12, color: "#888" }}>渲染引擎 [debug]：</span>
+                <Badge tone={rendererEngine === "formily-v2" ? "warning" : "success"}>
+                  {rendererEngine}
+                </Badge>
+                <Button
+                  onClick={() =>
+                    setRendererEngine((e) => (e === "legacy" ? "formily-v2" : "legacy"))
+                  }
+                >
+                  切换引擎
+                </Button>
+              </div>
               <div className="renderer-frame labeler-renderer-frame labeler-schema-renderer-surface">
                 <SchemaRenderer
                   schema={context.schema}
@@ -485,6 +499,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                   mode="LABELING"
                   readonly={false}
                   errors={errors}
+                  engine={rendererEngine}
                   onAnswersChange={handleRendererAnswersChange}
                   onSubmit={handleSubmit}
                   onLLMAssist={handleLLMAssist}

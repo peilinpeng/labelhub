@@ -24,7 +24,8 @@
 | Phase C | QL-5 | Export / Data Quality Passport contracts 与 mock | ✅ 已完成（contracts 6993e3b / web fcbccb4） |
 | **Phase D** | QL-7 | Read Model / Snapshot / risk fast path | ⬜ 暂缓（待 FE 轨道完成后评估） |
 | **FE-1** | Phase 1a | 安装 Formily + ComponentRegistry + FormilyRuntimeRenderer shell | ✅ 已完成（待 commit） |
-| **FE-2** | Phase 1b | 7 个 input adapter + feature flag 接入 SchemaRenderer | ✅ 已完成（待 commit） |
+| **FE-2** | Phase 1b | 7 个 input adapter + feature flag 接入 SchemaRenderer | ✅ 已完成（commit ee1206b） |
+| **FE-2b** | Phase 1b（插入） | AssignmentPage 引擎切换 debug 开关 | ✅ 已完成（待 commit） |
 | **FE-3** | Phase 1c | Formily answers 双向同步策略（debounce + flush on submit）+ 新增测试 | ⬜ **当前下一步** |
 
 > 维护规则：新任务追加到本表，**不要再引入新的编号体系**。
@@ -35,14 +36,15 @@
 
 ```txt
 分支：    feature/schema-governance-upgrade
-commit：  00491e4   feat(schema-renderer): add Formily shell and ComponentRegistry (FE-1)
-工作区：  dirty（FE-1 + FE-2 未 commit：9 个新文件 + 3 个修改文件）
-更新时间：2026-06-06（Claude Code FE-2 更新）
+commit：  ee1206b   feat(schema-renderer): add Formily adapters and feature flag (FE-2)
+          （FE-2b commit hash 待维护者 commit 后回填）
+工作区：  dirty（FE-2b 未 commit：1 个修改文件 apps/web/src/features/labeler/AssignmentPage.tsx）
+更新时间：2026-06-06（Claude Code 收班更新）
 更新者：  Claude Code
 ```
 
-> 开班时：`git rev-parse HEAD` 应得到 00491e4；工作区有 FE-1 + FE-2 待 commit 的改动（正常，等维护者 commit）。
-> 说明：FE-1 commit 为 00491e4；维护者可选择分两次 commit（分别 FE-1/FE-2）或合并一次。
+> 开班时：`git rev-parse HEAD` 应得到 ee1206b；工作区有 FE-2b 的改动（AssignmentPage.tsx）待维护者 commit。
+> 说明：维护者已 commit FE-1（00491e4）和 FE-2（ee1206b）；FE-2b 为本轮插入任务，尚待 commit。
 
 ---
 
@@ -70,7 +72,14 @@ commit：  00491e4   feat(schema-renderer): add Formily shell and ComponentRegis
 ## 3. 状态看板
 
 **已完成：**
-- FE-2（Phase 1b）：7 个 input adapter + feature flag 接入 SchemaRenderer（待 commit）
+- FE-2b（Phase 1b 插入）：AssignmentPage 引擎切换 debug 开关（待 commit）✅
+  - 修改 `apps/web/src/features/labeler/AssignmentPage.tsx`
+  - 新增 `rendererEngine` state（默认 "legacy"）
+  - 在 labeler-runner-form section 顶部加 Badge + 切换按钮（inline style，不改 styles.css）
+  - SchemaRenderer 新增 `engine={rendererEngine}` prop
+  - 验证：schema-renderer typecheck ✅；test ✅(13/13)；apps/web typecheck ✅；git diff --check ✅
+  - 需维护者手动验证浏览器切换效果
+- FE-2（Phase 1b）：7 个 input adapter + feature flag 接入 SchemaRenderer（commit ee1206b）
   - 新增 `packages/schema-renderer/src/adapters/` 目录（7 个 FormilyXxxAdapter.tsx + index.ts）
   - 修改 `packages/schema-renderer/src/types.ts`（新增 `engine?: "legacy" | "formily-v2"` 到 SchemaRendererProps）
   - 修改 `packages/schema-renderer/src/SchemaRenderer.tsx`（feature flag 分叉 + import FormilyRuntimeRenderer + DEFAULT_FORMILY_REGISTRY）
@@ -124,6 +133,22 @@ commit：  00491e4   feat(schema-renderer): add Formily shell and ComponentRegis
 > 格式：日期时间 | 工具 | 改了哪些文件 | 是否触碰边界 | 验证结果 | 遗留问题
 
 ```txt
+### 2026-06-06 | Claude Code（FE-2b Phase 1b 插入）
+- 任务：AssignmentPage 加引擎切换 debug 开关
+- 改动文件：
+  - apps/web/src/features/labeler/AssignmentPage.tsx（修改）
+    - 新增 rendererEngine state（默认 "legacy"）
+    - 在 labeler-runner-form section 顶部加 [debug] 切换栏（Badge + Button，inline style）
+    - SchemaRenderer 传入 engine={rendererEngine}
+- 是否触碰边界：否
+  - SchemaRenderer 内部逻辑未动（FE-2 已完成）
+  - contracts 未动；schema-renderer 未动；styles.css 未动
+- 验证：apps/web typecheck ✅；git diff --check ✅
+- commit：待维护者 commit 后回填
+- 遗留问题 / 卡点：
+  - 切换效果需维护者在浏览器手动验证（formily-v2 路径渲染 FormilyRuntimeRenderer）
+  - FE-3（answers debounce）尚未实现，formily-v2 路径 answers 同步无 debounce（当前为直接 subscribe）
+
 ### 2026-06-06 | Claude Code（FE-2 Phase 1b）
 - 任务：7 个 input adapter + feature flag 接入 SchemaRenderer
 - 改动文件：
@@ -244,27 +269,21 @@ commit：  00491e4   feat(schema-renderer): add Formily shell and ComponentRegis
 > 上一班在收班时填写，给接手方一句话讲清「下一步立刻该做什么 + 有什么坑」。
 
 ```txt
-下一步：FE-3（Phase 1c）—— answers 双向同步 debounce + flush on submit + 新测试。
+下一步：FE-4（完整提示词由维护者在下次开班时提供）。
 
-准备工作（接手前先确认）：
-  1) 工作区有 FE-1 + FE-2 未 commit 的改动（正常），HEAD 应为 00491e4；
-  2) 先读 docs/FORMILY_ARCH_DECISIONS.md 全文（FE-3 策略约束在里面）；
-  3) 先做实施前审查：读 FormilyRuntimeRenderer.tsx，确认现有 form.subscribe 实现，
-     决定 debounce 方案（useRef + setTimeout vs lodash debounce）。
+开班前必读（顺序）：
+  1) SCHEMA_ARCH_AGENT.md（完整读）
+  2) HANDOFF.md（完整读，含本节编号表）
+  3) docs/FORMILY_ARCH_DECISIONS.md（完整读，FE-4 约束前提在里面）
 
-FE-3 核心改动：
-  - FormilyRuntimeRenderer.tsx：answers subscribe 加 debounce（建议 ~300ms）
-  - SchemaRenderer.tsx 的 formily-v2 路径：onSubmit 时 flush 最新 form.values（绕过 debounce 等待）
-  - src/__tests__/ 新增针对 formily-v2 路径的测试（至少覆盖：初始值渲染、值变更触发 onAnswersChange）
+工作区状态：
+  - HEAD 应为 ee1206b；工作区 dirty（AssignmentPage.tsx FE-2b 待 commit，正常）
+  - 先跑 git status / git rev-parse HEAD 核对，再开始任何操作
 
-注意事项：
-  - 不要改 LLMAssistRenderer（Phase 3b FE-8 才动）
-  - 不要在 schema-renderer 引入 dnd-kit
-  - 不要 commit，不要 push
-  - 现有 13 个测试必须继续全部通过
-
-已知技术债（不阻断 FE-3）：
-  - Vitest <4.1.0 critical CVE，由维护者决定是否升级 v4
+已知技术债（不阻断 FE-4）：
+  - FE-3（answers debounce + flush on submit + 新测试）已暂缓，维护者将在 FE-4 提示词中明确是否先补
+  - Vitest <4.1.0 critical CVE（GHSA-5xrq-8626-4rwp），由维护者决定是否升级 v4
+  - FE-2b 浏览器切换效果需维护者手动 QA
 ```
 
 ---
