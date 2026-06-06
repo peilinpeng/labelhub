@@ -9,6 +9,7 @@ import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import { applyDemoSubmissionState, DEMO_SUBMISSION_ID, reviewDemoSubmission } from "../../mocks/demo-workflow-store";
 import type { ID, ReviewDecisionRequest, ReviewDetailResponse } from "@labelhub/contracts";
 import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-display";
+import { computeReviewPatches } from "./reviewer-diff";
 import {
   appendAiReviewFeedbackAuditSafely,
   appendReviewStartedAuditSafely,
@@ -52,6 +53,8 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const [pendingDecision, setPendingDecision] = useState<ReviewDecision | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([submissionId ?? DEMO_SUBMISSION_ID]);
   const [aiReviewFeedback, setAiReviewFeedback] = useState<AiReviewFeedback>("NOT_USED");
+  const [correctedAnswersText, setCorrectedAnswersText] = useState("");
+  const [correctedAnswersParseError, setCorrectedAnswersParseError] = useState<string | null>(null);
   const startedAuditSubmissionIdsRef = useRef<Set<string>>(new Set());
   const reviewOpenedAtMsRef = useRef(Date.now());
 
@@ -88,6 +91,13 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
     appendReviewStartedAuditSafely(detail);
   }, [detail]);
 
+  useEffect(() => {
+    if (detail) {
+      setCorrectedAnswersText(JSON.stringify(detail.submission.answers ?? {}, null, 2));
+      setCorrectedAnswersParseError(null);
+    }
+  }, [detail]);
+
   const aiResult = detail?.aiResult?.aiResult;
   const answers = (detail?.submission.answers ?? {}) as Record<string, unknown>;
   const sourcePayload = (detail?.item.sourcePayload ?? {}) as Record<string, unknown>;
@@ -107,8 +117,25 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
 
   const handleDecision = async (decision: ReviewDecision) => {
     if (!submissionId || !detail) return;
+
+    // 解析修正答案并计算 patches
+    let patches: ReturnType<typeof computeReviewPatches> = [];
+    try {
+      const parsed: unknown = JSON.parse(correctedAnswersText);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        setCorrectedAnswersParseError("修正答案必须是 JSON 对象，无法提交。");
+        return;
+      }
+      patches = computeReviewPatches(answers, parsed as Record<string, unknown>);
+      setCorrectedAnswersParseError(null);
+    } catch {
+      setCorrectedAnswersParseError("修正答案 JSON 格式不正确，无法提交。");
+      return;
+    }
+
     try {
       setDeciding(true);
+      const requestPatches = patches.length > 0 ? patches : undefined;
       const request: ReviewDecisionRequest =
         decision === "PASS"
           ? {
@@ -116,6 +143,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               stage: "HUMAN_REVIEW",
               decision,
               comments: comments ? [{ message: comments }] : undefined,
+              patches: requestPatches,
             }
           : {
               submissionId: submissionId as ReviewDecisionRequest["submissionId"],
@@ -123,6 +151,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               decision,
               reason: comments || "需要标注员重新修改后提交。",
               comments: comments ? [{ message: comments }] : undefined,
+              patches: requestPatches,
             };
       await claimReview(submissionId).catch(() => undefined);
       const response = await decideReview(submissionId, request);
@@ -134,6 +163,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         response,
         reviewDurationMs: Math.max(0, Date.now() - reviewOpenedAtMsRef.current),
         commentLength: comments.length,
+        patchCount: patches.length,
       });
       if (aiResult) {
         appendAiReviewFeedbackAuditSafely({
@@ -329,6 +359,38 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               </label>
             </fieldset>
           ) : null}
+        </Card>
+
+        <Card className="review-human-corrected-answers">
+          <h3>审核修正答案</h3>
+          <p className="review-human-corrected-answers__desc">
+            Reviewer 可以在这里修改标注答案；系统会在提交审核时生成字段级 patches。
+          </p>
+          <label className="review-human-corrected-answers__label">
+            <span>修正后的答案（JSON 格式）</span>
+            <Textarea
+              className="review-human-corrected-answers__textarea"
+              rows={8}
+              value={correctedAnswersText}
+              onChange={(event) => {
+                const text = event.target.value;
+                setCorrectedAnswersText(text);
+                try {
+                  const parsed: unknown = JSON.parse(text);
+                  setCorrectedAnswersParseError(
+                    typeof parsed !== "object" || parsed === null || Array.isArray(parsed)
+                      ? "必须是 JSON 对象"
+                      : null,
+                  );
+                } catch {
+                  setCorrectedAnswersParseError("JSON 格式不正确");
+                }
+              }}
+            />
+          </label>
+          {correctedAnswersParseError !== null && (
+            <p className="danger-text review-human-corrected-answers__error">{correctedAnswersParseError}</p>
+          )}
         </Card>
 
         <Card className="review-human-decision-card">

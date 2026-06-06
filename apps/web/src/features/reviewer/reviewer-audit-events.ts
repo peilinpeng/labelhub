@@ -46,17 +46,19 @@ export function appendReviewSubmittedAuditSafely(input: {
   response: ReviewDecisionResponse;
   reviewDurationMs: number;
   commentLength: number;
+  patchCount?: number;
 }): void {
   const reviewerId = DEMO_REVIEWER_ID;
   const reviewId = input.response.reviewResult.id;
   const submittedDecision = mapReviewDecisionForAudit(input.decision);
   const reasonCode = input.decision === "PASS" ? "APPROVED" : "RETURNED_TO_LABELER";
+  const patchCount = input.patchCount ?? 0;
   const payload = {
     summary: "审核决策已提交",
     detailRef: reviewId,
     codes: [reasonCode],
     counters: {
-      patchCount: 0,
+      patchCount,
       commentLength: input.commentLength,
       reviewDurationMs: input.reviewDurationMs,
     },
@@ -69,7 +71,7 @@ export function appendReviewSubmittedAuditSafely(input: {
     decision: submittedDecision,
     stage: "SUBMITTED",
     reasonCode,
-    patchCount: 0,
+    patchCount,
     reviewDurationMs: input.reviewDurationMs,
     commentLength: input.commentLength,
   };

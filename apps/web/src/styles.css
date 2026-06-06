@@ -6411,6 +6411,37 @@ a {
   line-height: 1.7;
 }
 
+.review-human-corrected-answers h3 {
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.review-human-corrected-answers__desc {
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.review-human-corrected-answers__label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.review-human-corrected-answers__textarea textarea {
+  min-height: 160px;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.review-human-corrected-answers__error {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+
 .review-human-opinion {
   display: grid;
   gap: 8px;
