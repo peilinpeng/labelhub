@@ -20,8 +20,10 @@
 | Phase A | QL-6 / AI-1~AI-6 | Prompt Feedback Loop（metadata、renderer callback、Labeler 事件、AI_ASSIST_EDITED、Reviewer AI feedback） | ✅ 已完成 |
 | A-tail | AI-7 | mock prompt registry / 真实 SHA-256 `promptSnapshotHash` / `outputHash` | ✅ 已完成（commit 73ec0bc） |
 | Phase B1 | QL-4 第一步 / RD-1 | Reviewer corrected answers + shallow patches（不写 audit） | ✅ 已完成（commit 31e4bac） |
-| **Phase B2** | QL-4 第二步 / **RD-2** | `REVIEW_DIFF_GENERATED` audit | ✅ 已完成（未 commit，待维护者提交） |
-| Phase C | QL-5 | Export / Data Quality Passport contracts 与 mock | ⬜ 未开始 |
+| Phase B2 | QL-4 第二步 / RD-2 | `REVIEW_DIFF_GENERATED` audit | ✅ 已完成（commit 436886f） |
+| Phase C-0 | QL-5 审查 | Data Quality Passport 接入前只读审查 | ✅ 已完成 |
+| **Phase C-1** | QL-5 contracts | Data Quality Passport contracts 扩展 | ✅ 已完成（未 commit，待维护者提交） |
+| Phase C-2 | QL-5 mock | mock export records + Passport generator | ⬜ 未开始 |
 | Phase D | QL-7 | Read Model / Snapshot / risk fast path | ⬜ 未开始（工业化阶段） |
 
 > 维护规则：新任务追加到本表，**不要再引入新的编号体系**。
@@ -32,37 +34,39 @@
 
 ```txt
 分支：    feature/schema-governance-upgrade
-commit：  待维护者 commit 后回填
-工作区：  dirty（Phase B2 改动未 commit，含下方 3 个文件）
+commit：  436886f   web: add reviewer diff audit event
+工作区：  dirty（Phase C-1 改动未 commit，含下方 4 个文件）
           - HANDOFF.md（修改）
-          - apps/web/src/features/reviewer/ReviewDetailPage.tsx（修改）
-          - apps/web/src/features/reviewer/reviewer-audit-events.ts（修改）
-更新时间：2026-06-06（本班 Codex 完成 Phase B2 审查与收尾）
+          - packages/contracts/src/export.ts（修改）
+          - packages/contracts/src/api.ts（修改）
+          - packages/contracts/src/__tests__/data-quality-passport.test.ts（新增）
+更新时间：2026-06-06（本班 Codex 完成 Phase C-1 contracts 扩展）
 更新者：  Codex
 ```
 
-> 注：本班开班时真实 HEAD 为 5acdcfa（`docs: add RD-2 task spec (REVIEW_DIFF_GENERATED)`）。
-> Phase B2 代码改动尚未 commit，维护者提交后再回填最终 commit。
+> 注：HEAD 436886f 已包含 Phase B2（RD-2）提交。Phase C-1 contracts 改动尚未 commit，维护者提交后再回填最终 commit。
 
 ---
 
 ## 2. 当前任务（本轮范围，唯一权威）
 
-**当前任务：Phase B2（= RD-2）REVIEW_DIFF_GENERATED audit 审查与收尾**
+**当前任务：Phase C-1 Data Quality Passport contracts 扩展**
 
 本轮目标：
-- 审查 Claude Code 已写的 RD-2 diff audit；
-- 确认 `REVIEW_DIFF_GENERATED` 触发时机、payload 安全性和 hash 真实性；
-- 如审查通过，恢复更新本文件。
+- 在 contracts 中新增 `DataQualityPassport`、`ExportRecord`、`ExportArtifactSummary` 等共享类型；
+- 为后续 Phase C-2 mock export records + Passport generator 做准备；
+- 修正本文件中 Phase B2 已 commit 的状态。
 
 **本轮明确不做：**
-- 不写 `REVIEW_DEEP_DIFF_GENERATED`；
-- 不实现 SERVER deep diff / patch 分级；
-- 不修改 contracts；
-- 不修改 schema-core / docs；
-- 不影响 Owner / Labeler / Export / AI Assist 现有链路。
+- 不修改 apps；
+- 不修改 schema-core / schema-renderer / schema-designer；
+- 不修改 docs 设计文档；
+- 不实现 mock generator；
+- 不写 `DATA_QUALITY_PASSPORT_GENERATED`；
+- 不生成 hash；
+- 不修改 Owner Export 页面。
 
-> 详细任务规格见 `tasks/RD-2.md`。本文件只记状态，不重复全文。
+> Phase C-0 只读审查已完成；本文件只记状态，不展开设计。
 
 ---
 
@@ -80,7 +84,7 @@ commit：  待维护者 commit 后回填
   - `reviewer-audit-events.ts` `appendReviewSubmittedAuditSafely` 加 `patchCount` 参数（`ReviewSubmittedAuditPayload.patchCount` 已存在，未改 contracts）
   - 未写 `REVIEW_DIFF_GENERATED`，未生成 hash，未把完整 answers 写入 audit
   - 验证：web typecheck ✅ build ✅；contracts typecheck ✅ test ✅(65)；git diff --check ✅
-- Phase B2（RD-2）：`REVIEW_DIFF_GENERATED` audit（未 commit，工作区 dirty）
+- Phase B2（RD-2）：`REVIEW_DIFF_GENERATED` audit（commit 436886f）
   - 复用 contracts 现有 `ReviewDiffGeneratedAuditPayload`
   - 只在 `patches.length > 0` 且 `decideReview` 成功后写入
   - `diffMode = "FRONTEND_SHALLOW"`
@@ -88,6 +92,17 @@ commit：  待维护者 commit 后回填
   - payload 只含摘要 + hash + 索引字段，`patchedFieldNames` 只含字段名
   - 未写 `REVIEW_DEEP_DIFF_GENERATED`
   - 未触碰 contracts / schema-core / docs
+- Phase C-0：Data Quality Passport 接入前只读审查
+  - 确认当前缺少完整 `DataQualityPassport` / `ExportRecord` / export artifact snapshot 类型
+  - 确认 `DataQualityPassportGeneratedAuditPayload` 和 `DATA_QUALITY_PASSPORT_GENERATED` 已存在
+  - 建议先扩展 contracts，再实现 mock export records 和 Passport generator
+- Phase C-1：Data Quality Passport contracts 扩展（未 commit，工作区 dirty）
+  - 新增 `DataQualityPassport` / `DataQualityPassportQualityLedgerRef`
+  - 新增 `ExportRecord` / `ExportArtifactSummary`
+  - `ExportJob` 仅新增 optional `artifactSummary`，旧字段保持兼容
+  - 新增 artifact records 查询 response 类型
+  - 未新增 `QualityLedgerEvent` / 平行 Ledger 类型
+  - 未把 Passport 全文放进 audit payload
 
 **进行中：**
 - 无
@@ -103,6 +118,29 @@ commit：  待维护者 commit 后回填
 > 格式：日期时间 | 工具 | 改了哪些文件 | 是否触碰边界 | 验证结果 | 遗留问题
 
 ```txt
+### 2026-06-06 | Codex
+- 任务：Phase C-1 Data Quality Passport contracts 扩展
+- 改动文件：
+  - HANDOFF.md（修改）
+  - packages/contracts/src/export.ts（修改）
+  - packages/contracts/src/api.ts（修改）
+  - packages/contracts/src/__tests__/data-quality-passport.test.ts（新增）
+- 是否触碰边界：
+  - apps：未改
+  - schema-core：未改
+  - schema-renderer / schema-designer：未改
+  - docs：未改
+- 验证：
+  - contracts typecheck ✅
+  - contracts test ✅（74 tests）
+  - git diff --check ✅
+  - `.contract-test-dist` 生成产物已 `git checkout --` 恢复
+- 手动 QA：
+  - 本轮仅 contracts，无需手动 QA
+- 遗留问题：
+  - 无 blocker
+  - Phase C-2 需要实现 mock export records + Passport generator，并替换现有 seed 中的 mock passport hash
+
 ### 2026-06-06 | Codex
 - 任务：Phase B2（RD-2）REVIEW_DIFF_GENERATED audit 审查与收尾
 - 改动文件：
@@ -164,16 +202,16 @@ commit：  待维护者 commit 后回填
 > 上一班在收班时填写，给接手方一句话讲清「下一步立刻该做什么 + 有什么坑」。
 
 ```txt
-下一步：维护者先 review 当前 diff，手动 QA Reviewer 修改答案后是否写入 REVIEW_DIFF_GENERATED；
-        确认无误后 commit Phase B2。
-        之后进入 Phase C：Export / Data Quality Passport contracts 与 mock。
+下一步：维护者先 review 当前 Phase C-1 contracts diff；
+        确认无误后 commit Phase C-1。
+        之后进入 Phase C-2：mock export records + Passport generator。
 
 注意坑：
-  1) Phase B2 改动尚未 commit，不要误以为 HEAD 已包含 RD-2；
-  2) 手动 QA 重点看 audit payload 不含完整 answers / correctedAnswers / patch values；
-  3) 无修改提交时不应写 REVIEW_DIFF_GENERATED；
-  4) 提交失败时不应写 REVIEW_DIFF_GENERATED；
-  5) 不影响 Owner / Labeler / Export / AI Assist 链路。
+  1) 不要在 apps/web 私自定义 Passport 类型，必须复用 contracts；
+  2) Passport 全文应存 Export artifact / ExportRecord，不进 Quality Ledger；
+  3) DATA_QUALITY_PASSPORT_GENERATED 只写 exportId、passportCount、passportBatchHash、warningCount；
+  4) 现有 mock seed 中有 mock passport hash，C-2 真实生成链路应替换或隔离，不能当真实 hash；
+  5) 不影响 Owner / Labeler / Reviewer / AI Assist 链路。
 ```
 
 ---

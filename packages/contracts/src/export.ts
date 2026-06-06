@@ -1,3 +1,4 @@
+import type { LabelerTrustLevel, RiskSignalCode } from "./audit";
 import type { ID, ISODateTime, JsonPath } from "./global";
 import type { TransformSpec } from "./schema";
 import type { SubmissionStatus } from "./workflow";
@@ -54,6 +55,75 @@ export type ExportRecordMetadata = {
   checksum?: string;
 };
 
+export type DataQualityPassportReviewStatus =
+  | "APPROVED"
+  | "REJECTED"
+  | "RETURNED"
+  | "UNREVIEWED";
+
+export type DataQualityPassportAnswerHashAlgorithm =
+  | "canonical-json-v1+SHA-256";
+
+export interface DataQualityPassportQualityLedgerRef {
+  labelingEventId?: string;
+  reviewEventId?: string;
+  reviewDiffEventId?: string;
+  exportEventId?: string;
+  aiAssistEventIds?: string[];
+  aiReviewEventIds?: string[];
+  schemaGovernanceEventIds?: string[];
+  totalSchemaGovernanceEventCount?: number;
+}
+
+export interface DataQualityPassport {
+  submissionId: string;
+  schemaVersionId: string;
+
+  finalAnswerHash?: string;
+  answerHashAlgorithm?: DataQualityPassportAnswerHashAlgorithm;
+
+  labelerTrustLevel?: LabelerTrustLevel;
+  trustLevelSnapshotAt?: string;
+
+  reviewStatus: DataQualityPassportReviewStatus;
+  reviewerPatchCount?: number;
+  changedFieldNames?: string[];
+
+  aiAssistUsed?: boolean;
+  aiAcceptedCount?: number;
+  aiDismissedCount?: number;
+  aiEditedCount?: number;
+
+  riskCodes?: RiskSignalCode[];
+  auditEventCount?: number;
+
+  qualityLedgerRef?: DataQualityPassportQualityLedgerRef;
+}
+
+export interface ExportRecord {
+  exportId: string;
+  submissionId: string;
+  schemaVersionId: string;
+  recordIndex: number;
+
+  data: Record<string, unknown>;
+  metadata?: ExportRecordMetadata;
+  passport?: DataQualityPassport;
+}
+
+export interface ExportArtifactSummary {
+  exportId: string;
+  taskId: string;
+  format: ExportFormat;
+  schemaVersionId?: string;
+  recordCount: number;
+  warningCount: number;
+  passportCount?: number;
+  passportBatchHash?: string;
+  createdAt: string;
+  fileId?: string;
+}
+
 export interface ExportMapping {
   schemaVersionId: ID;
   format: ExportFormat;
@@ -94,4 +164,5 @@ export interface ExportJob {
   createdBy: ID;
   createdAt: ISODateTime;
   finishedAt?: ISODateTime;
+  artifactSummary?: ExportArtifactSummary;
 }
