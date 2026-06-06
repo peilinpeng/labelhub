@@ -205,3 +205,116 @@ def test_get_nonexistent_schema_version_404(client, auth):
     """TC-DES-11 边界：取不存在的版本 → 404。"""
     resp = client.get("/api/v1/schema-versions/sv_does_not_exist", headers=auth["OWNER"])
     assert resp.status_code == 404
+
+
+# ── AI 生成 Schema 草稿（POST /tasks/{id}/schema/ai-generate）──────────────
+# 用桩替换 OpenAI 调用（参考 test_llm_assist_metadata.py 的做法）。
+
+import json as _json
+from app.models.llm import LLMCallLog
+
+
+class _FakeUsage:
+    prompt_tokens = 30
+    completion_tokens = 20
+    total_tokens = 50
+
+
+def _make_fake_openai(content: str):
+    class _FakeMsg:
+        def __init__(self):
+            self.content = content
+
+    class _FakeChoice:
+        def __init__(self):
+            self.message = _FakeMsg()
+
+    class _FakeResp:
+        def __init__(self):
+            self.choices = [_FakeChoice()]
+            self.usage = _FakeUsage()
+
+    class _FakeCompletions:
+        def create(self, *a, **k):
+            return _FakeResp()
+
+    class _FakeChat:
+        def __init__(self):
+            self.completions = _FakeCompletions()
+
+    class _FakeOpenAI:
+        def __init__(self, *a, **k):
+            self.chat = _FakeChat()
+
+    return _FakeOpenAI
+
+
+# 一段合法的 LabelHubSchema JSON（模型“生成”的返回内容）
+_GENERATED_SCHEMA_JSON = _json.dumps({
+    "nodes": [
+        {"id": "n-title", "type": "show.text", "label": "原文"},
+        {"id": "n-summary", "type": "input.textarea", "name": "summary", "label": "摘要", "required": True},
+        {"id": "n-sentiment", "type": "choice.radio", "name": "sentiment", "label": "情感"},
+    ]
+}, ensure_ascii=False)
+
+
+def test_ai_generate_returns_schema_and_trace(client, auth, db_session, monkeypatch):
+    """前端 owner.ts generateSchema：返回 schemaDraft + validation + generatedBy 追溯信息。"""
+    monkeypatch.setattr("openai.OpenAI", _make_fake_openai(_GENERATED_SCHEMA_JSON))
+    task = create_task(client, auth["OWNER"])
+
+    resp = client.post(
+        f"/api/v1/tasks/{task['id']}/schema/ai-generate",
+        json={"taskDescription": "对新闻做摘要并标注情感", "preferredNodeTypes": ["input.textarea", "choice.radio"]},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 200, resp.text
+    d = resp.json()
+    # 生成的 schema 草稿
+    names = {n.get("name") for n in d["schemaDraft"]["nodes"]}
+    assert {"summary", "sentiment"} <= names
+    assert d["validation"]["valid"] is True
+    # 可追溯信息（TC-AI-07）
+    assert len(d["generatedBy"]["promptSnapshotHash"]) == 64
+    assert d["generatedBy"]["llmCallId"].startswith("llm_")
+    # modelPolicyId 取自 settings.DOUBAO_MODEL（测试环境可能为空），只校验类型
+    assert isinstance(d["generatedBy"]["modelPolicyId"], str)
+
+    # DB 落一条成功的 SCHEMA_GENERATION 日志
+    log = db_session.query(LLMCallLog).filter_by(id=d["generatedBy"]["llmCallId"]).first()
+    assert log is not None
+    assert log.purpose == "SCHEMA_GENERATION"
+    assert log.status == "SUCCEEDED"
+    assert log.total_tokens == 50
+
+
+def test_ai_generate_invalid_json_marks_failed(client, auth, db_session, monkeypatch):
+    """模型返回非 JSON → 502 LLM_ASSIST_FAILED，且 LLMCallLog 标记 FAILED。"""
+    monkeypatch.setattr("openai.OpenAI", _make_fake_openai("抱歉，我无法生成。"))
+    task = create_task(client, auth["OWNER"])
+
+    resp = client.post(
+        f"/api/v1/tasks/{task['id']}/schema/ai-generate",
+        json={"taskDescription": "随便"},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 502, resp.text
+    assert resp.json()["code"] == "LLM_ASSIST_FAILED"
+
+    log = db_session.query(LLMCallLog).filter_by(purpose="SCHEMA_GENERATION").first()
+    assert log is not None
+    assert log.status == "FAILED"
+
+
+def test_ai_generate_requires_owner(client, auth, monkeypatch):
+    """越权：LABELER 调用 AI 生成 Schema → 403。"""
+    monkeypatch.setattr("openai.OpenAI", _make_fake_openai(_GENERATED_SCHEMA_JSON))
+    task = create_task(client, auth["OWNER"])
+
+    resp = client.post(
+        f"/api/v1/tasks/{task['id']}/schema/ai-generate",
+        json={"taskDescription": "x"},
+        headers=auth["LABELER"],
+    )
+    assert resp.status_code == 403

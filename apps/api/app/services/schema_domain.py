@@ -3,21 +3,28 @@
 # Expression 字段引用、LLM output binding、ValidationRule 合法性）、
 # schema 版本发布（冻结为不可变 PublishedLabelHubSchema 快照、生成 schemaVersionId/schemaVersionNo）、
 # AI 辅助生成 schema draft（调用 LLM、写入 llm_call_logs，purpose=SCHEMA_GENERATION）。
+import hashlib
+import json
+import time
 import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.schema import SchemaDraft, SchemaVersion
 from app.models.task import Task
 from app.models.audit import AuditLog
+from app.models.llm import LLMCallLog
 from app.middleware.error_handler import (
     ResourceNotFoundException,
     SchemaDraftConflictException,
     SchemaInvalidException,
+    LLMAssistFailedException,
 )
 from app.services.audit_domain import write_audit_log
+from app.utils.hashing import hash_canonical_json
 
 
 # ---------------------------------------------------------------------------
@@ -310,3 +317,133 @@ def get_schema_version(
     if version is None:
         raise ResourceNotFoundException(f"SchemaVersion {schema_version_id!r} 不存在")
     return version
+
+
+# ---------------------------------------------------------------------------
+# generate_schema_draft：AI 生成 Schema 草稿（不落库，仅返回供前端预览/保存）
+# ---------------------------------------------------------------------------
+
+# 引导模型仅输出 LabelHubSchema JSON 的系统提示词
+_SCHEMA_GEN_SYSTEM_PROMPT = (
+    "你是 LabelHub 的数据标注 Schema 设计助手。"
+    "请根据任务描述设计一个 LabelHubSchema，并且只输出一个 JSON 对象，"
+    "形如 {\"nodes\": [...]}，不要输出任何解释性文字或 Markdown 代码块标记。"
+    "每个 FieldNode 必须包含唯一的 name 字段；合法 node type 包括 "
+    "input.text / input.textarea / choice.radio / choice.checkbox / choice.select / "
+    "show.text / llm.assist 等。"
+)
+
+
+def generate_schema_draft(
+    db: Session,
+    task_id: str,
+    actor,
+    req,
+) -> dict:
+    """
+    调用 LLM 根据任务描述生成 LabelHubSchema 草稿（契约 GenerateSchemaResponse）。
+    - 仅生成并返回草稿，不写入 SchemaDraft（用户拿到后另行调 saveSchemaDraft 保存）
+    - 写一条 LLMCallLog（purpose=SCHEMA_GENERATION）确保可追溯（TC-AI-07）
+    - 设置 30s 超时；调用失败或返回非 JSON 时标记 LLMCallLog=FAILED 并抛 LLMAssistFailedException
+    - 复用 assignment_domain.llm_assist 的同步调用范式
+    """
+    # 1. 确认 Task 存在
+    task = db.query(Task).filter_by(id=task_id).first()
+    if task is None:
+        raise ResourceNotFoundException(f"任务 {task_id!r} 不存在")
+
+    # 2. 构造 prompt 与 hash
+    user_parts = [f"任务描述：{req.taskDescription}"]
+    if getattr(req, "sampleItems", None):
+        user_parts.append("样例数据：" + json.dumps(req.sampleItems, ensure_ascii=False))
+    if getattr(req, "preferredNodeTypes", None):
+        user_parts.append("优先使用节点类型：" + ", ".join(req.preferredNodeTypes))
+    user_prompt = "\n".join(user_parts)
+    rendered_prompt = f"{_SCHEMA_GEN_SYSTEM_PROMPT}\n\n{user_prompt}"
+
+    model_policy_id = settings.DOUBAO_MODEL
+    prompt_hash = hashlib.sha256(_SCHEMA_GEN_SYSTEM_PROMPT.encode()).hexdigest()
+    input_hash = hashlib.sha256(rendered_prompt.encode()).hexdigest()
+
+    # 3. 建 LLMCallLog（purpose=SCHEMA_GENERATION，无 assignment/submission/node 关联）
+    call_id = "llm_" + uuid.uuid4().hex
+    llm_log = LLMCallLog(
+        id=call_id,
+        purpose="SCHEMA_GENERATION",
+        actor_id=actor.id,
+        model_policy_id=model_policy_id,
+        prompt_snapshot_hash=prompt_hash,
+        input_hash=input_hash,
+        status="RUNNING",
+    )
+    db.add(llm_log)
+    db.flush()
+
+    # 4. 调用 LLM（同 llm_assist：timeout=30，失败兜底）
+    started = time.monotonic()
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key=settings.DOUBAO_API_KEY,
+            base_url=settings.DOUBAO_BASE_URL,
+            timeout=30,
+        )
+        response = client.chat.completions.create(
+            model=settings.DOUBAO_MODEL,
+            messages=[
+                {"role": "system", "content": _SCHEMA_GEN_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        output_text = response.choices[0].message.content or ""
+    except Exception as exc:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        llm_log.status = "FAILED"
+        llm_log.error_message = str(exc)[:500]
+        llm_log.latency_ms = latency_ms
+        llm_log.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        raise LLMAssistFailedException(
+            f"AI 生成 Schema 调用失败（{latency_ms}ms）：{str(exc)[:200]}"
+        )
+
+    latency_ms = int((time.monotonic() - started) * 1000)
+
+    # 5. 解析模型输出为 JSON；解析失败按 LLM 失败处理
+    try:
+        schema_draft = json.loads(output_text)
+        if not isinstance(schema_draft, dict):
+            raise ValueError("模型输出不是 JSON 对象")
+    except (json.JSONDecodeError, ValueError) as exc:
+        llm_log.status = "FAILED"
+        llm_log.error_message = f"模型返回内容无法解析为 Schema JSON：{str(exc)[:300]}"
+        llm_log.latency_ms = latency_ms
+        llm_log.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        raise LLMAssistFailedException("AI 生成 Schema 失败：模型未返回合法的 Schema JSON")
+
+    # 6. 校验生成的 schema（不阻断返回，校验结果透传给前端）
+    validation = validate_schema(schema_draft)
+    output_hash = hash_canonical_json(schema_draft)
+
+    # 7. 落 LLMCallLog 成功状态 + token/耗时
+    llm_log.status = "SUCCEEDED"
+    llm_log.output_hash = output_hash
+    llm_log.latency_ms = latency_ms
+    _usage = getattr(response, "usage", None)
+    if _usage is not None:
+        llm_log.prompt_tokens = getattr(_usage, "prompt_tokens", None)
+        llm_log.completion_tokens = getattr(_usage, "completion_tokens", None)
+        llm_log.total_tokens = getattr(_usage, "total_tokens", None)
+    llm_log.finished_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return {
+        "schema_draft": schema_draft,
+        "validation": validation,
+        "warnings": [],
+        "model_policy_id": model_policy_id,
+        "prompt_snapshot_hash": prompt_hash,
+        "call_id": call_id,
+    }

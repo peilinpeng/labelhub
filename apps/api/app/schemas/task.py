@@ -320,3 +320,30 @@ class ValidateSchemaResponse(BaseModel):
     """POST /schema/validate 响应体"""
     valid: bool
     errors: list[str]
+
+
+# ---------------------------------------------------------------------------
+# AI 生成 Schema 草稿（POST /tasks/{taskId}/schema/ai-generate）
+# 对齐契约 §api.ts GenerateSchemaRequest / GenerateSchemaResponse
+# ---------------------------------------------------------------------------
+
+class GenerateSchemaRequest(BaseModel):
+    """POST /tasks/{taskId}/schema/ai-generate 请求体"""
+    taskDescription: str = Field(..., description="任务描述，作为生成 Schema 的主要上下文")
+    sampleItems: list[dict] | None = Field(None, description="可选：样例题目，辅助模型理解数据结构")
+    preferredNodeTypes: list[str] | None = Field(None, description="可选：期望使用的节点类型")
+
+
+class GeneratedByResponse(BaseModel):
+    """AI 生成可追溯信息（契约 GenerateSchemaResponse.generatedBy）"""
+    modelPolicyId: str
+    promptSnapshotHash: str
+    llmCallId: str
+
+
+class GenerateSchemaResponse(BaseModel):
+    """POST /tasks/{taskId}/schema/ai-generate 响应体"""
+    schemaDraft: dict
+    validation: SchemaValidationResultResponse
+    warnings: list[str] = []
+    generatedBy: GeneratedByResponse

@@ -488,6 +488,7 @@ from app.schemas.task import (
     SchemaVersionResponse,
     ValidateSchemaRequest, ValidateSchemaResponse,
     SchemaValidationResultResponse,
+    GenerateSchemaRequest, GenerateSchemaResponse, GeneratedByResponse,
 )
 
 
@@ -558,6 +559,37 @@ def publish_schema_version(
     return PublishSchemaVersionResponse(
         schemaVersion=SchemaVersionResponse.from_orm(version),
         auditLog=AuditLogSummaryResponse.from_orm_obj(log),
+    )
+
+
+# ── POST /tasks/{task_id}/schema/ai-generate（generateSchema）───────────────
+
+@router.post(
+    "/tasks/{task_id}/schema/ai-generate",
+    response_model=GenerateSchemaResponse,
+    summary="AI 生成 Schema 草稿",
+)
+def ai_generate_schema(
+    task_id: str,
+    body: GenerateSchemaRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> GenerateSchemaResponse:
+    """
+    调用 LLM 根据任务描述生成 LabelHubSchema 草稿（契约 GenerateSchemaResponse）。
+    仅生成不落库；写一条 LLMCallLog（purpose=SCHEMA_GENERATION）保证可追溯。
+    LLM 调用失败或返回非 JSON 时返回 502 LLM_ASSIST_FAILED。
+    """
+    result = schema_domain.generate_schema_draft(db, task_id, actor, body)
+    return GenerateSchemaResponse(
+        schemaDraft=result["schema_draft"],
+        validation=SchemaValidationResultResponse(**result["validation"]),
+        warnings=result["warnings"],
+        generatedBy=GeneratedByResponse(
+            modelPolicyId=result["model_policy_id"],
+            promptSnapshotHash=result["prompt_snapshot_hash"],
+            llmCallId=result["call_id"],
+        ),
     )
 
 
