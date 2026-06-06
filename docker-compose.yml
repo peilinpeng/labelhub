@@ -7,7 +7,9 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000/api/v1}
-      VITE_ENABLE_MSW: ${VITE_ENABLE_MSW:-true}
+      VITE_ENABLE_MSW: ${VITE_ENABLE_MSW:-false}
+      # Docker 网络内 Vite 代理需指向 api 服务（容器内 localhost 不是 api）
+      VITE_PROXY_TARGET: ${VITE_PROXY_TARGET:-http://api:3000}
     ports:
       - "${WEB_PORT:-5173}:5180"
     volumes:

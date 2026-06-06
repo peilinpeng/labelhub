@@ -22,7 +22,8 @@ export default defineConfig({
     port: 5180,
     proxy: {
       "/api": {
-        target: "http://localhost:3000",
+        // 默认 localhost（本机 npm dev）；Docker 下经 VITE_PROXY_TARGET 注入 http://api:3000
+        target: process.env.VITE_PROXY_TARGET ?? "http://localhost:3000",
         changeOrigin: true,
       },
     },
