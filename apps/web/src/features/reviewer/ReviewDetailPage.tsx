@@ -9,7 +9,12 @@ import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import { applyDemoSubmissionState, DEMO_SUBMISSION_ID, reviewDemoSubmission } from "../../mocks/demo-workflow-store";
 import type { ID, ReviewDecisionRequest, ReviewDetailResponse } from "@labelhub/contracts";
 import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-display";
-import { appendReviewStartedAuditSafely, appendReviewSubmittedAuditSafely } from "./reviewer-audit-events";
+import {
+  appendAiReviewFeedbackAuditSafely,
+  appendReviewStartedAuditSafely,
+  appendReviewSubmittedAuditSafely,
+  type AiReviewFeedback,
+} from "./reviewer-audit-events";
 
 interface ReviewDetailPageProps {
   role: Role;
@@ -46,6 +51,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<ReviewDecision | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([submissionId ?? DEMO_SUBMISSION_ID]);
+  const [aiReviewFeedback, setAiReviewFeedback] = useState<AiReviewFeedback>("NOT_USED");
   const startedAuditSubmissionIdsRef = useRef<Set<string>>(new Set());
   const reviewOpenedAtMsRef = useRef(Date.now());
 
@@ -68,6 +74,10 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         setLoading(false);
       }
     })();
+  }, [submissionId]);
+
+  useEffect(() => {
+    setAiReviewFeedback("NOT_USED");
   }, [submissionId]);
 
   useEffect(() => {
@@ -125,6 +135,15 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         reviewDurationMs: Math.max(0, Date.now() - reviewOpenedAtMsRef.current),
         commentLength: comments.length,
       });
+      if (aiResult) {
+        appendAiReviewFeedbackAuditSafely({
+          detail,
+          response,
+          feedback: aiReviewFeedback,
+          aiConfidence: aiResult.confidence,
+          aiDimensionCount: aiResult.dimensionScores.length,
+        });
+      }
       window.setTimeout(() => navigate(RoutePath.REVIEWER_QUEUE), 650);
     } catch (error) {
       console.warn("提交审核决策失败：", error);
@@ -275,6 +294,41 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
             ))}
           </div>
           <p>{aiResult?.summary ?? display.issue}</p>
+          {aiResult ? (
+            <fieldset className="review-human-ai-feedback">
+              <legend>AI 预审是否对本次审核有帮助？</legend>
+              <label>
+                <input
+                  checked={aiReviewFeedback === "HELPFUL"}
+                  name={`ai-review-feedback-${detail.submission.id}`}
+                  onChange={() => setAiReviewFeedback("HELPFUL")}
+                  type="radio"
+                  value="HELPFUL"
+                />
+                有帮助
+              </label>
+              <label>
+                <input
+                  checked={aiReviewFeedback === "NOT_HELPFUL"}
+                  name={`ai-review-feedback-${detail.submission.id}`}
+                  onChange={() => setAiReviewFeedback("NOT_HELPFUL")}
+                  type="radio"
+                  value="NOT_HELPFUL"
+                />
+                没帮助
+              </label>
+              <label>
+                <input
+                  checked={aiReviewFeedback === "NOT_USED"}
+                  name={`ai-review-feedback-${detail.submission.id}`}
+                  onChange={() => setAiReviewFeedback("NOT_USED")}
+                  type="radio"
+                  value="NOT_USED"
+                />
+                未参考
+              </label>
+            </fieldset>
+          ) : null}
         </Card>
 
         <Card className="review-human-decision-card">

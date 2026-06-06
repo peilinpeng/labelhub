@@ -8,6 +8,7 @@ import type {
 import { appendAuditEvent } from "../../api/audit";
 
 type ReviewerDecision = "PASS" | "RETURN";
+export type AiReviewFeedback = "HELPFUL" | "NOT_HELPFUL" | "NOT_USED";
 
 const DEMO_REVIEWER_ID = "usr_reviewer_demo";
 
@@ -83,6 +84,52 @@ export function appendReviewSubmittedAuditSafely(input: {
     idempotencyKey: `REVIEW:${input.detail.submission.id}:REVIEW_SUBMITTED:${input.decision}:${reviewId}`,
   }).catch((error) => {
     console.warn("写入审核提交审计事件失败：", error);
+  });
+}
+
+export function appendAiReviewFeedbackAuditSafely(input: {
+  detail: ReviewDetailResponse;
+  response: ReviewDecisionResponse;
+  feedback: AiReviewFeedback;
+  aiConfidence?: number;
+  aiDimensionCount: number;
+}): void {
+  if (input.feedback === "NOT_USED") {
+    return;
+  }
+
+  const reviewerId = DEMO_REVIEWER_ID;
+  const reviewId = input.response.reviewResult.id;
+  const submissionId = input.detail.submission.id;
+  const payload = {
+    summary: input.feedback === "HELPFUL" ? "审核员确认 AI 预审有帮助" : "审核员反馈 AI 预审没有帮助",
+    detailRef: reviewId,
+    codes: [input.feedback],
+    counters: {
+      aiDimensionCount: input.aiDimensionCount,
+    },
+    taskId: input.detail.task.id,
+    submissionId,
+    reviewId,
+    reviewerId,
+    labelerId: input.detail.submission.labelerId,
+    schemaVersionId: input.detail.schemaVersionId,
+    feedback: input.feedback,
+    stage: "REVIEW_SUBMITTED",
+    aiDimensionCount: input.aiDimensionCount,
+    ...(input.aiConfidence !== undefined ? { aiConfidence: input.aiConfidence } : {}),
+  };
+
+  void appendAuditEvent({
+    type: input.feedback === "HELPFUL" ? "AI_REVIEW_CONFIRMED_BY_REVIEWER" : "AI_REVIEW_REJECTED_BY_REVIEWER",
+    severity: "INFO",
+    source: "WEB",
+    actor: createReviewerActor(reviewerId),
+    target: createReviewTarget(input.detail, reviewId),
+    payload,
+    idempotencyKey: `AI_REVIEW:${submissionId}:${reviewId}:${input.feedback}`,
+  }).catch((error) => {
+    console.warn("写入 AI 预审反馈审计事件失败：", error);
   });
 }
 
