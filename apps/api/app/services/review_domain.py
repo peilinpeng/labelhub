@@ -17,8 +17,10 @@ from app.models.submission import Submission
 from app.models.assignment import Assignment
 from app.models.audit import AuditLog
 from app.services.audit_domain import write_audit_log
+from app.services.audit_event_domain import emit_audit_event
 from app.state_machines.submission_sm import apply_transition as sub_apply_transition
 from app.state_machines.assignment_sm import apply_transition as asn_apply_transition
+from app.utils.hashing import hash_canonical_json
 
 
 class ReviewDimensionInput(BaseModel):
@@ -284,6 +286,43 @@ def submit_review_decision(
         },
     )
 
+    # Quality Layer：reviewer 改过答案（带 patches）时写 REVIEW_DIFF_GENERATED 富审计事件
+    if req.patches:
+        before_answers = submission.answers_json or {}
+        after_answers = dict(before_answers)
+        for p in req.patches:
+            after_answers[p.fieldName] = p.nextValue
+        patches_dump = [p.model_dump() for p in req.patches]
+        decision_for_audit = "REJECTED" if req.decision == "REJECT" else "APPROVED_WITH_CHANGES"
+        emit_audit_event(
+            db,
+            type="REVIEW_DIFF_GENERATED",
+            source="BACKEND",
+            severity="INFO",
+            actor={"id": actor.id, "role": actor.role, "displayName": actor.display_name},
+            target={
+                "entityType": "SUBMISSION", "entityId": submission.id,
+                "taskId": submission.task_id, "submissionId": submission.id,
+                "reviewId": review_result.id, "schemaVersionId": submission.schema_version_id,
+            },
+            payload={
+                "taskId": submission.task_id,
+                "submissionId": submission.id,
+                "reviewId": review_result.id,
+                "reviewerId": actor.id,
+                "labelerId": submission.labeler_id,
+                "schemaVersionId": submission.schema_version_id,
+                "decision": decision_for_audit,
+                "patchedFieldNames": [p.fieldName for p in req.patches],
+                "patchCount": len(req.patches),
+                "beforeAnswerHash": hash_canonical_json(before_answers),
+                "afterAnswerHash": hash_canonical_json(after_answers),
+                "diffSummaryHash": hash_canonical_json(patches_dump),
+                "diffMode": "SERVER_SHALLOW",
+            },
+            commit=False,  # 并入本次决策事务
+        )
+
     db.commit()
     db.refresh(submission)
     db.refresh(review_result)
@@ -323,9 +362,26 @@ def batch_decision(db: Session, actor: Any, req: Any) -> list[dict]:
     return results
 
 
-def get_review_queue(db: Session, actor: Any, page: int, page_size: int) -> tuple[list, int]:
-    statuses = ["AI_PASSED", "NEEDS_HUMAN_REVIEW", "HUMAN_REVIEWING", "FINAL_REVIEWING"]
-    query = db.query(Submission).filter(Submission.status.in_(statuses))
+# 审核队列默认展示的待处理状态（无 status 过滤时）
+_REVIEW_QUEUE_DEFAULT_STATUSES = ["AI_PASSED", "NEEDS_HUMAN_REVIEW", "HUMAN_REVIEWING", "FINAL_REVIEWING"]
+# 允许前端 Tab 精确筛选的全部 Submission 状态（含已通过/已打回历史）
+_REVIEW_QUEUE_FILTERABLE_STATUSES = _REVIEW_QUEUE_DEFAULT_STATUSES + ["ACCEPTED", "RETURNED", "REJECTED"]
+
+
+def get_review_queue(
+    db: Session, actor: Any, page: int, page_size: int, status: str | None = None
+) -> tuple[list, int]:
+    if status:
+        # 前端 Tab 精确筛选：支持 AI 通过 / 需人工 / 已通过 / 已打回 等
+        if status not in _REVIEW_QUEUE_FILTERABLE_STATUSES:
+            raise ValidationFailedException(
+                f"status 取值非法：{status!r}，仅支持 {_REVIEW_QUEUE_FILTERABLE_STATUSES}"
+            )
+        query = db.query(Submission).filter(Submission.status == status)
+    else:
+        query = db.query(Submission).filter(
+            Submission.status.in_(_REVIEW_QUEUE_DEFAULT_STATUSES)
+        )
     total = query.count()
     offset = (page - 1) * page_size
     submissions = (
@@ -361,11 +417,20 @@ def get_review_detail(db: Session, submission_id: str, actor: Any) -> dict:
         .order_by(AuditLog.created_at.asc())
         .all()
     )
+    # AI 预审可追溯日志（TC-AI-07）：最近一次该 submission 的 AI_REVIEW 调用
+    from app.models.llm import LLMCallLog
+    ai_trace = (
+        db.query(LLMCallLog)
+        .filter_by(submission_id=submission.id, purpose="AI_REVIEW")
+        .order_by(LLMCallLog.created_at.desc())
+        .first()
+    )
     return {
         "submission": submission,
         "task": task,
         "schema_version": schema_version,
         "ai_result": ai_result,
+        "ai_trace": ai_trace,
         "history": history,
         "audit_logs": audit_logs,
     }

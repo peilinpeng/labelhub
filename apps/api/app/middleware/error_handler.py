@@ -129,6 +129,12 @@ class SchemaGenerationFailedException(LabelHubException):
     status_code = 500
 
 
+class LLMAssistFailedException(LabelHubException):
+    """502：标注 LLM 辅助调用失败（含超时），上游模型不可用。"""
+    code = "LLM_ASSIST_FAILED"
+    status_code = 502
+
+
 # ---------------------------------------------------------------------------
 # 注册全局异常处理器
 # ---------------------------------------------------------------------------

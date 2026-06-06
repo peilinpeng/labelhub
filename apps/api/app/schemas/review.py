@@ -162,6 +162,35 @@ class ReviewQueueResponse(BaseModel):
     pageSize: int
 
 
+class AITraceResponse(BaseModel):
+    """AI 预审可追溯信息（TC-AI-07）：模型 ID、Prompt 快照哈希、Token 用量、耗时。"""
+    callId: str
+    modelPolicyId: str
+    promptSnapshotHash: str
+    status: str
+    promptTokens: int | None = None
+    completionTokens: int | None = None
+    totalTokens: int | None = None
+    latencyMs: int | None = None
+    createdAt: datetime
+    finishedAt: datetime | None = None
+
+    @classmethod
+    def from_orm(cls, log) -> "AITraceResponse":
+        return cls(
+            callId=log.id,
+            modelPolicyId=log.model_policy_id,
+            promptSnapshotHash=log.prompt_snapshot_hash,
+            status=log.status,
+            promptTokens=log.prompt_tokens,
+            completionTokens=log.completion_tokens,
+            totalTokens=log.total_tokens,
+            latencyMs=log.latency_ms,
+            createdAt=log.created_at,
+            finishedAt=log.finished_at,
+        )
+
+
 class ReviewDetailResponse(BaseModel):
     submission: SubmissionSummary
     taskId: str
@@ -170,6 +199,7 @@ class ReviewDetailResponse(BaseModel):
     schemaVersionId: str
     schemaJson: dict
     aiResult: ReviewResultResponse | None = None
+    aiTrace: AITraceResponse | None = None
     history: list[ReviewResultResponse]
     auditLogs: list[AuditLogSummary]
 

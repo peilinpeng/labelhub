@@ -6,6 +6,9 @@ from uuid import uuid4
 from app.worker.celery_app import celery_app
 from app.state_machines.export_sm import apply_transition
 from app.services.audit_domain import write_audit_log
+from app.services.audit_event_domain import emit_audit_event
+from app.services.export_domain import build_passport, compute_passport_batch_hash
+from app.models.export_record import ExportRecord
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +283,7 @@ def _execute_export(db, job_id: str) -> None:
         db.commit()
 
         rows = []
+        record_specs = []  # (record_index, submission, row, passport)
         for i, sub in enumerate(submissions):
             item = db.query(DatasetItem).filter_by(id=sub.item_id).first()
             if not item:
@@ -311,6 +315,9 @@ def _execute_export(db, job_id: str) -> None:
                 row = _extract_row(sub, task, item, schema_version, db, mapping)
 
             rows.append(row)
+            # Quality Layer：每条 submission 生成数据质量护照
+            passport = build_passport(db, sub)
+            record_specs.append((len(rows) - 1, sub, row, passport))
             job.progress_done = i + 1
             if (i + 1) % 50 == 0:
                 db.commit()
@@ -331,6 +338,32 @@ def _execute_export(db, job_id: str) -> None:
         db.add(file_obj)
         db.flush()
 
+        # Quality Layer：持久化 ExportRecord（含 passport）+ 批次摘要 + 审计事件
+        passports = [spec[3] for spec in record_specs]
+        for record_index, sub, row, passport in record_specs:
+            db.add(ExportRecord(
+                id="erec_" + uuid4().hex,
+                export_job_id=job.id,
+                submission_id=sub.id,
+                schema_version_id=sub.schema_version_id,
+                record_index=record_index,
+                data_json=row,
+                metadata_json={"attemptNo": sub.attempt_no, "labelerId": sub.labeler_id},
+                passport_json=passport,
+            ))
+        passport_batch_hash = compute_passport_batch_hash(passports) if passports else None
+        artifact_summary = {
+            "exportId": job.id,
+            "taskId": job.task_id,
+            "format": fmt,
+            "schemaVersionId": job.schema_version_id,
+            "recordCount": len(record_specs),
+            "warningCount": 0,
+            "passportCount": len(passports),
+            "passportBatchHash": passport_batch_hash,
+        }
+        job.artifact_summary_json = artifact_summary
+
         job.status = apply_transition(job.status, "markExportSucceeded")
         job.file_id = file_obj.id
         job.progress_done = total
@@ -342,6 +375,21 @@ def _execute_export(db, job_id: str) -> None:
             action="EXPORT_SUCCEEDED",
             actor_id=system_actor_id,
             after={"fileId": file_obj.id, "total": total, "format": fmt},
+        )
+        # DATA_QUALITY_PASSPORT_GENERATED 富审计事件（并入本事务）
+        emit_audit_event(
+            db,
+            type="DATA_QUALITY_PASSPORT_GENERATED",
+            source="WORKER",
+            actor={"id": system_actor_id, "role": "SYSTEM"},
+            target={"entityType": "EXPORT", "entityId": job.id, "taskId": job.task_id, "exportId": job.id},
+            payload={
+                "exportId": job.id,
+                "passportCount": len(passports),
+                "passportBatchHash": passport_batch_hash,
+                "warningCount": 0,
+            },
+            commit=False,
         )
         db.commit()
         logger.info("Export completed job=%s total=%d format=%s", job_id, total, fmt)

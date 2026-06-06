@@ -120,3 +120,23 @@ class MarketplaceResponse(BaseModel):
     page: int
     pageSize: int
     total: int
+
+
+class LLMAssistRequest(BaseModel):
+    """契约 LLMRuntimeRequest：标注作答时触发 llm.assist 节点。"""
+    nodeId: str
+    answers: dict = Field(default_factory=dict)
+    assistType: str | None = None  # 可选，前端可指定；缺省由节点/后端兜底
+
+
+class LLMAssistResponse(BaseModel):
+    """契约 LLMRuntimeResponse + Quality Layer 元数据（hash 由后端生成）。"""
+    output: Any
+    suggestedPatch: dict | None = None
+    callId: str
+    latencyMs: int
+    promptVersionId: str | None = None
+    modelId: str
+    assistType: str
+    promptSnapshotHash: str
+    outputHash: str

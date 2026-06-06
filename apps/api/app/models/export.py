@@ -50,3 +50,7 @@ class ExportJob(Base):
 
     # 契约 ExportJob.finishedAt，完成或失败时由应用层显式写入
     finished_at = Column(DateTime, nullable=True)
+
+    # contracts ExportArtifactSummary：passportCount / passportBatchHash / warningCount 等
+    # 导出完成时由 worker 写入（Quality Layer）
+    artifact_summary_json = Column(JSON, nullable=True)

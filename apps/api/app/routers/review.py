@@ -14,6 +14,7 @@ from app.schemas.review import (
     ReviewQueueResponse,
     ReviewQueueItem,
     ReviewDetailResponse,
+    AITraceResponse,
     SubmissionSummary,
     ReviewResultResponse,
     AuditLogSummary,
@@ -30,10 +31,11 @@ router = APIRouter(tags=["review"])
 def get_review_queue(
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
+    status: str | None = Query(None, description="按 Submission 状态精确筛选（前端 Tab）"),
     db: Session = Depends(get_db),
     actor: Actor = Depends(require_roles("REVIEWER", "OWNER", "ADMIN")),
 ) -> ReviewQueueResponse:
-    submissions, total = review_domain.get_review_queue(db, actor, page, pageSize)
+    submissions, total = review_domain.get_review_queue(db, actor, page, pageSize, status)
     items = []
     for sub in submissions:
         from app.models.task import Task
@@ -73,6 +75,7 @@ def get_review_detail(
         schemaVersionId=detail["submission"].schema_version_id,
         schemaJson=detail["schema_version"].schema_json if detail["schema_version"] else {},
         aiResult=ReviewResultResponse.from_orm(detail["ai_result"]) if detail["ai_result"] else None,
+        aiTrace=AITraceResponse.from_orm(detail["ai_trace"]) if detail["ai_trace"] else None,
         history=[ReviewResultResponse.from_orm(r) for r in detail["history"]],
         auditLogs=[AuditLogSummary.from_orm(log) for log in detail["audit_logs"]],
     )
