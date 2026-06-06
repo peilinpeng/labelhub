@@ -777,8 +777,11 @@ export async function callLLMAssist(request: LLMAssistMockRequest = {}): Promise
   const output = {
     summary: "建议检查新闻来源是否充分，并补充事实依据。",
   };
+  // 同时建议低质量评分（"1"），触发 R-low-quality-requires-note 联动：
+  // factCheckNote 变为 required 但值为空 → preflight BLOCKED，演示 FE-8 阻断效果
   const suggestedPatch = {
     rewriteSuggestion: "建议补充统计口径、来源链接和第三方证据。",
+    qualityScore: "1",
   };
   const callId = nextId("llm");
   const [promptSnapshotHash, outputHash] = await Promise.all([
