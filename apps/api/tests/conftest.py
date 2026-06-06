@@ -45,7 +45,9 @@ import app.models.assignment  # noqa: E402,F401
 import app.models.submission  # noqa: E402,F401
 import app.models.review  # noqa: E402,F401
 import app.models.audit  # noqa: E402,F401
+import app.models.audit_event  # noqa: E402,F401
 import app.models.export  # noqa: E402,F401
+import app.models.export_record  # noqa: E402,F401
 import app.models.file  # noqa: E402,F401
 import app.models.llm  # noqa: E402,F401
 import app.models.idempotency  # noqa: E402,F401

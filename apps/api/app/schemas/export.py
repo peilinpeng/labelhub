@@ -129,3 +129,59 @@ class DownloadExportResponse(BaseModel):
     file: FileObjectResponse
     downloadUrl: str
     expiresAt: datetime
+
+
+# ---------------------------------------------------------------------------
+# Data Quality Passport / Export Records（Quality Layer，镜像 contracts export.ts）
+# ---------------------------------------------------------------------------
+
+class DataQualityPassportResponse(BaseModel):
+    submissionId: str
+    schemaVersionId: str
+    finalAnswerHash: str | None = None
+    answerHashAlgorithm: str | None = None
+    reviewStatus: str
+    reviewerPatchCount: int | None = None
+    changedFieldNames: list[str] | None = None
+    aiAssistUsed: bool | None = None
+    aiAssistCallCount: int | None = None
+    qualityLedgerRef: dict | None = None
+
+
+class ExportRecordResponse(BaseModel):
+    exportId: str
+    submissionId: str
+    schemaVersionId: str
+    recordIndex: int
+    data: dict
+    metadata: dict | None = None
+    passport: DataQualityPassportResponse | None = None
+
+    @classmethod
+    def from_orm(cls, r: Any) -> "ExportRecordResponse":
+        return cls(
+            exportId=r.export_job_id,
+            submissionId=r.submission_id,
+            schemaVersionId=r.schema_version_id,
+            recordIndex=r.record_index,
+            data=r.data_json,
+            metadata=r.metadata_json,
+            passport=DataQualityPassportResponse(**r.passport_json) if r.passport_json else None,
+        )
+
+
+class ExportArtifactSummaryResponse(BaseModel):
+    exportId: str
+    taskId: str | None = None
+    format: str | None = None
+    schemaVersionId: str | None = None
+    recordCount: int | None = None
+    warningCount: int | None = None
+    passportCount: int | None = None
+    passportBatchHash: str | None = None
+
+
+class GetExportRecordsResponse(BaseModel):
+    exportId: str
+    records: list[ExportRecordResponse]
+    artifactSummary: ExportArtifactSummaryResponse | None = None

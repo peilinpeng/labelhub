@@ -17,8 +17,10 @@ from app.models.submission import Submission
 from app.models.assignment import Assignment
 from app.models.audit import AuditLog
 from app.services.audit_domain import write_audit_log
+from app.services.audit_event_domain import emit_audit_event
 from app.state_machines.submission_sm import apply_transition as sub_apply_transition
 from app.state_machines.assignment_sm import apply_transition as asn_apply_transition
+from app.utils.hashing import hash_canonical_json
 
 
 class ReviewDimensionInput(BaseModel):
@@ -283,6 +285,43 @@ def submit_review_decision(
             "patchCount": len(req.patches),
         },
     )
+
+    # Quality Layer：reviewer 改过答案（带 patches）时写 REVIEW_DIFF_GENERATED 富审计事件
+    if req.patches:
+        before_answers = submission.answers_json or {}
+        after_answers = dict(before_answers)
+        for p in req.patches:
+            after_answers[p.fieldName] = p.nextValue
+        patches_dump = [p.model_dump() for p in req.patches]
+        decision_for_audit = "REJECTED" if req.decision == "REJECT" else "APPROVED_WITH_CHANGES"
+        emit_audit_event(
+            db,
+            type="REVIEW_DIFF_GENERATED",
+            source="BACKEND",
+            severity="INFO",
+            actor={"id": actor.id, "role": actor.role, "displayName": actor.display_name},
+            target={
+                "entityType": "SUBMISSION", "entityId": submission.id,
+                "taskId": submission.task_id, "submissionId": submission.id,
+                "reviewId": review_result.id, "schemaVersionId": submission.schema_version_id,
+            },
+            payload={
+                "taskId": submission.task_id,
+                "submissionId": submission.id,
+                "reviewId": review_result.id,
+                "reviewerId": actor.id,
+                "labelerId": submission.labeler_id,
+                "schemaVersionId": submission.schema_version_id,
+                "decision": decision_for_audit,
+                "patchedFieldNames": [p.fieldName for p in req.patches],
+                "patchCount": len(req.patches),
+                "beforeAnswerHash": hash_canonical_json(before_answers),
+                "afterAnswerHash": hash_canonical_json(after_answers),
+                "diffSummaryHash": hash_canonical_json(patches_dump),
+                "diffMode": "SERVER_SHALLOW",
+            },
+            commit=False,  # 并入本次决策事务
+        )
 
     db.commit()
     db.refresh(submission)

@@ -1968,6 +1968,48 @@
         }
       }
     },
+    "/api/v1/exports/{export_job_id}/records": {
+      "get": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "导出记录：返回每条 submission 的导出行 + 数据质量护照（Quality Layer）",
+        "operationId": "get_export_records_api_v1_exports__export_job_id__records_get",
+        "parameters": [
+          {
+            "name": "export_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Export Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetExportRecordsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/exports/{export_job_id}/download": {
       "get": {
         "tags": [
@@ -2178,6 +2220,234 @@
         }
       }
     },
+    "/api/v1/audit-events": {
+      "post": {
+        "tags": [
+          "audit-events"
+        ],
+        "summary": "写入审计事件（前端 fire-and-forget）",
+        "operationId": "append_audit_event_api_v1_audit_events_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppendAuditEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppendAuditEventResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "audit-events"
+        ],
+        "summary": "查询审计事件（审计时间线）",
+        "operationId": "query_audit_events_api_v1_audit_events_get",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Taskid"
+            }
+          },
+          {
+            "name": "submissionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Submissionid"
+            }
+          },
+          {
+            "name": "reviewId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reviewid"
+            }
+          },
+          {
+            "name": "exportId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exportid"
+            }
+          },
+          {
+            "name": "assignmentId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignmentid"
+            }
+          },
+          {
+            "name": "schemaVersionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schemaversionid"
+            }
+          },
+          {
+            "name": "entityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entityid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryAuditEventsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "summary": "Health",
@@ -2316,6 +2586,107 @@
           "displayName"
         ],
         "title": "ActorResponse"
+      },
+      "AppendAuditEventRequest": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity",
+            "default": "INFO"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "actor": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Actor"
+          },
+          "target": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Target"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          },
+          "idempotencyKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotencykey"
+          },
+          "checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checksum"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "source",
+          "actor",
+          "target"
+        ],
+        "title": "AppendAuditEventRequest",
+        "description": "contracts AppendAuditEventRequest。actor/target/payload 宽松接收为 dict。"
+      },
+      "AppendAuditEventResponse": {
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/AuditEventRecordResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event"
+        ],
+        "title": "AppendAuditEventResponse",
+        "description": "POST /audit-events 响应：外层包 event（对齐前端 mock）。"
       },
       "ArchiveTaskRequest": {
         "properties": {
@@ -2512,6 +2883,98 @@
           "assigneeIds"
         ],
         "title": "AssignmentStrategy"
+      },
+      "AuditEventRecordResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "actor": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Actor"
+          },
+          "target": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Target"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          },
+          "idempotencyKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotencykey"
+          },
+          "checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checksum"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "severity",
+          "source",
+          "actor",
+          "target",
+          "createdAt"
+        ],
+        "title": "AuditEventRecordResponse",
+        "description": "contracts AuditEventRecord。"
       },
       "AuditLogSummary": {
         "properties": {
@@ -3094,6 +3557,110 @@
         ],
         "title": "CreateUploadUrlResponse"
       },
+      "DataQualityPassportResponse": {
+        "properties": {
+          "submissionId": {
+            "type": "string",
+            "title": "Submissionid"
+          },
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "finalAnswerHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalanswerhash"
+          },
+          "answerHashAlgorithm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answerhashalgorithm"
+          },
+          "reviewStatus": {
+            "type": "string",
+            "title": "Reviewstatus"
+          },
+          "reviewerPatchCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewerpatchcount"
+          },
+          "changedFieldNames": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changedfieldnames"
+          },
+          "aiAssistUsed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aiassistused"
+          },
+          "aiAssistCallCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aiassistcallcount"
+          },
+          "qualityLedgerRef": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qualityledgerref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "submissionId",
+          "schemaVersionId",
+          "reviewStatus"
+        ],
+        "title": "DataQualityPassportResponse"
+      },
       "DatasetItemResponse": {
         "properties": {
           "id": {
@@ -3275,6 +3842,96 @@
         },
         "type": "object",
         "title": "EndTaskRequest"
+      },
+      "ExportArtifactSummaryResponse": {
+        "properties": {
+          "exportId": {
+            "type": "string",
+            "title": "Exportid"
+          },
+          "taskId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taskid"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "schemaVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schemaversionid"
+          },
+          "recordCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recordcount"
+          },
+          "warningCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warningcount"
+          },
+          "passportCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passportcount"
+          },
+          "passportBatchHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passportbatchhash"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exportId"
+        ],
+        "title": "ExportArtifactSummaryResponse"
       },
       "ExportColumn": {
         "properties": {
@@ -3499,6 +4156,62 @@
         ],
         "title": "ExportProgressResponse"
       },
+      "ExportRecordResponse": {
+        "properties": {
+          "exportId": {
+            "type": "string",
+            "title": "Exportid"
+          },
+          "submissionId": {
+            "type": "string",
+            "title": "Submissionid"
+          },
+          "schemaVersionId": {
+            "type": "string",
+            "title": "Schemaversionid"
+          },
+          "recordIndex": {
+            "type": "integer",
+            "title": "Recordindex"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "passport": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DataQualityPassportResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "exportId",
+          "submissionId",
+          "schemaVersionId",
+          "recordIndex",
+          "data"
+        ],
+        "title": "ExportRecordResponse"
+      },
       "FileObjectResponse": {
         "properties": {
           "id": {
@@ -3591,6 +4304,37 @@
           "exportJob"
         ],
         "title": "GetExportJobResponse"
+      },
+      "GetExportRecordsResponse": {
+        "properties": {
+          "exportId": {
+            "type": "string",
+            "title": "Exportid"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/ExportRecordResponse"
+            },
+            "type": "array",
+            "title": "Records"
+          },
+          "artifactSummary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportArtifactSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "exportId",
+          "records"
+        ],
+        "title": "GetExportRecordsResponse"
       },
       "GetReviewConfigResponse": {
         "properties": {
@@ -3740,6 +4484,17 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Answers"
+          },
+          "assistType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assisttype"
           }
         },
         "type": "object",
@@ -3773,16 +4528,47 @@
           "latencyMs": {
             "type": "integer",
             "title": "Latencyms"
+          },
+          "promptVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promptversionid"
+          },
+          "modelId": {
+            "type": "string",
+            "title": "Modelid"
+          },
+          "assistType": {
+            "type": "string",
+            "title": "Assisttype"
+          },
+          "promptSnapshotHash": {
+            "type": "string",
+            "title": "Promptsnapshothash"
+          },
+          "outputHash": {
+            "type": "string",
+            "title": "Outputhash"
           }
         },
         "type": "object",
         "required": [
           "output",
           "callId",
-          "latencyMs"
+          "latencyMs",
+          "modelId",
+          "assistType",
+          "promptSnapshotHash",
+          "outputHash"
         ],
         "title": "LLMAssistResponse",
-        "description": "契约 LLMRuntimeResponse + latencyMs（前端据此显示 loading/超时）。"
+        "description": "契约 LLMRuntimeResponse + Quality Layer 元数据（hash 由后端生成）。"
       },
       "ListAssignmentsResponse": {
         "properties": {
@@ -4105,6 +4891,27 @@
           "auditLog"
         ],
         "title": "PublishTaskResponse"
+      },
+      "QueryAuditEventsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventRecordResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total"
+        ],
+        "title": "QueryAuditEventsResponse",
+        "description": "GET /audit-events 响应。"
       },
       "QuotaClaimStrategy": {
         "properties": {

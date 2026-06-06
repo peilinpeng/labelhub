@@ -16,6 +16,9 @@ from app.schemas.export import (
     ExportJobResponse,
     AuditLogSummary,
     FileObjectResponse,
+    GetExportRecordsResponse,
+    ExportRecordResponse,
+    ExportArtifactSummaryResponse,
 )
 
 router = APIRouter(tags=["exports"])
@@ -73,6 +76,26 @@ def get_export_job(
 ) -> GetExportJobResponse:
     job = export_domain.get_export_job(db, export_job_id, actor)
     return GetExportJobResponse(exportJob=ExportJobResponse.from_orm(job))
+
+
+@router.get(
+    "/exports/{export_job_id}/records",
+    response_model=GetExportRecordsResponse,
+    summary="导出记录：返回每条 submission 的导出行 + 数据质量护照（Quality Layer）",
+)
+def get_export_records(
+    export_job_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER", "ADMIN")),
+) -> GetExportRecordsResponse:
+    result = export_domain.get_export_records(db, export_job_id, actor)
+    job = result["job"]
+    summary = job.artifact_summary_json or {}
+    return GetExportRecordsResponse(
+        exportId=job.id,
+        records=[ExportRecordResponse.from_orm(r) for r in result["records"]],
+        artifactSummary=ExportArtifactSummaryResponse(**summary) if summary else None,
+    )
 
 
 @router.get(

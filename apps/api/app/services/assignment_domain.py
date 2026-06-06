@@ -21,6 +21,7 @@ from app.models.dataset import DatasetItem
 from app.models.llm import LLMCallLog
 from app.models.schema import SchemaVersion
 from app.models.task import Task
+from app.utils.hashing import hash_canonical_json
 from app.schemas.assignment import (
     MarketplaceResponse,
     MarketplaceTaskItem,
@@ -240,6 +241,9 @@ def llm_assist(db: Session, assignment_id: str, actor: object, req: object) -> d
     model_policy_id = node.get("modelPolicyId") or settings.DOUBAO_MODEL
     input_hash = hashlib.sha256(rendered_prompt.encode()).hexdigest()
     prompt_hash = hashlib.sha256(prompt_template.encode()).hexdigest()
+    # 元数据（契约 LLMAssistResponse）：assistType / promptVersionId 由 node 或请求给出
+    assist_type = getattr(req, "assistType", None) or node.get("assistType") or "QUALITY_CHECK"
+    prompt_version_id = node.get("promptTemplateId")
 
     call_id = "llm_" + uuid.uuid4().hex
     llm_log = LLMCallLog(
@@ -282,16 +286,6 @@ def llm_assist(db: Session, assignment_id: str, actor: object, req: object) -> d
         )
 
     latency_ms = int((time.monotonic() - started) * 1000)
-    llm_log.status = "SUCCEEDED"
-    llm_log.output_hash = hashlib.sha256(output_text.encode()).hexdigest()
-    llm_log.latency_ms = latency_ms
-    # Token 用量（TC-AI-07 可追溯）；部分网关可能不返回 usage，做容错
-    _usage = getattr(response, "usage", None)
-    if _usage is not None:
-        llm_log.prompt_tokens = getattr(_usage, "prompt_tokens", None)
-        llm_log.completion_tokens = getattr(_usage, "completion_tokens", None)
-        llm_log.total_tokens = getattr(_usage, "total_tokens", None)
-    llm_log.finished_at = datetime.now(timezone.utc)
 
     # 依据 llm.assist 节点的 outputBindings 构造可一键应用的草稿补丁（best-effort）
     suggested_patch: dict | None = None
@@ -303,12 +297,31 @@ def llm_assist(db: Session, assignment_id: str, actor: object, req: object) -> d
             if b.get("toFieldName")
         } or None
 
+    # outputHash 由后端生成（前端不二次计算），用 canonical-json 保证前后端一致
+    output_hash = hash_canonical_json({"output": output_text, "suggestedPatch": suggested_patch})
+
+    llm_log.status = "SUCCEEDED"
+    llm_log.output_hash = output_hash
+    llm_log.latency_ms = latency_ms
+    # Token 用量（TC-AI-07 可追溯）；部分网关可能不返回 usage，做容错
+    _usage = getattr(response, "usage", None)
+    if _usage is not None:
+        llm_log.prompt_tokens = getattr(_usage, "prompt_tokens", None)
+        llm_log.completion_tokens = getattr(_usage, "completion_tokens", None)
+        llm_log.total_tokens = getattr(_usage, "total_tokens", None)
+    llm_log.finished_at = datetime.now(timezone.utc)
+
     db.commit()
     return {
         "output": output_text,
         "suggested_patch": suggested_patch,
         "call_id": call_id,
         "latency_ms": latency_ms,
+        "prompt_version_id": prompt_version_id,
+        "model_id": model_policy_id,
+        "assist_type": assist_type,
+        "prompt_snapshot_hash": prompt_hash,
+        "output_hash": output_hash,
     }
 
 

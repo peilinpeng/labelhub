@@ -151,6 +151,11 @@ def llm_assist(
         suggestedPatch=result["suggested_patch"],
         callId=result["call_id"],
         latencyMs=result["latency_ms"],
+        promptVersionId=result["prompt_version_id"],
+        modelId=result["model_id"],
+        assistType=result["assist_type"],
+        promptSnapshotHash=result["prompt_snapshot_hash"],
+        outputHash=result["output_hash"],
     )
 
 

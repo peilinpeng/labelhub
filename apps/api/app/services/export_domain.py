@@ -10,9 +10,18 @@ from app.middleware.error_handler import (
     PermissionDeniedException,
 )
 from app.models.export import ExportJob
+from app.models.export_record import ExportRecord
 from app.models.file import FileObject
 from app.services.audit_domain import write_audit_log
 from app.state_machines.export_sm import apply_transition
+from app.utils.hashing import hash_canonical_json, ANSWER_HASH_ALGORITHM
+
+# submission.status → DataQualityPassport.reviewStatus（契约枚举：APPROVED/REJECTED/RETURNED/UNREVIEWED）
+_REVIEW_STATUS_MAP = {
+    "ACCEPTED": "APPROVED",
+    "REJECTED": "REJECTED",
+    "RETURNED": "RETURNED",
+}
 
 _VALID_NAMESPACES = (
     "$.task.", "$.schema.", "$.item.", "$.answers.",
@@ -162,3 +171,83 @@ def get_download_info(db: Session, export_job_id: str, actor) -> tuple:
     expires_at = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(hours=1)
 
     return job, file_obj, download_url, expires_at
+
+
+# ---------------------------------------------------------------------------
+# Data Quality Passport（Quality Layer）
+# ---------------------------------------------------------------------------
+
+def _latest_review_patches(db: Session, submission_id: str) -> list[dict]:
+    from app.models.review import ReviewResult
+    latest = (
+        db.query(ReviewResult)
+        .filter(
+            ReviewResult.submission_id == submission_id,
+            ReviewResult.stage.in_(["HUMAN_REVIEW", "FINAL_REVIEW"]),
+        )
+        .order_by(ReviewResult.created_at.desc())
+        .first()
+    )
+    if not latest:
+        return []
+    return (latest.result_json or {}).get("patches", []) or []
+
+
+def build_passport(db: Session, submission) -> dict:
+    """
+    为单条 submission 构造 DataQualityPassport（镜像 contracts export.ts）。
+    finalAnswerHash 基于"应用 reviewer patches 后的最终答案"，与前端 canonical hash 一致。
+    """
+    from app.models.llm import LLMCallLog
+
+    original = dict(submission.answers_json or {})
+    patches = _latest_review_patches(db, submission.id)
+    final_answers = dict(original)
+    changed_fields: list[str] = []
+    for p in patches:
+        fn = p.get("fieldName")
+        if fn:
+            final_answers[fn] = p.get("nextValue")
+            changed_fields.append(fn)
+
+    review_status = _REVIEW_STATUS_MAP.get(submission.status, "UNREVIEWED")
+
+    ai_assist_count = (
+        db.query(LLMCallLog)
+        .filter_by(assignment_id=submission.assignment_id, purpose="LLM_ASSIST")
+        .count()
+    )
+
+    return {
+        "submissionId": submission.id,
+        "schemaVersionId": submission.schema_version_id,
+        "finalAnswerHash": hash_canonical_json(final_answers),
+        "answerHashAlgorithm": ANSWER_HASH_ALGORITHM,
+        "reviewStatus": review_status,
+        "reviewerPatchCount": len(patches),
+        "changedFieldNames": changed_fields,
+        "aiAssistUsed": ai_assist_count > 0,
+        "aiAssistCallCount": ai_assist_count,
+        "qualityLedgerRef": {"submissionId": submission.id, "assignmentId": submission.assignment_id},
+    }
+
+
+def compute_passport_batch_hash(passports: list[dict]) -> str:
+    """所有 passport 的批次 hash（按 submissionId 排序后整体 canonical hash）。"""
+    ordered = sorted(passports, key=lambda p: p.get("submissionId", ""))
+    return hash_canonical_json(ordered)
+
+
+def get_export_records(db: Session, export_job_id: str, actor) -> dict:
+    """GET /exports/{id}/records：返回该导出任务的记录（含 passport）+ artifactSummary。"""
+    job = db.query(ExportJob).filter_by(id=export_job_id).first()
+    if not job:
+        raise ResourceNotFoundException(f"导出任务 {export_job_id!r} 不存在")
+
+    records = (
+        db.query(ExportRecord)
+        .filter_by(export_job_id=export_job_id)
+        .order_by(ExportRecord.record_index.asc())
+        .all()
+    )
+    return {"job": job, "records": records}
