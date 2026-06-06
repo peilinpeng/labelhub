@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { SchemaRenderer } from "@labelhub/schema-renderer";
+import { SchemaRenderer, type LLMAssistOutcome } from "@labelhub/schema-renderer";
 import { Role } from "../../app/routes";
 import { callLLMAssist, getAssignmentContext, listAssignmentItems, saveDraft, submitAssignment } from "../../api/labeler";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
@@ -9,6 +9,12 @@ import { Badge, Button, Card } from "../../ui/primitives";
 import { DEMO_ASSIGNMENT_ID, submitDemoAssignment } from "../../mocks/demo-workflow-store";
 import { getAssignmentContext as getMockAssignmentContext } from "../../mocks/mock-db";
 import { datasetItemsMock } from "../../mocks/data/dataset-items.mock";
+import {
+  appendAiAssistOutcomeAuditSafely,
+  appendAiAssistTriggeredAuditSafely,
+  extractAiAssistResponseMetadata,
+  type AiAssistResponseMetadata,
+} from "./ai-assist-audit-events";
 import { useLabelingTelemetry } from "./useLabelingTelemetry";
 import type {
   AnswerPayload,
@@ -70,6 +76,8 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const [pendingSubmitAnswers, setPendingSubmitAnswers] = useState<AnswerPayload | null>(null);
   const [taskItems, setTaskItems] = useState<DatasetItem[]>([]);
   const [submittedItemIds, setSubmittedItemIds] = useState<string[]>([]);
+  const aiAssistMetadataByCallIdRef = useRef<Map<string, AiAssistResponseMetadata>>(new Map());
+  const aiAssistCallAttemptCounterRef = useRef(0);
   const telemetry = useLabelingTelemetry({
     assignmentId,
     context,
@@ -105,6 +113,11 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       }
     })();
   }, [assignmentId]);
+
+  useEffect(() => {
+    aiAssistMetadataByCallIdRef.current.clear();
+    aiAssistCallAttemptCounterRef.current = 0;
+  }, [assignmentId, context?.item.id]);
 
   const runtimeContext: LabelHubRuntimeContext = context
     ? {
@@ -217,14 +230,39 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     _runtimeCtx: LabelHubRuntimeContext,
     currentAnswers: AnswerPayload,
   ): Promise<LLMRuntimeResponse> => {
-    if (!assignmentId) {
+    if (!assignmentId || !context) {
       return { output: { summary: "请先选择任务" }, suggestedPatch: {}, callId: "llm_demo" };
     }
+    const callAttemptId = String((aiAssistCallAttemptCounterRef.current += 1));
+    appendAiAssistTriggeredAuditSafely({
+      assignmentId,
+      context,
+      node,
+      callAttemptId,
+    });
     try {
-      return await callLLMAssist(assignmentId, { nodeId: node.id, answers: currentAnswers });
+      const response = await callLLMAssist(assignmentId, { nodeId: node.id, answers: currentAnswers });
+      aiAssistMetadataByCallIdRef.current.set(response.callId, extractAiAssistResponseMetadata(response));
+      return response;
     } catch {
-      return { output: { summary: "LLM 辅助暂时不可用" }, suggestedPatch: {}, callId: "llm_demo" };
+      const fallbackResponse: LLMRuntimeResponse = {
+        output: { summary: "LLM 辅助暂时不可用" },
+        suggestedPatch: {},
+        callId: `llm_demo_${callAttemptId}` as LLMRuntimeResponse["callId"],
+      };
+      aiAssistMetadataByCallIdRef.current.set(fallbackResponse.callId, extractAiAssistResponseMetadata(fallbackResponse));
+      return fallbackResponse;
     }
+  };
+
+  const handleAssistOutcome = (outcome: LLMAssistOutcome) => {
+    if (!assignmentId || !context) return;
+    appendAiAssistOutcomeAuditSafely({
+      assignmentId,
+      context,
+      outcome,
+      metadata: aiAssistMetadataByCallIdRef.current.get(outcome.callId),
+    });
   };
 
   if (loading) {
@@ -376,6 +414,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                   onAnswersChange={telemetry.handleAnswersChange}
                   onSubmit={handleSubmit}
                   onLLMAssist={handleLLMAssist}
+                  onAssistOutcome={handleAssistOutcome}
                 />
               </div>
             </section>
