@@ -543,6 +543,153 @@ else
 fi
 
 # =============================================================================
+# Part D4 扩展场景：越权 / AI 可追溯 / 打回重审闭环 / 暂停拦截
+# =============================================================================
+
+# ── 辅助：容器内执行 Python（含全模型导入，避免 mapper 解析失败）────────────────
+DB_IMPORTS='import sys; sys.path.insert(0, ".")
+from app.database import SessionLocal
+from app.models.user import User
+from app.models.task import Task
+from app.models.schema import SchemaVersion, SchemaDraft
+from app.models.dataset import DatasetItem
+from app.models.assignment import Assignment, Draft
+from app.models.submission import Submission
+from app.models.review import ReviewConfig, AIReviewJob, ReviewResult
+from app.models.audit import AuditLog
+from app.models.export import ExportJob
+from app.models.file import FileObject
+from app.models.llm import LLMCallLog
+from app.models.idempotency import IdempotencyRecord'
+
+db_py() {
+  docker compose -f /Users/xiongweiluo/LabelHub_Coding/labelhub/docker-compose.yml \
+    exec -w /workspace/apps/api -T api python3 -c "$DB_IMPORTS
+$1" 2>&1
+}
+
+bypass_sub() {
+  db_py "
+db = SessionLocal()
+s = db.query(Submission).filter_by(id='$1').first()
+s.status = 'NEEDS_HUMAN_REVIEW'
+db.commit()
+print('bypassed', s.id)
+db.close()
+" >/dev/null
+}
+
+# =============================================================================
+# Step 17：越权访问隔离（TC-SEC-01）—— Labeler 调用 Owner 接口必须 403
+# =============================================================================
+step_header 17 "越权隔离：Labeler POST /tasks 应 403 (TC-SEC-01)"
+RAW=$(do_post "$BASE/tasks" "$LABELER_TOKEN" "$TASK_BODY")
+split_resp "$RAW"
+if [ "$HTTP_STATUS" = "403" ]; then
+  ok "越权访问被正确拦截 (403)"
+else
+  fail "越权未被拦截，期望 403，实际 $HTTP_STATUS：$RESP_BODY"
+fi
+
+# =============================================================================
+# Step 18：AI 可追溯（TC-AI-07）—— 审核详情暴露 token/模型/耗时
+# =============================================================================
+step_header 18 "AI 可追溯：审核详情 aiTrace 暴露 token/模型/耗时 (TC-AI-07)"
+echo "  → 注入合成 AI_REVIEW LLMCallLog（dev 无 DOUBAO key，真实预审跑不了）"
+INJECT_OUT=$(db_py "
+from datetime import datetime, timezone
+from uuid import uuid4
+db = SessionLocal()
+log = LLMCallLog(
+    id='llm_' + uuid4().hex, purpose='AI_REVIEW', actor_id='$OWNER_ID',
+    submission_id='$SUBMISSION_ID', model_policy_id='mp_doubao_pro',
+    prompt_snapshot_hash='h_prompt', input_hash='h_in', output_hash='h_out',
+    status='SUCCEEDED', prompt_tokens=120, completion_tokens=80,
+    total_tokens=200, latency_ms=1532, finished_at=datetime.now(timezone.utc),
+)
+db.add(log); db.commit(); print('injected', log.id); db.close()
+")
+echo "  $INJECT_OUT"
+RAW=$(do_get "$BASE/review/submissions/$SUBMISSION_ID" "$REVIEWER_TOKEN")
+split_resp "$RAW"
+if [ "$HTTP_STATUS" = "200" ]; then
+  TT=$(jval "$RESP_BODY" "d['aiTrace']['totalTokens'] if d.get('aiTrace') else 'NONE'")
+  MP=$(jval "$RESP_BODY" "d['aiTrace']['modelPolicyId'] if d.get('aiTrace') else 'NONE'")
+  LAT=$(jval "$RESP_BODY" "d['aiTrace']['latencyMs'] if d.get('aiTrace') else 'NONE'")
+  echo "  aiTrace.totalTokens=$TT  modelPolicyId=$MP  latencyMs=$LAT"
+  if [ "$TT" = "200" ] && [ "$MP" = "mp_doubao_pro" ] && [ "$LAT" = "1532" ]; then
+    ok "审核详情正确暴露 AI 可追溯信息"
+  else
+    fail "aiTrace 字段不符：$RESP_BODY"
+  fi
+else
+  fail "获取审核详情失败 ($HTTP_STATUS)：$RESP_BODY"
+fi
+
+# =============================================================================
+# Step 19：打回重审闭环（TC-FULL-02）—— RETURN → 重提(attempt2) → PASS → ACCEPTED
+# =============================================================================
+step_header 19 "打回重审闭环：RETURN → 重提 → PASS (TC-FULL-02)"
+
+RAW=$(do_post "$BASE/tasks" "$OWNER_TOKEN" "$TASK_BODY"); split_resp "$RAW"
+RW_TASK=$(jval "$RESP_BODY" "d['task']['id']")
+RAW=$(do_put "$BASE/tasks/$RW_TASK/schema/draft" "$OWNER_TOKEN" "$SCHEMA_BODY"); split_resp "$RAW"
+RW_REV=$(jval "$RESP_BODY" "str(d['schemaDraftRevision'])")
+RAW=$(do_post "$BASE/tasks/$RW_TASK/schema/publish" "$OWNER_TOKEN" "{\"schemaDraftRevision\": $RW_REV}"); split_resp "$RAW"
+RW_SV=$(jval "$RESP_BODY" "d['schemaVersion']['id']")
+RW_ITEM=$(db_py "
+from uuid import uuid4
+db = SessionLocal()
+it = DatasetItem(id='item_rw_'+uuid4().hex[:8], task_id='$RW_TASK', external_key='rw',
+                 source_payload={'text': 'rework'}, status='AVAILABLE')
+db.add(it); db.commit(); print(it.id); db.close()
+" | grep '^item_rw_' | tr -d '[:space:]')
+do_post "$BASE/tasks/$RW_TASK/publish" "$OWNER_TOKEN" \
+  "{\"schemaVersionId\": \"$RW_SV\", \"reviewDisabledExplicitly\": false}" >/dev/null
+
+# 第一轮：领取 → 提交 → 绕过 → reviewer 打回
+RAW=$(do_post "$BASE/tasks/$RW_TASK/claim" "$LABELER_TOKEN" '{}'); split_resp "$RAW"
+RW_ASN=$(jval "$RESP_BODY" "d['context']['assignment']['id']")
+RAW=$(do_post "$BASE/assignments/$RW_ASN/submit" "$LABELER_TOKEN" '{"answers":{"textField":"第一版答案"}}'); split_resp "$RAW"
+RW_SUB1=$(jval "$RESP_BODY" "d['submission']['id']")
+bypass_sub "$RW_SUB1"
+do_post "$BASE/review/submissions/$RW_SUB1/claim" "$REVIEWER_TOKEN" '{}' >/dev/null
+RAW=$(do_post "$BASE/review/submissions/$RW_SUB1/decision" "$REVIEWER_TOKEN" \
+  '{"stage":"HUMAN_REVIEW","decision":"RETURN","reason":"内容需要修改","comments":[]}'); split_resp "$RAW"
+RW_DEC1=$(jval "$RESP_BODY" "d['reviewResult']['decision']")
+RW_S1=$(jval "$RESP_BODY" "d['submission']['status']")
+echo "  第一轮：decision=$RW_DEC1  submission=$RW_S1"
+
+# 第二轮：同一 assignment 重新提交 → 绕过 → reviewer 通过
+RAW=$(do_post "$BASE/assignments/$RW_ASN/submit" "$LABELER_TOKEN" '{"answers":{"textField":"修改后第二版"}}'); split_resp "$RAW"
+RW_SUB2=$(jval "$RESP_BODY" "d['submission']['id']")
+RW_ATTEMPT=$(jval "$RESP_BODY" "str(d['submission']['attemptNo'])")
+bypass_sub "$RW_SUB2"
+do_post "$BASE/review/submissions/$RW_SUB2/claim" "$REVIEWER_TOKEN" '{}' >/dev/null
+RAW=$(do_post "$BASE/review/submissions/$RW_SUB2/decision" "$REVIEWER_TOKEN" \
+  '{"stage":"HUMAN_REVIEW","decision":"PASS","comments":[]}'); split_resp "$RAW"
+RW_FINAL=$(jval "$RESP_BODY" "d['submission']['status']")
+echo "  第二轮：attemptNo=$RW_ATTEMPT  最终 submission=$RW_FINAL"
+
+if [ "$RW_DEC1" = "RETURN" ] && [ "$RW_S1" = "RETURNED" ] && [ "$RW_ATTEMPT" = "2" ] && [ "$RW_FINAL" = "ACCEPTED" ]; then
+  ok "打回→重提(attempt2)→通过 闭环正确"
+else
+  fail "闭环异常：dec1=$RW_DEC1 s1=$RW_S1 attempt=$RW_ATTEMPT final=$RW_FINAL"
+fi
+
+# =============================================================================
+# Step 20：暂停拦截（TC-TASK-05）—— 暂停后 Labeler 无法领取
+# =============================================================================
+step_header 20 "暂停拦截：PAUSED 任务领取被拒 (TC-TASK-05)"
+do_post "$BASE/tasks/$RW_TASK/pause" "$OWNER_TOKEN" '{}' >/dev/null
+RAW=$(do_post "$BASE/tasks/$RW_TASK/claim" "$LABELER_TOKEN" '{}'); split_resp "$RAW"
+if [ "$HTTP_STATUS" = "422" ]; then
+  ok "暂停后领取被正确拒绝 (422)"
+else
+  fail "暂停后领取未被拒，期望 422，实际 $HTTP_STATUS：$RESP_BODY"
+fi
+
+# =============================================================================
 # 汇总
 # =============================================================================
 TOTAL=$((PASS + FAIL))
