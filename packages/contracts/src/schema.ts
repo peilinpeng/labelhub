@@ -106,6 +106,10 @@ export interface BaseFieldNode extends BaseNode {
   validateWhenHidden?: boolean;
   submitWhenDisabled?: boolean;
   validations?: ValidationRule[];
+  /**
+   * 字段联动规则。effect.target 表示 FieldNode.name，不是 nodeId。
+   */
+  linkageRules?: FieldLinkageRule[];
   deprecation?: FieldDeprecationConfig;
 }
 
@@ -237,6 +241,73 @@ export type Expression =
 export type ExprValue =
   | { kind: "path"; path: JsonPath }
   | { kind: "literal"; value: unknown };
+
+export interface FieldLinkageRule {
+  id: string;
+  when: Expression;
+  effects: FieldLinkageEffect[];
+  otherwise?: FieldLinkageEffect[];
+}
+
+export type FieldLinkageEffectAction =
+  | "setVisible"
+  | "setDisabled"
+  | "setRequired"
+  | "clearValue"
+  | "setValue"
+  | "setOptions"
+  | "setWarning"
+  | "setReadonly";
+
+export type FieldLinkageEffect =
+  | {
+      action: "setVisible";
+      /** 目标字段名，对应 FieldNode.name，不是 nodeId。 */
+      target: string;
+      value: boolean;
+    }
+  | {
+      action: "setDisabled";
+      /** 目标字段名，对应 FieldNode.name，不是 nodeId。 */
+      target: string;
+      value: boolean;
+    }
+  | {
+      action: "setRequired";
+      /** 目标字段名，对应 FieldNode.name，不是 nodeId。 */
+      target: string;
+      value: boolean;
+    }
+  | {
+      action: "clearValue";
+      /** 目标字段名，对应 FieldNode.name，不是 nodeId。 */
+      target: string;
+    }
+  | {
+      action: "setValue";
+      /** 目标字段名，对应 FieldNode.name，不是 nodeId。 */
+      target: string;
+      value: unknown;
+    }
+  | {
+      action: "setOptions";
+      /** 目标字段名，对应 FieldNode.name，不是 nodeId。 */
+      target: string;
+      options: Option[];
+    }
+  | {
+      action: "setWarning";
+      /** 目标字段名，对应 FieldNode.name，不是 nodeId。 */
+      target: string;
+      message: string;
+      code?: string;
+    }
+  | {
+      action: "setReadonly";
+      /** 目标字段名，对应 FieldNode.name，不是 nodeId。 */
+      target: string;
+      value: boolean;
+    };
 
 export interface LLMOutputBinding {
   from: JsonPath;

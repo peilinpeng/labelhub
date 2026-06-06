@@ -8,10 +8,11 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "npm run -w @labelhub/contracts typecheck && npm run -w @labelhub/schema-core typecheck && npm run -w @labelhub/schema-renderer typecheck && npm run -w @labelhub/schema-designer typecheck && npm run -w @labelhub/workflow-core typecheck",
-    "test": "npm run -w @labelhub/contracts test && npm run -w @labelhub/schema-core test && npm run -w @labelhub/schema-renderer test && npm run -w @labelhub/schema-designer test && npm run -w @labelhub/workflow-core test",
+    "typecheck": "npm run -w @labelhub/contracts typecheck && npm run -w @labelhub/schema-core typecheck && npm run -w @labelhub/schema-compiler typecheck && npm run -w @labelhub/schema-renderer typecheck && npm run -w @labelhub/schema-designer typecheck && npm run -w @labelhub/workflow-core typecheck",
+    "test": "npm run -w @labelhub/contracts test && npm run -w @labelhub/schema-core test && npm run -w @labelhub/schema-compiler test && npm run -w @labelhub/schema-renderer test && npm run -w @labelhub/schema-designer test && npm run -w @labelhub/workflow-core test",
     "test:contracts": "npm run -w @labelhub/contracts test",
     "test:schema-core": "npm run -w @labelhub/schema-core test",
+    "test:schema-compiler": "npm run -w @labelhub/schema-compiler test",
     "test:schema-renderer": "npm run -w @labelhub/schema-renderer test",
     "test:schema-designer": "npm run -w @labelhub/schema-designer test",
     "test:workflow-core": "npm run -w @labelhub/workflow-core test"

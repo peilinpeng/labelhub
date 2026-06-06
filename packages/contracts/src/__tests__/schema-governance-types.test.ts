@@ -6,6 +6,7 @@ import type {
   CompatibilityReport,
   ExportMapping,
   FieldNode,
+  FieldLinkageRule,
   MigrationExecutionResult,
   MigrationPlan,
   RuntimeContextWithOutput,
@@ -31,6 +32,60 @@ describe("Schema Version Management 类型契约", () => {
 
     equal(field.deprecation?.deprecated, true);
     equal(field.deprecation?.replacementFieldName, "reviewComment");
+  });
+
+  test("FieldNode.linkageRules 可以表达字段名目标和静态 effect", () => {
+    const rule: FieldLinkageRule = {
+      id: "R-review-reject-reason",
+      when: {
+        op: "eq",
+        left: { kind: "path", path: "$.answers.reviewResult" },
+        right: { kind: "literal", value: "reject" },
+      },
+      effects: [
+        {
+          action: "setVisible",
+          target: "rejectReason",
+          value: true,
+        },
+        {
+          action: "setRequired",
+          target: "rejectReason",
+          value: true,
+        },
+        {
+          action: "setOptions",
+          target: "rejectReasonCategory",
+          options: [{ label: "事实问题", value: "fact_issue" }],
+        },
+        {
+          action: "setValue",
+          target: "reviewStatus",
+          value: "needs_reason",
+        },
+      ],
+      otherwise: [
+        {
+          action: "clearValue",
+          target: "rejectReason",
+        },
+      ],
+    };
+    const field: FieldNode = {
+      id: "review_result",
+      kind: "FIELD",
+      type: "choice.radio",
+      title: "审核结果",
+      name: "reviewResult",
+      options: [
+        { label: "通过", value: "pass" },
+        { label: "退回", value: "reject" },
+      ],
+      linkageRules: [rule],
+    };
+
+    equal(field.linkageRules?.[0]?.effects[0]?.target, "rejectReason");
+    equal(field.linkageRules?.[0]?.effects[2]?.action, "setOptions");
   });
 
   test("RuntimeContextWithOutput.visibilityMode 可以被合法赋值", () => {
