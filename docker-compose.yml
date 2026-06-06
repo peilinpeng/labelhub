@@ -9,7 +9,7 @@ services:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000/api/v1}
       VITE_ENABLE_MSW: ${VITE_ENABLE_MSW:-true}
     ports:
-      - "${WEB_PORT:-5173}:5173"
+      - "${WEB_PORT:-5173}:5180"
     volumes:
       - .:/workspace
       - web_node_modules:/workspace/apps/web/node_modules
