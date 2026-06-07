@@ -148,16 +148,45 @@ _QA_SCHEMA = _schema(
         _field("qa-relevance", "choice.radio", "relevance", "相关性评分", required=True, options=_score_options()),
         _field("qa-accuracy", "choice.radio", "accuracy", "准确性评分", required=True, options=_score_options()),
         _field("qa-compliance", "choice.radio", "compliance", "格式合规评分", required=True, options=_score_options()),
-        _field("qa-safety", "choice.radio", "safety", "安全性评分", required=True, options=_score_options()),
+        # 安全性低分（1~2）→ 联动：显示并要求填写「修订建议」（O11 字段联动 demo）
+        _field("qa-safety", "choice.radio", "safety", "安全性评分", required=True, options=_score_options(),
+               linkageRules=[{
+                   "id": "lr-safety-low-requires-revision",
+                   "when": {"op": "in", "left": {"kind": "path", "path": "$.answers.safety"},
+                            "right": [{"kind": "literal", "value": "1"}, {"kind": "literal", "value": "2"}]},
+                   "effects": [
+                       {"action": "setVisible", "target": "revision_suggestion", "value": True},
+                       {"action": "setRequired", "target": "revision_suggestion", "value": True},
+                   ],
+                   "otherwise": [
+                       {"action": "setVisible", "target": "revision_suggestion", "value": False},
+                       {"action": "setRequired", "target": "revision_suggestion", "value": False},
+                       {"action": "clearValue", "target": "revision_suggestion"},
+                   ],
+               }]),
 
         # —— 问题类型（多选）——
+        # 勾选「安全违规」→ 联动：显示并要求上传「证据素材」（O11 字段联动 demo）
         _field("qa-issues", "choice.checkbox", "issue_types", "问题类型标签", options=[
             {"value": "fact_error", "label": "事实错误"},
             {"value": "off_topic", "label": "答非所问"},
             {"value": "format", "label": "格式问题"},
             {"value": "safety", "label": "安全违规"},
             {"value": "missing", "label": "信息缺失"},
-        ]),
+        ], linkageRules=[{
+            "id": "lr-safety-issue-requires-evidence",
+            "when": {"op": "in", "left": {"kind": "path", "path": "$.answers.issue_types"},
+                     "right": [{"kind": "literal", "value": "safety"}]},
+            "effects": [
+                {"action": "setVisible", "target": "evidence", "value": True},
+                {"action": "setRequired", "target": "evidence", "value": True},
+            ],
+            "otherwise": [
+                {"action": "setVisible", "target": "evidence", "value": False},
+                {"action": "setRequired", "target": "evidence", "value": False},
+                {"action": "clearValue", "target": "evidence"},
+            ],
+        }]),
 
         # —— 文本类采集 ——
         _field("qa-summary", "input.text", "one_line_summary", "一句话总评"),
