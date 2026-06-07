@@ -41,10 +41,15 @@
 
 ```txt
 分支：    integration/joint-test（主线；feature/schema-governance-upgrade 已于 81ad726 受控合并进主线）
-commit：  e625d63   feat(labeler): 实现「我的提交」页（替换占位桩，对接已就绪后端）
+commit：  2cf3c7e   chore(deploy): 新增 .env.example 模板（云部署一键可填，占位符无真实密钥）
 工作区：  clean（仅 .claude/ 本地 preview 产物未跟踪，不提交）
-更新时间：2026-06-07（Claude Code：对照官方 PDF 修复草稿自动保存 + 我的提交页，已 push）
+更新时间：2026-06-07（Claude Code：登录健壮性 + bundle 代码分割 + .env.example 云部署模板，已 push）
 更新者：  Claude Code
+
+近三次收尾（本轮）：
+  - b4cd12b fix(web): 登录健壮性——失败不再静默放行 + token 失效跳登录
+  - 3199248 chore(web): bundle 按依赖代码分割，消除 >500kB chunk 警告（main 624kB→266kB）
+  - 2cf3c7e chore(deploy): 新增 .env.example 云部署模板
 
 三条主线均已完成并 push：
   - Schema Governance：cf3317a 及之前各 commit
@@ -218,6 +223,20 @@ cd apps/web && npm run typecheck && npm run build
 ## 9. 上一班工作日志（收班时追加，最新在上）
 
 ```txt
+### 2026-06-07 | Claude Code（体验健壮性 + 工程打磨 + 云部署模板，已 push 2cf3c7e）
+- 背景：对照官方提交物要求收尾三项（跳过移动端/虚拟化等可选加分）。
+- b4cd12b 登录健壮性：原 App.tsx handleRoleSelect 把登录失败 catch 吞掉仍进工作台
+  （只存 role 不存 token → 全程 401 回退 mock 假数据，答辩易误导评委）。
+  修：①登录失败停在登录页报错、不进工作台；②client.ts 401 清 token 跳登录、不再静默 mock。
+  浏览器三态实测：错误密码停留报错 / 无效 token 跳登录清 token / 正确登录进真实数据，均通过。
+- 3199248 bundle 代码分割：单 chunk 624kB 超 500kB 警告。vite manualChunks 拆
+  vendor-react(207kB)/vendor-formily(137kB)/vendor(14kB)，main 降到 266kB，警告消除。
+  （vitest CVE 升级、mock-db 占位评估后不动——dev-only / 非 live 路径，非阻断。）
+- 2cf3c7e .env.example 云部署模板：compose 已用 ${VAR:-default} 参数化但缺可提交模板。
+  按 config.py 必需 6 变量补占位符模板 + 云部署说明；真实 .env 仍 gitignore，无密钥泄漏。
+- 是否触碰边界：动了 apps/web（渲染/壳层）+ 根 .env.example，未改 packages/contracts 与架构契约。
+- 验证：web typecheck+build ✅；登录三态浏览器实测 ✅；密钥泄漏安全检查 ✅（.env 被忽略、模板纯占位、历史无 .env）。
+
 ### 2026-06-07 | Claude Code（对照官方 PDF 修复 Labeler 两缺口，已 push e625d63）
 - 背景：按官方课题 PDF（LabelHub·AI全栈课题实现要求）逐条核对 4.1~4.6。绝大部分已真实落地；
   发现 2 个 Labeler 功能完备性缺口（属验收 60% 桶）。
