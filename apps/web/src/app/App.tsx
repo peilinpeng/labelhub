@@ -10,6 +10,7 @@ import OwnerTaskDetailPage from "../features/owner/OwnerTaskDetailPage";
 import OwnerDatasetPage from "../features/owner/OwnerDatasetPage";
 import LabelerWorkspace from "../features/labeler/LabelerWorkspace";
 import AssignmentPage from "../features/labeler/AssignmentPage";
+import LabelerSubmissionsPage from "../features/labeler/LabelerSubmissionsPage";
 import ReviewerWorkspace from "../features/reviewer/ReviewerWorkspace";
 import ReviewDetailPage from "../features/reviewer/ReviewDetailPage";
 import { AppShell, type ShellNavItem } from "../ui/AppShell";
@@ -243,15 +244,7 @@ function AppRoutes({ role }: { role: Role }) {
 
       <Route path={RoutePath.LABELER_TASKS} element={<LabelerWorkspace role={role} />} />
       <Route path={RoutePath.LABELER_WORKSPACE} element={<AssignmentPage role={role} />} />
-      <Route
-        path={RoutePath.LABELER_SUBMISSIONS}
-        element={
-          <PlaceholderPage
-            title="我的提交"
-            description="标注员提交列表尚未完成。当前流程可从任务市场领取任务并进入标注工作台。"
-          />
-        }
-      />
+      <Route path={RoutePath.LABELER_SUBMISSIONS} element={<LabelerSubmissionsPage role={role} />} />
 
       <Route path={RoutePath.REVIEWER_QUEUE} element={<ReviewerWorkspace role={role} />} />
       <Route path={RoutePath.REVIEWER_SUBMISSIONS} element={<ReviewDetailPage role={role} />} />

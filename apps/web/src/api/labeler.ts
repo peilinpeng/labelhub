@@ -10,6 +10,7 @@ import type {
   LLMRuntimeResponse,
   Task,
   Submission,
+  Assignment,
 } from "@labelhub/contracts";
 import { apiGet, apiPost, apiPut } from "./client";
 
@@ -58,6 +59,12 @@ export async function callLLMAssist(
 
 export async function listMySubmissions(): Promise<Submission[]> {
   const res = await apiGet<PageList<Submission>>("/api/v1/me/submissions");
+  return unwrapList(res);
+}
+
+// 我的作答记录（GET /me/submissions 返回 assignment 形状：含 status / taskId / updatedAt）
+export async function listMyAssignments(): Promise<Assignment[]> {
+  const res = await apiGet<PageList<Assignment>>("/api/v1/me/submissions");
   return unwrapList(res);
 }
 
