@@ -269,12 +269,9 @@ function App() {
   const [role, setRole] = useState<Role | null>(() => inferRoleFromPath(location.pathname));
 
   const handleRoleSelect = async (nextRole: Role, email: string, password: string): Promise<void> => {
-    try {
-      await loginWithCredentials(nextRole, email, password);
-    } catch (error) {
-      console.warn("Login API unavailable, entering workspace with local session.", error);
-      localStorage.setItem("labelhub_role", nextRole);
-    }
+    // 登录必须真正成功（拿到有效 token）才进工作台。失败则抛出，由 LoginPage 显示错误并停留，
+    // 不再"静默放行"——避免无 token 进入后所有 API 401、回退 mock 假数据误导演示。
+    await loginWithCredentials(nextRole, email, password);
     setRole(nextRole);
     navigate(roleHome[nextRole]);
   };
