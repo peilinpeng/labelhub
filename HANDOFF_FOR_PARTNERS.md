@@ -30,7 +30,7 @@ VITE_ENABLE_MSW=true npm run dev
 ### 模式 B（完整真实链路，给端到端手动测试）：docker 一键起全栈
 
 ```bash
-cp .env.example .env        # 按需填 DOUBAO_API_KEY 等（举办方 key 见课题 PDF 第 7 页）
+cp .env.example .env        # 真实 DOUBAO_API_KEY 等密钥需向原维护者私下索取（不在仓库里）
 docker compose up -d --build
 docker compose exec -w /workspace/apps/api api alembic upgrade head
 docker compose exec -w /workspace/apps/api api python scripts/seed_demo.py
