@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, field_validator
+
+from app.utils.hashing import sha256_hex
 
 
 class ReviewPatch(BaseModel):
@@ -167,9 +168,14 @@ class AITraceResponse(BaseModel):
     """AI 预审可追溯信息（TC-AI-07）：模型 ID、Prompt 快照哈希、Token 用量、耗时。
 
     §4.4 要求"查看 AI 评语与原始 Prompt"：在 hash 之外附上当前 ReviewConfig 的
-    Prompt 原文（promptTemplate）。promptSnapshotMatches 表示该原文的 sha256 是否
-    与调用时的 promptSnapshotHash 一致——若 Owner 在调用后改过 Prompt 则为 False，
-    提示 reviewer 当前展示的原文与本次 AI 调用所用快照可能存在漂移。
+    Prompt 原文（promptTemplate）。promptSnapshotMatches 表示「当前模板原文」是否与
+    「本次 AI 调用时捕获的模板原文」一致——若 Owner 在调用后改过 Prompt 则为 False，
+    提示 reviewer 当前展示的原文与本次调用所用快照存在漂移。
+
+    注意：漂移判定必须 raw-vs-raw。基准是 AIReviewJob.prompt_snapshot_hash（调用时
+    对 ReviewConfig.prompt_template 原文取的 SHA-256），由调用方经 snapshot_prompt_hash
+    传入；不能用 LLMCallLog.promptSnapshotHash（那是_渲染后_含变量替换的 prompt 哈希，
+    与原文模板不同维度，直接比对会恒为 False）。
     """
     callId: str
     modelPolicyId: str
@@ -185,13 +191,16 @@ class AITraceResponse(BaseModel):
     finishedAt: datetime | None = None
 
     @classmethod
-    def from_orm(cls, log, review_config=None) -> "AITraceResponse":
+    def from_orm(cls, log, review_config=None, snapshot_prompt_hash=None) -> "AITraceResponse":
         prompt_template = None
         prompt_matches = None
         if review_config is not None and review_config.prompt_template is not None:
             prompt_template = review_config.prompt_template
-            current_hash = hashlib.sha256(prompt_template.encode()).hexdigest()
-            prompt_matches = current_hash == log.prompt_snapshot_hash
+            # raw-vs-raw：当前模板原文 hash 对比调用时捕获的模板原文 hash（AIReviewJob）。
+            # 无 snapshot_prompt_hash（旧数据/无对应 job）时无法判定漂移，置 None。
+            if snapshot_prompt_hash is not None:
+                current_hash = sha256_hex(prompt_template)
+                prompt_matches = current_hash == snapshot_prompt_hash
         return cls(
             callId=log.id,
             modelPolicyId=log.model_policy_id,

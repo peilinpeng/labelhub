@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from app.models.submission import Submission
 from app.models.llm import LLMCallLog
-from app.models.review import ReviewConfig
+from app.models.review import ReviewConfig, AIReviewJob
 from tests.helpers import setup_published_task
 
 
@@ -149,6 +149,8 @@ def _make_review_config(db_session, task_id: str, prompt_template: str) -> None:
 
 
 def _inject_ai_trace(db_session, sub_id: str, prompt_snapshot_hash: str) -> None:
+    """注入 AI_REVIEW LLMCallLog。生产里其 prompt_snapshot_hash 是_渲染后_ prompt 的
+    哈希（含变量替换），与模板原文不同维度——故漂移判定不能用它，见 _inject_ai_job。"""
     log = LLMCallLog(
         id="llm_" + uuid4().hex,
         purpose="AI_REVIEW",
@@ -166,15 +168,39 @@ def _inject_ai_trace(db_session, sub_id: str, prompt_snapshot_hash: str) -> None
     db_session.commit()
 
 
+def _inject_ai_job(db_session, sub_id: str, prompt_snapshot_hash: str) -> None:
+    """注入本次调用对应的 AIReviewJob：prompt_snapshot_hash = 调用时 Prompt 模板原文
+    的 SHA-256，是漂移判定的正确基准（raw-vs-raw）。"""
+    sub = db_session.query(Submission).filter_by(id=sub_id).first()
+    job = AIReviewJob(
+        id="job_" + uuid4().hex,
+        submission_id=sub_id,
+        attempt_no=sub.attempt_no,
+        schema_version_id=sub.schema_version_id,
+        status="SUCCEEDED",
+        retry_count=0,
+        max_retries=3,
+        idempotency_key=f"{sub_id}:{sub.attempt_no}",
+        prompt_snapshot_hash=prompt_snapshot_hash,
+        model_snapshot_json={"provider": "doubao", "model": "ep", "responseFormat": "JSON_SCHEMA"},
+    )
+    db_session.add(job)
+    db_session.commit()
+
+
 def test_review_detail_exposes_prompt_template_with_matching_snapshot(client, auth, db_session):
-    """§4.4：aiTrace 附原始 Prompt 原文；当前模板 hash 与调用快照一致时 matches=True。"""
+    """§4.4：aiTrace 附原始 Prompt 原文；当前模板原文 hash 与调用快照一致时 matches=True。
+
+    刻意让 LLMCallLog 存一个_不同于_模板原文 hash 的"渲染后"哈希，证明漂移判定用的是
+    AIReviewJob（模板原文 hash）而非 LLMCallLog（渲染后 hash）。"""
     ctx = setup_published_task(client, db_session, auth["OWNER"])
     sub_id = _claim_and_submit(client, auth, db_session, ctx["task_id"])
 
     prompt = "请审核以下标注答案：{{answer}}"
     _make_review_config(db_session, ctx["task_id"], prompt)
-    snapshot_hash = hashlib.sha256(prompt.encode()).hexdigest()
-    _inject_ai_trace(db_session, sub_id, snapshot_hash)
+    raw_hash = hashlib.sha256(prompt.encode()).hexdigest()
+    _inject_ai_trace(db_session, sub_id, "rendered_hash_differs_from_template")
+    _inject_ai_job(db_session, sub_id, raw_hash)
 
     resp = client.get(f"/api/v1/review/submissions/{sub_id}", headers=auth["REVIEWER"])
     assert resp.status_code == 200
@@ -189,12 +215,30 @@ def test_review_detail_prompt_snapshot_drift_flagged(client, auth, db_session):
     sub_id = _claim_and_submit(client, auth, db_session, ctx["task_id"])
 
     _make_review_config(db_session, ctx["task_id"], "改动后的新 Prompt")
-    _inject_ai_trace(db_session, sub_id, "hash_of_old_prompt")
+    _inject_ai_trace(db_session, sub_id, "rendered_hash_whatever")
+    # 调用时模板原文是「原始旧 Prompt」，其 hash 与当前「改动后的新 Prompt」不一致 → 漂移
+    old_raw_hash = hashlib.sha256("原始旧 Prompt".encode()).hexdigest()
+    _inject_ai_job(db_session, sub_id, old_raw_hash)
 
     resp = client.get(f"/api/v1/review/submissions/{sub_id}", headers=auth["REVIEWER"])
     trace = resp.json()["aiTrace"]
     assert trace["promptTemplate"] == "改动后的新 Prompt"
     assert trace["promptSnapshotMatches"] is False
+
+
+def test_review_detail_prompt_snapshot_matches_none_without_job(client, auth, db_session):
+    """有 ReviewConfig 但无对应 AIReviewJob（旧数据）：无法判定漂移，matches=None。"""
+    ctx = setup_published_task(client, db_session, auth["OWNER"])
+    sub_id = _claim_and_submit(client, auth, db_session, ctx["task_id"])
+
+    prompt = "请审核以下标注答案：{{answer}}"
+    _make_review_config(db_session, ctx["task_id"], prompt)
+    _inject_ai_trace(db_session, sub_id, "rendered_hash_only")  # 无 _inject_ai_job
+
+    resp = client.get(f"/api/v1/review/submissions/{sub_id}", headers=auth["REVIEWER"])
+    trace = resp.json()["aiTrace"]
+    assert trace["promptTemplate"] == prompt
+    assert trace["promptSnapshotMatches"] is None
 
 
 def test_review_detail_prompt_template_null_without_config(client, auth, db_session):

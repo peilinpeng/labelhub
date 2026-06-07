@@ -428,12 +428,21 @@ def get_review_detail(db: Session, submission_id: str, actor: Any) -> dict:
     # §4.4：审核详情展示原始 Prompt。取该任务当前 ReviewConfig 的 prompt_template 原文，
     # 由 AITraceResponse 附带并标记是否与本次调用快照哈希一致。
     review_config = db.query(ReviewConfig).filter_by(task_id=submission.task_id).first()
+    # 漂移判定基准：本次调用对应的 AIReviewJob.prompt_snapshot_hash（调用时对 Prompt
+    # 模板原文取的 SHA-256），与 ai_trace（LLMCallLog，存渲染后 prompt 哈希）取最新一致。
+    ai_job = (
+        db.query(AIReviewJob)
+        .filter_by(submission_id=submission.id)
+        .order_by(AIReviewJob.created_at.desc())
+        .first()
+    )
     return {
         "submission": submission,
         "task": task,
         "schema_version": schema_version,
         "ai_result": ai_result,
         "ai_trace": ai_trace,
+        "ai_job": ai_job,
         "review_config": review_config,
         "history": history,
         "audit_logs": audit_logs,

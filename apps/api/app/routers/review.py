@@ -75,7 +75,11 @@ def get_review_detail(
         schemaVersionId=detail["submission"].schema_version_id,
         schemaJson=detail["schema_version"].schema_json if detail["schema_version"] else {},
         aiResult=ReviewResultResponse.from_orm(detail["ai_result"]) if detail["ai_result"] else None,
-        aiTrace=AITraceResponse.from_orm(detail["ai_trace"], detail.get("review_config"))
+        aiTrace=AITraceResponse.from_orm(
+            detail["ai_trace"],
+            detail.get("review_config"),
+            detail["ai_job"].prompt_snapshot_hash if detail.get("ai_job") else None,
+        )
         if detail["ai_trace"]
         else None,
         history=[ReviewResultResponse.from_orm(r) for r in detail["history"]],
