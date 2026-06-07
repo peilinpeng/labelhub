@@ -690,6 +690,43 @@ else
 fi
 
 # =============================================================================
+# Step 21：异步导出 → Data Quality Passport（Quality Layer / Demo 场景五）
+# =============================================================================
+step_header 21 "导出生成数据质量护照 (TC-EXP-04 / Quality Layer)"
+EXPORT_BODY=$(cat <<JSON
+{"mapping":{"schemaVersionId":"$SCHEMA_VERSION_ID","format":"JSON","answerSource":"ORIGINAL_ANSWERS","includeReviewRecords":true,"columns":[{"header":"文本","sourcePath":"\$.answers.textField","defaultValue":""}]}}
+JSON
+)
+RAW=$(do_post "$BASE/tasks/$TASK_ID/exports" "$OWNER_TOKEN" "$EXPORT_BODY"); split_resp "$RAW"
+if [ "$HTTP_STATUS" = "201" ]; then
+  EXPORT_ID=$(jval "$RESP_BODY" "d['exportJob']['id']")
+  echo "  exportJob.id: $EXPORT_ID（创建状态 $(jval "$RESP_BODY" "d['exportJob']['status']")）"
+  # 同步执行导出逻辑（worker 可选，与 Step 11b 一致，保证无 Celery 也可跑）
+  docker compose exec -T api python -c "
+from app.database import SessionLocal
+from app.worker.export_worker import _execute_export
+db = SessionLocal()
+try:
+    _execute_export(db, '$EXPORT_ID')
+finally:
+    db.close()
+" >/dev/null 2>&1
+  RAW=$(do_get "$BASE/exports/$EXPORT_ID/records" "$OWNER_TOKEN"); split_resp "$RAW"
+  PCOUNT=$(jval "$RESP_BODY" "str(d.get('artifactSummary',{}).get('passportCount'))")
+  BATCH=$(jval "$RESP_BODY" "d.get('artifactSummary',{}).get('passportBatchHash') or ''")
+  RSTATUS=$(jval "$RESP_BODY" "(d.get('records') or [{}])[0].get('passport',{}).get('reviewStatus','')")
+  FHASH=$(jval "$RESP_BODY" "(d.get('records') or [{}])[0].get('passport',{}).get('finalAnswerHash','')")
+  echo "  passportCount=$PCOUNT  reviewStatus=$RSTATUS  finalAnswerHash(len)=${#FHASH}  batchHash(len)=${#BATCH}"
+  if [ "${#FHASH}" = "64" ] && [ "${#BATCH}" = "64" ] && [ -n "$PCOUNT" ] && [ "$PCOUNT" != "0" ] && [ "$PCOUNT" != "None" ]; then
+    ok "导出生成数据质量护照（passportCount=$PCOUNT，finalAnswerHash/batchHash 均为 64 位 SHA-256，reviewStatus=$RSTATUS）"
+  else
+    fail "导出记录缺少有效 passport：$RESP_BODY"
+  fi
+else
+  fail "创建导出任务失败 (HTTP $HTTP_STATUS)：$RESP_BODY"
+fi
+
+# =============================================================================
 # 汇总
 # =============================================================================
 TOTAL=$((PASS + FAIL))
