@@ -53,6 +53,13 @@ function getFallbackTaskItems(context: AssignmentContextResponse): DatasetItem[]
   return hasCurrentItem ? sameTaskItems : [context.item, ...sameTaskItems];
 }
 
+// 自动保存徽章用：ISO 时间 → 本地 HH:MM:SS
+function formatClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
 function getItemTitle(item: DatasetItem): string {
   const payload = item.sourcePayload as Record<string, unknown>;
   const rawTitle =
@@ -98,6 +105,9 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const [pendingSubmitAnswers, setPendingSubmitAnswers] = useState<AnswerPayload | null>(null);
   const [taskItems, setTaskItems] = useState<DatasetItem[]>([]);
   const [submittedItemIds, setSubmittedItemIds] = useState<string[]>([]);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  // 已保存内容的基线快照：用于自动保存的脏检查，避免把"刚载入的草稿"重复回存
+  const savedSnapshotRef = useRef<string | null>(null);
   const aiAssistMetadataByCallIdRef = useRef<Map<string, AiAssistResponseMetadata>>(new Map());
   const acceptedAiAssistPatchesRef = useRef<Map<string, AcceptedAiAssistPatch>>(new Map());
   const aiAssistCallAttemptCounterRef = useRef(0);
@@ -143,7 +153,37 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     acceptedAiAssistPatchesRef.current.clear();
     aiAssistCallAttemptCounterRef.current = 0;
     aiAssistAcceptedOrderCounterRef.current = 0;
+    // 切题/换 assignment：重置自动保存基线，下一次 effect 以当前题答案重新建基线，
+    // 避免把"导航切换导致的 answers 变化"误判为脏数据触发保存。
+    savedSnapshotRef.current = null;
   }, [assignmentId, context?.item.id]);
+
+  // 草稿自动保存：答案变化且与上次已保存内容不同时，空闲 1.2s 后回存草稿（防丢失）。
+  // 首次载入草稿时仅建立基线快照、不触发保存；保存成功后刷新基线与时间戳。
+  useEffect(() => {
+    if (!assignmentId || loading) return;
+    const snapshot = JSON.stringify(answers);
+    if (savedSnapshotRef.current === null) {
+      savedSnapshotRef.current = snapshot; // 建立基线（载入的草稿）
+      return;
+    }
+    if (snapshot === savedSnapshotRef.current) return; // 无改动，跳过
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          setSaving(true);
+          await saveDraft(assignmentId, { answers, clientRevision: 0 });
+          savedSnapshotRef.current = snapshot;
+          setLastSavedAt(new Date().toISOString());
+        } catch (e) {
+          console.error("Auto-save draft failed:", e);
+        } finally {
+          setSaving(false);
+        }
+      })();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [answers, assignmentId, loading]);
 
   const runtimeContext: LabelHubRuntimeContext = context
     ? {
@@ -205,6 +245,8 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     try {
       setSaving(true);
       await saveDraft(assignmentId, { answers, clientRevision: 0 });
+      savedSnapshotRef.current = JSON.stringify(answers);
+      setLastSavedAt(new Date().toISOString());
     } catch (e) {
       console.error("Failed to save draft:", e);
     } finally {
@@ -441,7 +483,13 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           <span>标注员工作台 / 任务市场 · {context.task.title} / 第 {currentItemNumber} / {totalItems} 题</span>
         </div>
         <div className="labeler-runner-user">
-          <Badge tone={saving ? "warning" : "success"}>{saving ? "保存中..." : "草稿已自动保存 18:02:31"}</Badge>
+          <Badge tone={saving ? "warning" : lastSavedAt ? "success" : "default"}>
+            {saving
+              ? "保存中..."
+              : lastSavedAt
+                ? `草稿已自动保存 ${formatClock(lastSavedAt)}`
+                : "草稿未保存"}
+          </Badge>
           <span className="labeler-runner-avatar">李</span>
           <span>李雷 · Labeler</span>
         </div>
