@@ -318,3 +318,77 @@ def test_ai_generate_requires_owner(client, auth, monkeypatch):
         headers=auth["LABELER"],
     )
     assert resp.status_code == 403
+
+
+# ── Schema Runtime Engine 兼容：BaseFieldNode.linkageRules 可选字段 ──────────
+# 搭档 feature/schema-governance-upgrade 在 contracts 给 BaseFieldNode 新增了可选
+# linkageRules（LabelHub runtime 联动 DSL，target = FieldNode.name）。后端 schema
+# 校验/发布/取回必须容忍该字段、不丢弃、不报错。本组测试锁定这一兼容契约，
+# 防止后续后端改动意外破坏对 linkageRules 的容忍。
+
+# canonical schema：一个字段携带 linkageRules（when 复用 Expression，target=name）
+_SCHEMA_WITH_LINKAGE = {
+    "contractVersion": "1.1",
+    "schemaId": "schema_linkage",
+    "schemaDraftRevision": 1,
+    "status": "DRAFT",
+    "meta": {"name": "联动测试", "taskId": "t", "authorId": "u"},
+    "root": {
+        "id": "root", "kind": "CONTAINER", "type": "container.section", "title": "根",
+        "children": [
+            {"id": "f-review", "kind": "FIELD", "type": "choice.radio", "name": "review_result",
+             "title": "审核结论", "required": True, "options": [
+                 {"value": "approve", "label": "通过"},
+                 {"value": "reject", "label": "打回"},
+             ]},
+            {"id": "f-reason", "kind": "FIELD", "type": "input.textarea", "name": "reject_reason",
+             "title": "打回理由",
+             # —— 关键：linkageRules（后端应原样保留，不解析、不校验内部结构）——
+             "linkageRules": [
+                 {"id": "R-reject-reason",
+                  "when": {"op": "eq",
+                           "left": {"kind": "path", "path": "$.answers.review_result"},
+                           "right": {"kind": "literal", "value": "reject"}},
+                  "effects": [
+                      {"target": "reject_reason", "action": "setVisible", "value": True},
+                      {"target": "reject_reason", "action": "setRequired", "value": True},
+                  ]}
+             ]},
+        ],
+    },
+}
+
+
+def test_linkage_rules_schema_validates(client, auth):
+    """带 linkageRules 的 canonical schema 应通过后端校验（额外字段被容忍）。"""
+    task = create_task(client, auth["OWNER"])
+    r = client.put(
+        f"/api/v1/tasks/{task['id']}/schema/draft",
+        json={"schema": _SCHEMA_WITH_LINKAGE},
+        headers=auth["OWNER"],
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["validation"]["valid"] is True
+
+
+def test_linkage_rules_preserved_through_publish(client, auth):
+    """发布后取回版本快照，linkageRules 原样保留、target=FieldNode.name 不丢失。"""
+    task = create_task(client, auth["OWNER"])
+    rev = client.put(
+        f"/api/v1/tasks/{task['id']}/schema/draft",
+        json={"schema": _SCHEMA_WITH_LINKAGE},
+        headers=auth["OWNER"],
+    ).json()["schemaDraftRevision"]
+    sv_id = client.post(
+        f"/api/v1/tasks/{task['id']}/schema/publish",
+        json={"schemaDraftRevision": rev},
+        headers=auth["OWNER"],
+    ).json()["schemaVersion"]["id"]
+
+    resp = client.get(f"/api/v1/schema-versions/{sv_id}", headers=auth["OWNER"])
+    assert resp.status_code == 200, resp.text
+    nodes = resp.json()["schema"]["root"]["children"]
+    reason = next(n for n in nodes if n.get("name") == "reject_reason")
+    assert "linkageRules" in reason, "linkageRules 被后端丢弃了"
+    rule = reason["linkageRules"][0]
+    assert rule["effects"][0]["target"] == "reject_reason"  # target = FieldNode.name
