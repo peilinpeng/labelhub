@@ -1,17 +1,8 @@
 # LabelHub 开发与演示环境
 
-本文档说明如何在本地启动 LabelHub 的 Mock 前端模式、Docker 全栈模式，以及如何运行 contracts 检查和演示数据 seed。
+本文档说明如何在本地与云端部署 LabelHub：Docker 全栈模式、前端 Mock 模式、迁移与 seed、以及云部署。
 
-当前仓库已经具备：
-
-- `labelhub-architecture-contract.md v1.1`
-- `packages/contracts`
-- contracts typecheck
-- 33 个契约测试
-- `apps/web/src/mocks` MSW Mock 层
-- Docker / Docker Compose 开发与演示环境
-
-当前仓库尚未具备完整 `apps/web` Vite / React 应用和 `apps/api` 真实后端服务。因此 Docker 第一版会在缺少业务代码时启动占位服务，保证 MySQL、Redis、web、api、worker 的开发环境可以一条命令拉起。接入真实应用后，Dockerfile 会自动执行对应 package 的 `npm run dev`。
+技术栈：前端 React + TS（Vite），后端 FastAPI + SQLAlchemy + Alembic，异步 Celery worker，MySQL 8 + Redis 7，LLM 接入豆包（OpenAI 兼容）。`docker compose up -d --build` 一条命令拉起全部服务（web / api / worker / mysql / redis）。
 
 ## 1. 本地 Mock 前端模式
 
@@ -141,44 +132,33 @@ cd packages/contracts
 npm run clean:test
 ```
 
-## 6. 数据库迁移
+## 6. 数据库迁移（Alembic）
 
-当前仓库尚未接入 ORM 和真实 API service，迁移命令为占位。
-
-后续接入 Prisma 时建议：
+后端使用 Alembic 管理迁移，迁移链 head 为 `b2c3d4e5f6a7`：
 
 ```bash
-cd apps/api
-npm run db:migrate
+docker compose exec -w /workspace/apps/api api alembic upgrade head
+docker compose exec -w /workspace/apps/api api alembic current   # 应显示 b2c3d4e5f6a7 (head)
 ```
 
-后续接入其他 ORM 时，保持以下原则：
-
-- 数据库模型必须来自 `labelhub-architecture-contract.md v1.1` 的 Storage Contract。
-- 后端类型必须引用 `packages/contracts`，不要重新定义契约类型。
-- 迁移必须覆盖 task、schema_versions、dataset_items、assignments、drafts、submissions、ai_review_jobs、review_results、export_jobs、files、audit_logs。
+迁移覆盖 task、schema_drafts、schema_versions、dataset_items、assignments、drafts、submissions、ai_review_jobs、review_results、review_configs、export_jobs、export_records、files、llm_call_logs、audit_logs、audit_events 等表。
 
 ## 7. Seed demo data
 
-已提供演示数据脚本：
+提供三套独立 seed 脚本（写入真实 MySQL）：
 
 ```bash
-scripts/seed-demo-data.ts
+# E2E 种子（账号 *@labelhub.test / Seed@1234）—— e2e_test.sh 依赖
+docker compose exec -w /workspace/apps/api api python scripts/seed.py
+# 演示种子（账号 *@labelhub.com / password123，含已发布任务 + 题目 + ReviewConfig）
+docker compose exec -w /workspace/apps/api api python scripts/seed_demo.py
+# 举办方真实数据集（qa_quality 30 题 + preference_compare 12 题，两个真实任务）
+docker compose exec -w /workspace/apps/api api python scripts/seed_competition.py
+# （可选）清理测试杂项任务，让任务市场干净
+docker compose exec -w /workspace/apps/api api python scripts/clean_demo.py
 ```
 
-当前脚本会输出符合 contracts 类型的 demo data JSON。接入真实 ORM 后，应将该脚本改为写入 MySQL。
-
-Docker 占位 seed：
-
-```bash
-docker compose --profile tools run --rm seed
-```
-
-后续接入 TypeScript runtime 后建议：
-
-```bash
-npx tsx scripts/seed-demo-data.ts
-```
+三套账号互不覆盖，可重复执行。
 
 ## 8. 文件存储
 
@@ -242,4 +222,35 @@ VITE_API_BASE_URL=http://localhost:3000/api/v1
 
 ### Worker 没有处理 AI Review / Export
 
-当前 worker 是占位进程。接入真实队列后，在 `apps/api/package.json` 中提供 `npm run worker`，并连接 `REDIS_URL` 和 `DATABASE_URL`。
+确认 `worker` 容器在运行（`docker compose ps`），且 `celery_app.py` 已 `include` 任务模块、`REDIS_URL` / `DATABASE_URL` / `DOUBAO_*` 已注入。可查看日志：`docker compose logs worker --tail 50`。
+
+## 10. 云部署（任意云平台）
+
+整套系统已 Docker 化，可部署到任意支持容器的云平台（ECS / 轻量应用服务器 / K8s / Render / Railway 等）。核心步骤：
+
+1. **托管依赖（推荐）**：用云数据库 MySQL 8 + 云 Redis，替代 compose 内置的 `mysql` / `redis`，提升可用性。
+2. **构建并推送镜像**：
+   ```bash
+   docker build -f apps/api/Dockerfile -t <registry>/labelhub-api:<tag> .
+   docker build -f apps/web/Dockerfile -t <registry>/labelhub-web:<tag> .
+   docker push <registry>/labelhub-api:<tag> && docker push <registry>/labelhub-web:<tag>
+   # worker 复用 api 镜像，启动命令改为 celery -A app.worker.celery_app worker
+   ```
+3. **配置环境变量**（云平台 Secret / 环境变量面板，切勿写进镜像）：
+   ```bash
+   DATABASE_URL=mysql+pymysql://<user>:<pwd>@<mysql-host>:3306/labelhub
+   REDIS_URL=redis://<redis-host>:6379
+   JWT_SECRET=<高强度随机值>
+   DOUBAO_API_KEY=<真实 key>
+   DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+   DOUBAO_MODEL=<接入点 ep-...>
+   FILE_STORAGE_DRIVER=local   # 或对接对象存储
+   ```
+4. **启动顺序**：api 容器启动前先跑迁移 `alembic upgrade head`；首次部署跑一次 seed。
+5. **前端代理/接口地址**：
+   - 若 web 容器内置 Vite 代理：注入 `VITE_PROXY_TARGET=http://<api-host>:3000`、`VITE_ENABLE_MSW=false`。
+   - 若前端走静态托管 + 网关：将 `/api` 反向代理到 api 服务，或构建时设 `VITE_API_BASE_URL` 为公网 api 地址。
+6. **健康检查**：api `GET /docs`（或自定义 `/health`）；mysql/redis 用云厂商健康检查；worker 看 Celery 日志。
+7. **演示环境最小配置建议**：2 vCPU / 4GB；api 与 worker 同镜像不同启动命令；MySQL/Redis 用托管小规格即可。
+
+> 演示环境访问地址与账号请在 `submission/README.md` 中补充。
