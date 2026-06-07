@@ -425,12 +425,16 @@ def get_review_detail(db: Session, submission_id: str, actor: Any) -> dict:
         .order_by(LLMCallLog.created_at.desc())
         .first()
     )
+    # §4.4：审核详情展示原始 Prompt。取该任务当前 ReviewConfig 的 prompt_template 原文，
+    # 由 AITraceResponse 附带并标记是否与本次调用快照哈希一致。
+    review_config = db.query(ReviewConfig).filter_by(task_id=submission.task_id).first()
     return {
         "submission": submission,
         "task": task,
         "schema_version": schema_version,
         "ai_result": ai_result,
         "ai_trace": ai_trace,
+        "review_config": review_config,
         "history": history,
         "audit_logs": audit_logs,
     }

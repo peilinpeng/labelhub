@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Any
 
@@ -163,10 +164,18 @@ class ReviewQueueResponse(BaseModel):
 
 
 class AITraceResponse(BaseModel):
-    """AI 预审可追溯信息（TC-AI-07）：模型 ID、Prompt 快照哈希、Token 用量、耗时。"""
+    """AI 预审可追溯信息（TC-AI-07）：模型 ID、Prompt 快照哈希、Token 用量、耗时。
+
+    §4.4 要求"查看 AI 评语与原始 Prompt"：在 hash 之外附上当前 ReviewConfig 的
+    Prompt 原文（promptTemplate）。promptSnapshotMatches 表示该原文的 sha256 是否
+    与调用时的 promptSnapshotHash 一致——若 Owner 在调用后改过 Prompt 则为 False，
+    提示 reviewer 当前展示的原文与本次 AI 调用所用快照可能存在漂移。
+    """
     callId: str
     modelPolicyId: str
     promptSnapshotHash: str
+    promptTemplate: str | None = None
+    promptSnapshotMatches: bool | None = None
     status: str
     promptTokens: int | None = None
     completionTokens: int | None = None
@@ -176,11 +185,19 @@ class AITraceResponse(BaseModel):
     finishedAt: datetime | None = None
 
     @classmethod
-    def from_orm(cls, log) -> "AITraceResponse":
+    def from_orm(cls, log, review_config=None) -> "AITraceResponse":
+        prompt_template = None
+        prompt_matches = None
+        if review_config is not None and review_config.prompt_template is not None:
+            prompt_template = review_config.prompt_template
+            current_hash = hashlib.sha256(prompt_template.encode()).hexdigest()
+            prompt_matches = current_hash == log.prompt_snapshot_hash
         return cls(
             callId=log.id,
             modelPolicyId=log.model_policy_id,
             promptSnapshotHash=log.prompt_snapshot_hash,
+            promptTemplate=prompt_template,
+            promptSnapshotMatches=prompt_matches,
             status=log.status,
             promptTokens=log.prompt_tokens,
             completionTokens=log.completion_tokens,

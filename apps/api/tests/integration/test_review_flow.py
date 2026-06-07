@@ -1,9 +1,11 @@
 """集成测试：审核流转（TC-REV-05~09，含 A3 队列筛选 / B2 AI 可追溯）。"""
+import hashlib
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.models.submission import Submission
 from app.models.llm import LLMCallLog
+from app.models.review import ReviewConfig
 from tests.helpers import setup_published_task
 
 
@@ -125,3 +127,83 @@ def test_review_detail_ai_trace_null_when_absent(client, auth, db_session):
     resp = client.get(f"/api/v1/review/submissions/{sub_id}", headers=auth["REVIEWER"])
     assert resp.status_code == 200
     assert resp.json()["aiTrace"] is None
+
+
+# ---------------------------------------------------------------------------
+# O8（§4.4）：审核详情附带原始 Prompt 原文 + 快照一致性标记
+# ---------------------------------------------------------------------------
+def _make_review_config(db_session, task_id: str, prompt_template: str) -> None:
+    cfg = ReviewConfig(
+        id="rc_" + uuid4().hex,
+        task_id=task_id,
+        enabled=True,
+        model_policy_id="mp_doubao_pro",
+        prompt_template=prompt_template,
+        dimensions_json=[],
+        thresholds_json={},
+        conclusion_mapping_json={},
+        max_retries=3,
+    )
+    db_session.add(cfg)
+    db_session.commit()
+
+
+def _inject_ai_trace(db_session, sub_id: str, prompt_snapshot_hash: str) -> None:
+    log = LLMCallLog(
+        id="llm_" + uuid4().hex,
+        purpose="AI_REVIEW",
+        actor_id="usr_owner_1",
+        submission_id=sub_id,
+        model_policy_id="mp_doubao_pro",
+        prompt_snapshot_hash=prompt_snapshot_hash,
+        input_hash="hash_in",
+        output_hash="hash_out",
+        status="SUCCEEDED",
+        prompt_tokens=120, completion_tokens=80, total_tokens=200, latency_ms=1532,
+        finished_at=datetime.now(timezone.utc),
+    )
+    db_session.add(log)
+    db_session.commit()
+
+
+def test_review_detail_exposes_prompt_template_with_matching_snapshot(client, auth, db_session):
+    """§4.4：aiTrace 附原始 Prompt 原文；当前模板 hash 与调用快照一致时 matches=True。"""
+    ctx = setup_published_task(client, db_session, auth["OWNER"])
+    sub_id = _claim_and_submit(client, auth, db_session, ctx["task_id"])
+
+    prompt = "请审核以下标注答案：{{answer}}"
+    _make_review_config(db_session, ctx["task_id"], prompt)
+    snapshot_hash = hashlib.sha256(prompt.encode()).hexdigest()
+    _inject_ai_trace(db_session, sub_id, snapshot_hash)
+
+    resp = client.get(f"/api/v1/review/submissions/{sub_id}", headers=auth["REVIEWER"])
+    assert resp.status_code == 200
+    trace = resp.json()["aiTrace"]
+    assert trace["promptTemplate"] == prompt
+    assert trace["promptSnapshotMatches"] is True
+
+
+def test_review_detail_prompt_snapshot_drift_flagged(client, auth, db_session):
+    """Owner 调用后改过 Prompt：原文仍展示，但 matches=False 提示漂移。"""
+    ctx = setup_published_task(client, db_session, auth["OWNER"])
+    sub_id = _claim_and_submit(client, auth, db_session, ctx["task_id"])
+
+    _make_review_config(db_session, ctx["task_id"], "改动后的新 Prompt")
+    _inject_ai_trace(db_session, sub_id, "hash_of_old_prompt")
+
+    resp = client.get(f"/api/v1/review/submissions/{sub_id}", headers=auth["REVIEWER"])
+    trace = resp.json()["aiTrace"]
+    assert trace["promptTemplate"] == "改动后的新 Prompt"
+    assert trace["promptSnapshotMatches"] is False
+
+
+def test_review_detail_prompt_template_null_without_config(client, auth, db_session):
+    """无 ReviewConfig 时原文为 None、matches 为 None（向后兼容旧 trace）。"""
+    ctx = setup_published_task(client, db_session, auth["OWNER"])
+    sub_id = _claim_and_submit(client, auth, db_session, ctx["task_id"])
+    _inject_ai_trace(db_session, sub_id, "hash_abc")
+
+    resp = client.get(f"/api/v1/review/submissions/{sub_id}", headers=auth["REVIEWER"])
+    trace = resp.json()["aiTrace"]
+    assert trace["promptTemplate"] is None
+    assert trace["promptSnapshotMatches"] is None

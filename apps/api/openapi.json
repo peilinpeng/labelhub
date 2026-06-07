@@ -2594,6 +2594,28 @@
             "type": "string",
             "title": "Promptsnapshothash"
           },
+          "promptTemplate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompttemplate"
+          },
+          "promptSnapshotMatches": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promptsnapshotmatches"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -2669,7 +2691,7 @@
           "createdAt"
         ],
         "title": "AITraceResponse",
-        "description": "AI 预审可追溯信息（TC-AI-07）：模型 ID、Prompt 快照哈希、Token 用量、耗时。"
+        "description": "AI 预审可追溯信息（TC-AI-07）：模型 ID、Prompt 快照哈希、Token 用量、耗时。\n\n§4.4 要求\"查看 AI 评语与原始 Prompt\"：在 hash 之外附上当前 ReviewConfig 的\nPrompt 原文（promptTemplate）。promptSnapshotMatches 表示该原文的 sha256 是否\n与调用时的 promptSnapshotHash 一致——若 Owner 在调用后改过 Prompt 则为 False，\n提示 reviewer 当前展示的原文与本次 AI 调用所用快照可能存在漂移。"
       },
       "ActorResponse": {
         "properties": {
