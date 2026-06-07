@@ -41,9 +41,9 @@
 
 ```txt
 分支：    integration/joint-test（主线；feature/schema-governance-upgrade 已于 81ad726 受控合并进主线）
-commit：  55a1bc0   fix(renderer): ShowItem 按类型真渲染媒体 + formily-v2 渲染 ShowItem（P0 真实数据缺口）
+commit：  50ba8f0   feat(renderer): 轻量富文本编辑器替代 input.richtext 纯文本框降级
 工作区：  clean（仅 .claude/ 本地 preview 产物未跟踪，不提交）
-更新时间：2026-06-07（Claude Code：ShowItem 媒体渲染 P0 修复，已 push）
+更新时间：2026-06-07（Claude Code：组件覆盖审计 + upload 缺口/富文本修复，已 push）
 更新者：  Claude Code
 
 三条主线均已完成并 push：
@@ -170,10 +170,10 @@ cd apps/web && npm run typecheck && npm run build
 ## 7. 已知边界与注意事项
 
 ```txt
-1. formily-v2 当前不渲染 LLM_ASSIST 节点
-   - FormilyRuntimeRenderer 对非 FIELD / CONTAINER 节点返回 null
-   - AI Assist preflight（FE-8）只在 legacy renderer 下 demo
-   - demo 时保持 engine 默认值（legacy），无需切换
+1. ~~formily-v2 当前不渲染 LLM_ASSIST 节点~~ **【已过期，2026-06-07 订正】**
+   - 现状：formily-v2（默认引擎）**已渲染** LLM_ASSIST + SHOW_ITEM（FormilyRuntimeRenderer.renderSchemaNode 已分流，实测 AI 辅助按钮在）
+   - 默认引擎现已覆盖标注要求点名的全部物料组件（含 upload、富文本，见 §9 最新日志）
+   - demo 直接用默认 formily-v2 即可，无需切 legacy
 
 2. Reviewer submission 重复提交可能返回 409
    - 这是状态机保护行为，不是 bug
@@ -218,6 +218,28 @@ cd apps/web && npm run typecheck && npm run build
 ## 9. 上一班工作日志（收班时追加，最新在上）
 
 ```txt
+### 2026-06-07 | Claude Code（组件覆盖审计 + upload 缺口/富文本修复，已 push 50ba8f0）
+- 背景：拿举办方测试数据（~/Downloads/datasets，已核对 = 仓库 seed = 运行库，零偏差）做组件覆盖度审计。
+  对照两份「标注要求.md」点名物料，逐项核对 + 浏览器在真实数据上实测。
+  结论：seed 已 100% 用到点名组件，但默认引擎 formily-v2 有 1 真缺口 + 1 降级。
+- f3f3cfa upload 缺口：getComponentName 缺 upload.* 分支 + registry 未注册 FileInput → upload 字段不渲染；
+  叠加 O11 联动 setRequired(evidence) 会卡提交。修：FormilyFileAdapter + 注册 COMPONENT_NAMES.FILE + 分支。
+- 50ba8f0 富文本：input.richtext 原两引擎都降级成 textarea。新增零依赖 RichTextInput（Markdown 编辑器：
+  工具栏+文本域+预览，复用 MarkdownPreview，不引重型 WYSIWYG）；getComponentName → RICHTEXT；legacy 拆出。
+- 改动文件：
+  - packages/schema-renderer/src/components/RichTextInput.tsx（新）
+  - packages/schema-renderer/src/adapters/FormilyFileAdapter.tsx（新）+ FormilyRichTextAdapter.tsx（新）
+  - packages/schema-renderer/src/{ComponentRegistry.ts, adapters/index.ts, FormilyRuntimeRenderer.tsx, index.ts}
+  - packages/schema-renderer/src/renderers/FieldRenderer.tsx（legacy richtext 拆出）
+  - packages/schema-renderer/src/__tests__/FormilyRuntimeRenderer.test.tsx（+upload +richtext×2 回归）
+  - apps/web/src/styles.css（富文本工具栏/预览样式）
+- 顺带确认（非缺口）：O11 字段联动在默认引擎用举办方真实数据当场验证通过（修订建议/证据素材联动）；
+  订正本文件 §7 第 1 条过期描述（formily-v2 现已渲染 LLM_ASSIST/SHOW_ITEM）。
+- 是否触碰边界：未改 packages/contracts/、未改架构契约；动了 schema-renderer + apps/web 渲染层（合并负责人职责内）。
+- 验证：schema-renderer typecheck + 67 测试 ✅；web typecheck+build ✅；真实后端浏览器复验
+  upload（勾安全违规→fileInputs 0→1）+ 富文本（加粗插入 **xx** / 预览渲染 <strong>）✅。
+- commit：f3f3cfa + 50ba8f0（均已 push，integration/joint-test 与远程同步）。
+
 ### 2026-06-07 | Claude Code（ShowItem 媒体渲染 P0 修复，已 push 55a1bc0）
 - 背景：核对 ShowItem 对 image/video/markdown 渲染时挖出真实竞赛数据 P0 缺口——
   默认 formily-v2 引擎对 SHOW_ITEM return null（标注员看不到 prompt/答案/媒体），
