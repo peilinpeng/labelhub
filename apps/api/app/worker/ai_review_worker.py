@@ -66,6 +66,82 @@ def _sha256(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def _loads_lenient(raw: str) -> dict:
+    """
+    容错解析 LLM 返回的 JSON（提升 AI 鲁棒性 / 评分稳定性）。
+    依次尝试：直接解析 → 去 ```json 围栏 → 截取首尾大括号 → 补全未闭合的括号/引号。
+    全部失败才抛 ValueError，交由上层重试 / 人工兜底。
+    """
+    if not raw or not raw.strip():
+        raise ValueError("LLM 返回为空")
+
+    candidates: list[str] = [raw]
+
+    # 去掉 markdown 代码围栏
+    fenced = raw.strip()
+    if fenced.startswith("```"):
+        fenced = fenced.split("```", 2)
+        fenced = fenced[1] if len(fenced) > 1 else raw
+        if fenced.lstrip().lower().startswith("json"):
+            fenced = fenced.lstrip()[4:]
+        candidates.append(fenced)
+
+    # 截取第一个 { 到最后一个 }
+    src = candidates[-1]
+    start, end = src.find("{"), src.rfind("}")
+    if start != -1 and end > start:
+        candidates.append(src[start:end + 1])
+
+    # 对截断的 JSON 做补全（best-effort）：扫描出未闭合的字符串与括号栈，按逆序补齐
+    trimmed = candidates[-1]
+    stack: list[str] = []
+    in_str = False
+    esc = False
+    for ch in trimmed:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        else:
+            if ch == '"':
+                in_str = True
+            elif ch in "{[":
+                stack.append(ch)
+            elif ch == "}" and stack and stack[-1] == "{":
+                stack.pop()
+            elif ch == "]" and stack and stack[-1] == "[":
+                stack.pop()
+    if in_str or stack:
+        repaired = trimmed + ('"' if in_str else "")
+        repaired += "".join("}" if c == "{" else "]" for c in reversed(stack))
+        candidates.append(repaired)
+
+    last_err: Exception | None = None
+    for cand in candidates:
+        try:
+            parsed = json.loads(cand)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+    raise ValueError(f"无法解析 LLM JSON 输出：{last_err}")
+
+
+def _extract_ai_result(response) -> dict:
+    """从 LLM 响应提取结构化结果：优先 tool_calls，回退 message.content。"""
+    message = response.choices[0].message
+    tool_calls = getattr(message, "tool_calls", None)
+    if tool_calls:
+        return _loads_lenient(tool_calls[0].function.arguments)
+    # 部分模型可能不走 function calling，回退解析正文
+    if getattr(message, "content", None):
+        return _loads_lenient(message.content)
+    raise ValueError("LLM 未返回 tool_call 或可解析正文")
+
+
 def _render_prompt(template_str: str, context: dict) -> str:
     return Template(template_str).render(**context)
 
@@ -196,10 +272,11 @@ def _execute_review(db, job_id: str) -> None:
             messages=[{"role": "user", "content": rendered_prompt}],
             tools=[AI_REVIEW_TOOL],
             tool_choice={"type": "function", "function": {"name": "submit_ai_review_result"}},
+            temperature=0,        # 确定性输出，提升评分稳定性
+            max_tokens=2048,      # 防止结构化 JSON 被截断（之前未设置导致 "Expecting ':'"）
         )
         _latency_ms = int((time.monotonic() - _started) * 1000)
-        tool_call = response.choices[0].message.tool_calls[0]
-        ai_result = json.loads(tool_call.function.arguments)
+        ai_result = _extract_ai_result(response)  # 容错解析（截断/围栏/补全）
         raw_output = json.dumps(ai_result, ensure_ascii=False)
         output_hash = _sha256(raw_output)
 
@@ -287,6 +364,7 @@ def _execute_review(db, job_id: str) -> None:
     )
 
     job.status = "SUCCEEDED"
+    job.failure_reason = None  # 重试成功后清除上一次尝试的失败原因
     db.commit()
 
     logger.info("AI Review completed job=%s decision=%s submission=%s", job_id, decision, submission.id)

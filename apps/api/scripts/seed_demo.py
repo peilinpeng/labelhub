@@ -127,14 +127,28 @@ def _load_items() -> list[dict]:
 
 def _wipe_demo(db) -> None:
     """按 task_id 清理本演示任务的全部关联数据（FK 安全顺序）。"""
+    from app.models.llm import LLMCallLog
     sub_ids = [s.id for s in db.query(Submission).filter_by(task_id=TASK_ID).all()]
     asn_ids = [a.id for a in db.query(Assignment).filter_by(task_id=TASK_ID).all()]
     if sub_ids:
         db.query(ReviewResult).filter(ReviewResult.submission_id.in_(sub_ids)).delete(synchronize_session=False)
         db.query(AIReviewJob).filter(AIReviewJob.submission_id.in_(sub_ids)).delete(synchronize_session=False)
+        db.query(LLMCallLog).filter(LLMCallLog.submission_id.in_(sub_ids)).delete(synchronize_session=False)
+    if asn_ids:
+        db.query(LLMCallLog).filter(LLMCallLog.assignment_id.in_(asn_ids)).delete(synchronize_session=False)
+        # 断开 assignments↔submissions 循环外键：删 submissions 前清空 latest_submission_id
+        db.query(Assignment).filter(Assignment.id.in_(asn_ids)).update(
+            {Assignment.latest_submission_id: None}, synchronize_session=False
+        )
+        db.flush()
     db.query(Submission).filter_by(task_id=TASK_ID).delete(synchronize_session=False)
     if asn_ids:
         db.query(Draft).filter(Draft.assignment_id.in_(asn_ids)).delete(synchronize_session=False)
+    # 断开 assignments↔dataset_items 循环外键：删 assignments 前清空 current_assignment_id
+    db.query(DatasetItem).filter_by(task_id=TASK_ID).update(
+        {DatasetItem.current_assignment_id: None}, synchronize_session=False
+    )
+    db.flush()
     db.query(Assignment).filter_by(task_id=TASK_ID).delete(synchronize_session=False)
     db.query(DatasetItem).filter_by(task_id=TASK_ID).delete(synchronize_session=False)
     db.query(ReviewConfig).filter_by(task_id=TASK_ID).delete(synchronize_session=False)
