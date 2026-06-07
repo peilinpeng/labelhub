@@ -16,6 +16,19 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, "index.html"),
       },
+      output: {
+        // 按依赖切分 vendor chunk，避免单包过大（>500kB 警告）+ 提升缓存命中与首屏加载
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return undefined;
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
+            return "vendor-react";
+          }
+          if (/[\\/]node_modules[\\/]@formily[\\/]/.test(id)) {
+            return "vendor-formily";
+          }
+          return "vendor";
+        },
+      },
     },
   },
   server: {
