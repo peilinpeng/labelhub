@@ -70,11 +70,23 @@ def _count_nodes(schema: dict) -> int:
 # canonical 节点构造助手（对齐 packages/contracts/src/schema.ts）
 # ---------------------------------------------------------------------------
 
-def _show(node_id: str, type_: str, title: str, source_path: str, transform: dict | None = None) -> dict:
+def _show(node_id: str, type_: str, title: str, source_path: str, transform: dict | None = None,
+          visible_when: dict | None = None) -> dict:
     n = {"id": node_id, "kind": "SHOW_ITEM", "type": type_, "title": title, "sourcePath": source_path}
     if transform:
         n["transform"] = transform
+    if visible_when:
+        n["visibleWhen"] = visible_when
     return n
+
+
+def _media_type_is(value: str) -> dict:
+    """visibleWhen 表达式：仅当题目 media_type == value 时显示该媒体展示项。"""
+    return {
+        "op": "eq",
+        "left": {"kind": "path", "path": "$.item.sourcePayload.media_type"},
+        "right": {"kind": "literal", "value": value},
+    }
 
 
 def _field(node_id: str, type_: str, name: str, title: str, *, required: bool = False,
@@ -136,13 +148,14 @@ _QA_SCHEMA = _schema(
               "$.item.sourcePayload.model_answer", {"type": "TEXT", "fallback": "（无）"}),
         _show("qa-show-reference", "show.text", "参考答案（reference）",
               "$.item.sourcePayload.reference", {"type": "TEXT", "fallback": "（无）"}),
-        # 媒体素材：按 media_type 渲染（text 题对应字段为空，自然不展示）
+        # 媒体素材：按 media_type 用 visibleWhen 网关，仅显示该题对应的媒体控件
+        # （否则 image/video 共用 media_url，会在视频题上多出一个坏图、图片题上多出放不了的视频）
         _show("qa-show-image", "show.image", "图片素材（image 题）",
-              "$.item.sourcePayload.media_url"),
+              "$.item.sourcePayload.media_url", visible_when=_media_type_is("image")),
         _show("qa-show-markdown", "show.richtext", "图文正文（markdown 题）",
-              "$.item.sourcePayload.content_markdown"),
+              "$.item.sourcePayload.content_markdown", visible_when=_media_type_is("markdown")),
         _show("qa-show-video", "show.file", "视频/文件素材（video 题）",
-              "$.item.sourcePayload.media_url"),
+              "$.item.sourcePayload.media_url", visible_when=_media_type_is("video")),
 
         # —— 评分维度（1–5 分单选）——
         _field("qa-relevance", "choice.radio", "relevance", "相关性评分", required=True, options=_score_options()),

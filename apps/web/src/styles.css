@@ -3814,6 +3814,30 @@ a {
   color: var(--lh-text);
 }
 
+/* ShowItem 媒体素材：图片/视频自适应不溢出，Markdown 图文正文内嵌图片同样约束 */
+.labeler-schema-renderer-surface [data-show-type] img,
+.labeler-schema-renderer-surface [data-show-type] video,
+.labeler-schema-renderer-surface .markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+.labeler-schema-renderer-surface [data-show-type] video {
+  max-height: 360px;
+  background: #000;
+}
+
+.labeler-schema-renderer-surface [data-show-type] [data-media] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.labeler-schema-renderer-surface [data-show-type] [data-media="image"] {
+  flex-flow: row wrap;
+}
+
 .labeler-schema-renderer-surface form,
 .labeler-schema-renderer-surface [role="form"] {
   display: grid;

@@ -375,14 +375,22 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   }
 
   const sourcePayload = context.item.sourcePayload as Record<string, unknown>;
+  // 通用源数据预览：仅对带 title/name + body/text 的数据集（如商品标注 demo）展示。
+  // 问答/偏好类数据集的源数据（prompt/answer/媒体）由 schema 的 ShowItem 节点承载渲染，
+  // 不走此面板，避免出现空的「商品标题」残留卡片。
   const sourceTitle =
-    typeof sourcePayload.title === "string" ? sourcePayload.title : typeof sourcePayload.name === "string" ? sourcePayload.name : "待标注素材";
+    typeof sourcePayload.title === "string"
+      ? sourcePayload.title
+      : typeof sourcePayload.name === "string"
+        ? sourcePayload.name
+        : "";
   const sourceBody =
     typeof sourcePayload.body === "string"
       ? sourcePayload.body
       : typeof sourcePayload.text === "string"
         ? sourcePayload.text
-        : "暂无正文内容。";
+        : "";
+  const hasGenericSource = sourceTitle !== "" || sourceBody !== "";
   const sourceMeta = typeof sourcePayload.source === "string" ? sourcePayload.source : "任务数据";
   const navigationItems = taskItems.length > 0 ? taskItems : [context.item];
   const currentItemIndex = Math.max(0, navigationItems.findIndex((item) => item.id === context.item.id));
@@ -497,11 +505,13 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
               <div className="labeler-runner-success">{submitNotice}</div>
             ) : null}
 
-            <section className="labeler-runner-source">
-              <div className="labeler-runner-source-label">原始商品标题（不可编辑） · {sourceMeta}</div>
-              <p>{sourceTitle}</p>
-              <small>{sourceBody}</small>
-            </section>
+            {hasGenericSource ? (
+              <section className="labeler-runner-source">
+                <div className="labeler-runner-source-label">原始数据（不可编辑） · {sourceMeta}</div>
+                {sourceTitle !== "" ? <p>{sourceTitle}</p> : null}
+                {sourceBody !== "" ? <small>{sourceBody}</small> : null}
+              </section>
+            ) : null}
 
             <section className="labeler-runner-form">
               {showRendererToggle ? (

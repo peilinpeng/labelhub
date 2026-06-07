@@ -10,6 +10,7 @@ import type {
   FieldNode,
   LLMAssistNode,
   SchemaNode,
+  ShowItemNode,
 } from "@labelhub/contracts";
 import { buildReactionPlan } from "@labelhub/schema-compiler";
 import type { ReactionPlan } from "@labelhub/schema-compiler";
@@ -18,6 +19,7 @@ import type { RuntimeContextWithOutput } from "@labelhub/schema-core";
 import type { ComponentRegistry } from "./ComponentRegistry";
 import { COMPONENT_NAMES } from "./ComponentRegistry";
 import { LLMAssistRenderer } from "./renderers/LLMAssistRenderer";
+import { ShowItemRenderer } from "./renderers/ShowItemRenderer";
 import type { RenderNodeContext, SchemaRendererProps } from "./types";
 
 export interface FormilyRuntimeRendererProps extends SchemaRendererProps {
@@ -205,7 +207,33 @@ export function FormilyRuntimeRenderer({
       return renderLLMAssistNode(node);
     }
 
+    if (node.kind === "SHOW_ITEM") {
+      // ShowItem 只读展示题目原始数据（prompt/answer/media），不写 answers；
+      // 沿用 legacy visibility gate，保持与 ContainerNode 一致。
+      if (!resolveNodeVisibility(node, contextWithAnswers)) return null;
+      return renderShowItemNode(node);
+    }
+
     return null;
+  }
+
+  function renderShowItemNode(node: ShowItemNode): React.ReactNode {
+    const formAnswers = form.values as AnswerPayload;
+    const renderContext: RenderNodeContext = {
+      schema,
+      context: { ...context, answers: formAnswers },
+      answers: formAnswers,
+      patchedAnswers: patchedAnswersProp ?? formAnswers,
+      mode,
+      readonly: isReadonly,
+      errorsByField: new Map(),
+      onFieldChange: () => undefined,
+      onLLMAssist,
+      onAssistOutcome,
+      onApplySuggestedPatch: () => undefined,
+      onUnsupportedNode,
+    };
+    return <ShowItemRenderer key={node.id} node={node} renderContext={renderContext} />;
   }
 
   function renderFieldNode(node: FieldNode): React.ReactNode {

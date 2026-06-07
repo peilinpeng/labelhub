@@ -681,4 +681,63 @@ describe("FormilyRuntimeRenderer（formily-v2）：onAnswersChange 必须为新 
     });
     expect(requiredMissingFieldNames).toContain("note");
   });
+
+  // P0 回归：formily-v2（默认引擎）必须渲染 ShowItem，否则题目原始数据/媒体整块不可见
+  test("formily-v2 渲染 ShowItem：媒体图片显示为 <img> 而非被跳过", () => {
+    const schema: LabelHubSchema = {
+      contractVersion: "1.1",
+      schemaId: "schema_show_test",
+      status: "DRAFT",
+      meta: {
+        name: "ShowItem schema",
+        taskId: "task_linkage_test",
+        authorId: "usr_owner",
+        createdAt: "2026-06-07T00:00:00.000Z",
+        updatedAt: "2026-06-07T00:00:00.000Z",
+      },
+      root: {
+        id: "root",
+        kind: "CONTAINER",
+        type: "container.group",
+        title: "根",
+        children: [
+          {
+            id: "show-image",
+            kind: "SHOW_ITEM",
+            type: "show.image",
+            title: "图片素材",
+            sourcePath: "$.item.sourcePayload.media_url",
+          },
+          {
+            id: "f1",
+            kind: "FIELD",
+            type: "input.text",
+            name: "comment",
+            title: "评语",
+          },
+        ],
+      },
+    };
+    const ctx: LabelHubRuntimeContext = {
+      ...baseContext,
+      item: { id: "item_media_1", sourcePayload: { media_url: "https://example.com/pic.png" } },
+      answers: {},
+    };
+    const { container } = render(
+      <SchemaRenderer
+        engine="formily-v2"
+        schema={schema}
+        context={ctx}
+        answers={{}}
+        mode="LABELING"
+        onAnswersChange={() => undefined}
+      />,
+    );
+
+    const img = container.querySelector('[data-renderer-engine="formily-v2"] img');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("src")).toBe("https://example.com/pic.png");
+    // 同时确认普通字段仍渲染（ShowItem 分支没有破坏遍历）
+    expect(screen.getByText("评语")).toBeTruthy();
+  });
 });
