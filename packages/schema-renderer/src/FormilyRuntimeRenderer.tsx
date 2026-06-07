@@ -11,6 +11,7 @@ import type {
   LLMAssistNode,
   SchemaNode,
   ShowItemNode,
+  UploadFieldNode,
 } from "@labelhub/contracts";
 import { buildReactionPlan } from "@labelhub/schema-compiler";
 import type { ReactionPlan } from "@labelhub/schema-compiler";
@@ -366,6 +367,9 @@ function getComponentName(node: FieldNode): string | undefined {
       return COMPONENT_NAMES.SELECT;
     case "choice.tags":
       return COMPONENT_NAMES.TAGS;
+    case "upload.file":
+    case "upload.image":
+      return COMPONENT_NAMES.FILE;
     case "data.json":
       return COMPONENT_NAMES.JSON_EDITOR;
     default:
@@ -395,6 +399,9 @@ function buildComponentProps(
     case "choice.select":
     case "choice.tags":
       return { ...base, field: node as ChoiceFieldNode };
+    case "upload.file":
+    case "upload.image":
+      return { ...base, field: node as UploadFieldNode };
     case "data.json":
       return { ...base };
     default:

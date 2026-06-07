@@ -740,4 +740,60 @@ describe("FormilyRuntimeRenderer（formily-v2）：onAnswersChange 必须为新 
     // 同时确认普通字段仍渲染（ShowItem 分支没有破坏遍历）
     expect(screen.getByText("评语")).toBeTruthy();
   });
+
+  // 缺口回归：formily-v2（默认引擎）必须渲染 upload 字段，否则证据素材组件整块缺失，
+  // 叠加联动 setRequired(evidence) 时会出现填不了的必填字段、卡住提交。
+  test("formily-v2 渲染 upload 字段：图片/文件上传出现 file input 而非被跳过", () => {
+    const schema: LabelHubSchema = {
+      contractVersion: "1.1",
+      schemaId: "schema_upload_test",
+      status: "DRAFT",
+      meta: {
+        name: "upload schema",
+        taskId: "task_linkage_test",
+        authorId: "usr_owner",
+        createdAt: "2026-06-07T00:00:00.000Z",
+        updatedAt: "2026-06-07T00:00:00.000Z",
+      },
+      root: {
+        id: "root",
+        kind: "CONTAINER",
+        type: "container.group",
+        title: "根",
+        children: [
+          {
+            id: "ev-image",
+            kind: "FIELD",
+            type: "upload.image",
+            name: "evidence_image",
+            title: "证据截图",
+          },
+          {
+            id: "ev-file",
+            kind: "FIELD",
+            type: "upload.file",
+            name: "evidence_file",
+            title: "证据附件",
+          },
+        ],
+      },
+    };
+    const { container } = render(
+      <SchemaRenderer
+        engine="formily-v2"
+        schema={schema}
+        context={{ ...baseContext, answers: {} }}
+        answers={{}}
+        mode="LABELING"
+        onAnswersChange={() => undefined}
+      />,
+    );
+
+    const fileInputs = container.querySelectorAll(
+      '[data-renderer-engine="formily-v2"] input[type="file"]',
+    );
+    expect(fileInputs.length).toBe(2);
+    expect(screen.getByText("证据截图")).toBeTruthy();
+    expect(screen.getByText("证据附件")).toBeTruthy();
+  });
 });

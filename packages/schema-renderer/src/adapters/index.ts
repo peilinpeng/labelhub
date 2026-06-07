@@ -1,5 +1,6 @@
 import { COMPONENT_NAMES, createRegistry } from "../ComponentRegistry";
 import { FormilyCheckboxAdapter } from "./FormilyCheckboxAdapter";
+import { FormilyFileAdapter } from "./FormilyFileAdapter";
 import { FormilyJsonEditorAdapter } from "./FormilyJsonEditorAdapter";
 import { FormilyRadioAdapter } from "./FormilyRadioAdapter";
 import { FormilySelectAdapter } from "./FormilySelectAdapter";
@@ -9,6 +10,7 @@ import { FormilyTextareaAdapter } from "./FormilyTextareaAdapter";
 
 export {
   FormilyCheckboxAdapter,
+  FormilyFileAdapter,
   FormilyJsonEditorAdapter,
   FormilyRadioAdapter,
   FormilySelectAdapter,
@@ -24,5 +26,6 @@ export const DEFAULT_FORMILY_REGISTRY = createRegistry({
   [COMPONENT_NAMES.CHECKBOX]: FormilyCheckboxAdapter,
   [COMPONENT_NAMES.SELECT]: FormilySelectAdapter,
   [COMPONENT_NAMES.TAGS]: FormilyTagsAdapter,
+  [COMPONENT_NAMES.FILE]: FormilyFileAdapter,
   [COMPONENT_NAMES.JSON_EDITOR]: FormilyJsonEditorAdapter,
 });
