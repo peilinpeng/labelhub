@@ -796,4 +796,99 @@ describe("FormilyRuntimeRenderer（formily-v2）：onAnswersChange 必须为新 
     expect(screen.getByText("证据截图")).toBeTruthy();
     expect(screen.getByText("证据附件")).toBeTruthy();
   });
+
+  // ① 富文本：input.richtext 在默认引擎应渲染富文本编辑器（工具栏 + Markdown 文本域），
+  // 而非降级成普通多行文本框。
+  test("formily-v2 渲染 input.richtext：出现富文本工具栏与 Markdown 编辑区", () => {
+    const schema: LabelHubSchema = {
+      contractVersion: "1.1",
+      schemaId: "schema_richtext_test",
+      status: "DRAFT",
+      meta: {
+        name: "richtext schema",
+        taskId: "task_linkage_test",
+        authorId: "usr_owner",
+        createdAt: "2026-06-07T00:00:00.000Z",
+        updatedAt: "2026-06-07T00:00:00.000Z",
+      },
+      root: {
+        id: "root",
+        kind: "CONTAINER",
+        type: "container.group",
+        title: "根",
+        children: [
+          {
+            id: "rt",
+            kind: "FIELD",
+            type: "input.richtext",
+            name: "revision",
+            title: "修订建议",
+          },
+        ],
+      },
+    };
+    const { container } = render(
+      <SchemaRenderer
+        engine="formily-v2"
+        schema={schema}
+        context={{ ...baseContext, answers: {} }}
+        answers={{}}
+        mode="LABELING"
+        onAnswersChange={() => undefined}
+      />,
+    );
+
+    // 富文本容器 + 工具栏存在（区别于普通 textarea）
+    expect(container.querySelector('[data-richtext="true"]')).not.toBeNull();
+    expect(container.querySelector('[role="toolbar"]')).not.toBeNull();
+    expect(screen.getByLabelText("加粗")).toBeTruthy();
+    expect(screen.getByLabelText("富文本输入（Markdown）")).toBeTruthy();
+  });
+
+  // 富文本只读态：渲染 Markdown 预览，不展示可编辑文本域
+  test("input.richtext 只读：渲染 Markdown 预览而非编辑器", () => {
+    const schema: LabelHubSchema = {
+      contractVersion: "1.1",
+      schemaId: "schema_richtext_ro",
+      status: "DRAFT",
+      meta: {
+        name: "richtext ro",
+        taskId: "task_linkage_test",
+        authorId: "usr_owner",
+        createdAt: "2026-06-07T00:00:00.000Z",
+        updatedAt: "2026-06-07T00:00:00.000Z",
+      },
+      root: {
+        id: "root",
+        kind: "CONTAINER",
+        type: "container.group",
+        title: "根",
+        children: [
+          {
+            id: "rt",
+            kind: "FIELD",
+            type: "input.richtext",
+            name: "revision",
+            title: "修订建议",
+          },
+        ],
+      },
+    };
+    const { container } = render(
+      <SchemaRenderer
+        engine="formily-v2"
+        schema={schema}
+        context={{ ...baseContext, answers: { revision: "**加粗**内容" } }}
+        answers={{ revision: "**加粗**内容" }}
+        mode="REVIEW_READONLY"
+        readonly
+        onAnswersChange={() => undefined}
+      />,
+    );
+
+    expect(container.querySelector('[data-richtext-readonly="true"]')).not.toBeNull();
+    expect(container.querySelector("textarea")).toBeNull();
+    // Markdown 渲染：**加粗** → <strong>
+    expect(container.querySelector(".markdown-body strong")?.textContent).toBe("加粗");
+  });
 });

@@ -358,7 +358,7 @@ function getComponentName(node: FieldNode): string | undefined {
     case "input.textarea":
       return COMPONENT_NAMES.TEXTAREA;
     case "input.richtext":
-      return COMPONENT_NAMES.TEXTAREA;
+      return COMPONENT_NAMES.RICHTEXT;
     case "choice.radio":
       return COMPONENT_NAMES.RADIO;
     case "choice.checkbox":

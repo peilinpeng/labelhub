@@ -4,6 +4,7 @@ import { CheckboxInput } from "../components/CheckboxInput";
 import { FileInput } from "../components/FileInput";
 import { JsonEditorInput } from "../components/JsonEditorInput";
 import { RadioInput } from "../components/RadioInput";
+import { RichTextInput } from "../components/RichTextInput";
 import { SelectInput } from "../components/SelectInput";
 import { TagsInput } from "../components/TagsInput";
 import { TextareaInput } from "../components/TextareaInput";
@@ -75,12 +76,21 @@ function renderInput(
         />
       );
     case "input.textarea":
-    case "input.richtext":
       return (
         <TextareaInput
           disabled={disabled}
           maxRows={"maxRows" in node ? node.maxRows : undefined}
           minRows={"minRows" in node ? node.minRows : undefined}
+          placeholder={node.placeholder}
+          readonly={readonly}
+          value={value}
+          onChange={onChange}
+        />
+      );
+    case "input.richtext":
+      return (
+        <RichTextInput
+          disabled={disabled}
           placeholder={node.placeholder}
           readonly={readonly}
           value={value}

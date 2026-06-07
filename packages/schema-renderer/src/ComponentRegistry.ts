@@ -41,6 +41,7 @@ export function createRegistry(
 export const COMPONENT_NAMES = {
   TEXT: "TextInput",
   TEXTAREA: "TextareaInput",
+  RICHTEXT: "RichTextInput",
   RADIO: "RadioInput",
   CHECKBOX: "CheckboxInput",
   SELECT: "SelectInput",

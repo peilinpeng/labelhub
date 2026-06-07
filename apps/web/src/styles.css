@@ -3838,6 +3838,59 @@ a {
   flex-flow: row wrap;
 }
 
+/* 轻量富文本编辑器（Markdown）：工具栏 + 文本域 + 预览 */
+.labeler-schema-renderer-surface .lh-richtext {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.labeler-schema-renderer-surface .lh-richtext-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.labeler-schema-renderer-surface .lh-richtext-toolbar button {
+  min-width: 32px;
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1.2;
+  border: 1px solid var(--lh-border, #d0d5dd);
+  border-radius: 6px;
+  background: var(--lh-surface, #fff);
+  color: var(--lh-text, #1f2937);
+  cursor: pointer;
+}
+
+.labeler-schema-renderer-surface .lh-richtext-toolbar button:hover {
+  background: var(--lh-surface-hover, #f3f4f6);
+}
+
+.labeler-schema-renderer-surface .lh-richtext-preview-toggle {
+  margin-left: auto;
+}
+
+.labeler-schema-renderer-surface .lh-richtext-toolbar button[aria-pressed="true"] {
+  border-color: var(--lh-primary, #2563eb);
+  color: var(--lh-primary, #2563eb);
+}
+
+.labeler-schema-renderer-surface .lh-richtext-preview,
+.labeler-schema-renderer-surface .lh-richtext-readonly {
+  padding: 8px 12px;
+  border: 1px solid var(--lh-border, #d0d5dd);
+  border-radius: 8px;
+  background: var(--lh-surface-muted, #f9fafb);
+  min-height: 60px;
+}
+
+.labeler-schema-renderer-surface .lh-richtext-preview .markdown-body img {
+  max-width: 100%;
+  height: auto;
+}
+
 .labeler-schema-renderer-surface form,
 .labeler-schema-renderer-surface [role="form"] {
   display: grid;

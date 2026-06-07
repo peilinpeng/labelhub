@@ -14,6 +14,7 @@ export * from "./components/CheckboxInput";
 export * from "./components/FileInput";
 export * from "./components/JsonEditorInput";
 export * from "./components/RadioInput";
+export * from "./components/RichTextInput";
 export * from "./components/SelectInput";
 export * from "./components/TagsInput";
 export * from "./components/TextInput";
