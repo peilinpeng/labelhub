@@ -283,6 +283,46 @@ describe("SchemaRenderer", () => {
   });
 });
 
+describe("container.tabs 渲染为可切换标签页", () => {
+  test("渲染 tablist + 每个子节点一个 tab，初始仅首个 panel 可见", () => {
+    renderRenderer({ schema: buildTabsSchema() });
+
+    expect(screen.getByRole("tablist")).toBeTruthy();
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["基础信息", "补充信息"]);
+    expect(screen.getByRole("tab", { name: "基础信息" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "补充信息" }).getAttribute("aria-selected")).toBe("false");
+    // 隐藏的 panel 被移出无障碍树，仅激活 panel 可见。
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    expect(screen.getByLabelText("字段 A")).toBeTruthy();
+  });
+
+  test("点击 tab 切换激活 panel", () => {
+    renderRenderer({ schema: buildTabsSchema() });
+
+    fireEvent.click(screen.getByRole("tab", { name: "补充信息" }));
+
+    expect(screen.getByRole("tab", { name: "基础信息" }).getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByRole("tab", { name: "补充信息" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByLabelText("字段 B")).toBeTruthy();
+  });
+
+  test("被隐藏的子节点不产生 tab", () => {
+    const schema = buildTabsSchema();
+    const tabsNode = schema.root.children[0] as { children: { hidden?: boolean }[] };
+    const extraTab = tabsNode.children[1];
+    if (extraTab === undefined) {
+      throw new Error("tabs schema 必须包含两个子节点");
+    }
+    extraTab.hidden = true;
+
+    renderRenderer({ schema });
+
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["基础信息"]);
+  });
+});
+
 interface RenderOptions {
   schema?: LabelHubSchema;
   mode?: "PREVIEW" | "LABELING" | "REVIEW_READONLY" | "REVIEW_DIFF";
@@ -325,4 +365,38 @@ function renderRenderer(options: RenderOptions = {}) {
 
 function cloneSchema(): LabelHubSchema {
   return JSON.parse(JSON.stringify(createNewsQualitySchema())) as LabelHubSchema;
+}
+
+function buildTabsSchema(): LabelHubSchema {
+  const schema = cloneSchema();
+  schema.root.children = [
+    {
+      id: "tabs_main",
+      kind: "CONTAINER",
+      type: "container.tabs",
+      title: "分组标注",
+      layout: { tabStyle: "LINE" },
+      children: [
+        {
+          id: "tab_basic",
+          kind: "CONTAINER",
+          type: "container.group",
+          title: "基础信息",
+          children: [
+            { id: "f_a", kind: "FIELD", type: "input.text", name: "fieldA", title: "字段 A" },
+          ],
+        },
+        {
+          id: "tab_extra",
+          kind: "CONTAINER",
+          type: "container.group",
+          title: "补充信息",
+          children: [
+            { id: "f_b", kind: "FIELD", type: "input.text", name: "fieldB", title: "字段 B" },
+          ],
+        },
+      ],
+    },
+  ] as unknown as SchemaNode[];
+  return schema;
 }
