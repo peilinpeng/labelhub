@@ -50,6 +50,6 @@ class AppendAuditEventResponse(BaseModel):
 
 
 class QueryAuditEventsResponse(BaseModel):
-    """GET /audit-events 响应。"""
-    items: list[AuditEventRecordResponse] = Field(default_factory=list)
-    total: int
+    """GET /audit-events 响应（对齐契约 api.ts：events + 可选 nextCursor）。"""
+    events: list[AuditEventRecordResponse] = Field(default_factory=list)
+    nextCursor: str | None = None

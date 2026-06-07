@@ -49,7 +49,7 @@ def query_audit_events(
     db: Session = Depends(get_db),
     actor: Actor = Depends(require_roles("REVIEWER", "OWNER", "ADMIN")),
 ) -> QueryAuditEventsResponse:
-    items, total = audit_event_domain.query_audit_events(
+    items, _total = audit_event_domain.query_audit_events(
         db,
         type=type,
         source=source,
@@ -61,6 +61,5 @@ def query_audit_events(
         limit=limit,
     )
     return QueryAuditEventsResponse(
-        items=[AuditEventRecordResponse.from_orm(e) for e in items],
-        total=total,
+        events=[AuditEventRecordResponse.from_orm(e) for e in items],
     )

@@ -35,7 +35,7 @@ def test_query_audit_events_filter_by_submission(client, auth):
     client.post("/api/v1/audit-events", json=_event_body(target={"submissionId": "sub_BBB"}), headers=auth["REVIEWER"])
     resp = client.get("/api/v1/audit-events?submissionId=sub_AAA", headers=auth["OWNER"])
     assert resp.status_code == 200
-    items = resp.json()["items"]
+    items = resp.json()["events"]
     assert len(items) == 1
     assert items[0]["target"]["submissionId"] == "sub_AAA"
 
@@ -45,7 +45,7 @@ def test_query_audit_events_filter_by_type(client, auth):
     client.post("/api/v1/audit-events", json=_event_body(type="AI_ASSIST_ACCEPTED"), headers=auth["REVIEWER"])
     resp = client.get("/api/v1/audit-events?type=AI_ASSIST_ACCEPTED", headers=auth["OWNER"])
     assert resp.status_code == 200
-    assert resp.json()["total"] == 1
+    assert len(resp.json()["events"]) == 1
 
 
 def test_labeler_can_write_but_not_query(client, auth):
