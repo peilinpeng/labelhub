@@ -1030,6 +1030,59 @@
         }
       }
     },
+    "/api/v1/tasks/{task_id}/items/batch-update": {
+      "post": {
+        "tags": [
+          "dataset"
+        ],
+        "summary": "批量编辑题目（§4.1 数据集管理）",
+        "description": "对选中题目批量应用同一 patch（status / sourcePayload）。\n\n所有 itemIds 必须属于该任务，否则整体 404（不部分提交）。",
+        "operationId": "batch_update_items_api_v1_tasks__task_id__items_batch_update_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchUpdateItemsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchUpdateItemsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/marketplace/tasks": {
       "get": {
         "tags": [
@@ -3215,6 +3268,75 @@
           "success"
         ],
         "title": "BatchReviewResultItem"
+      },
+      "BatchUpdateItemsRequest": {
+        "properties": {
+          "itemIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Itemids",
+            "description": "待批量更新的题目 ID 列表"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "AVAILABLE",
+                  "DISABLED"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "批量设置状态；仅允许 AVAILABLE/DISABLED"
+          },
+          "sourcePayload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepayload",
+            "description": "批量覆盖 sourcePayload（按需）"
+          }
+        },
+        "type": "object",
+        "required": [
+          "itemIds"
+        ],
+        "title": "BatchUpdateItemsRequest",
+        "description": "批量编辑题目（§4.1 数据集管理·批量编辑）：对选中题目应用同一 patch。"
+      },
+      "BatchUpdateItemsResponse": {
+        "properties": {
+          "updatedCount": {
+            "type": "integer",
+            "title": "Updatedcount"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "updatedCount",
+          "items"
+        ],
+        "title": "BatchUpdateItemsResponse"
       },
       "ClaimReviewResponse": {
         "properties": {

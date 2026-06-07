@@ -22,6 +22,7 @@ from app.schemas.dataset import (
     DatasetItemResponse,
     ListItemsResponse,
     UpdateDatasetItemRequest,
+    BatchUpdateItemsRequest,
 )
 from app.schemas.task import AuditLogSummaryResponse
 from app.services.audit_domain import write_audit_log
@@ -209,3 +210,44 @@ def update_item(
     db.commit()
     db.refresh(item)
     return item
+
+
+def batch_update_items(
+    db: Session, task_id: str, actor: object, req: BatchUpdateItemsRequest
+) -> list[DatasetItem]:
+    """批量编辑题目（§4.1）：对选中题目应用同一 patch。
+
+    - 校验任务存在。
+    - 每个 item 必须属于该 task（跨任务/不存在 → 404）。
+    - status 仅允许 AVAILABLE/DISABLED（由 schema Literal 保证）。
+    - 全部命中后在同一事务提交，返回更新后的题目列表（保持请求 itemIds 顺序）。
+    """
+    task = db.query(Task).filter_by(id=task_id).first()
+    if not task:
+        raise ResourceNotFoundException(f"任务 {task_id!r} 不存在")
+
+    items = (
+        db.query(DatasetItem)
+        .filter(DatasetItem.task_id == task_id, DatasetItem.id.in_(req.itemIds))
+        .all()
+    )
+    found = {it.id: it for it in items}
+    missing = [iid for iid in req.itemIds if iid not in found]
+    if missing:
+        raise ResourceNotFoundException(
+            f"以下题目不存在或不属于任务 {task_id!r}：{', '.join(missing)}"
+        )
+
+    for it in found.values():
+        if req.sourcePayload is not None:
+            it.source_payload = req.sourcePayload
+        if req.status is not None:
+            it.status = req.status
+
+    db.commit()
+    ordered = []
+    for iid in req.itemIds:
+        it = found[iid]
+        db.refresh(it)
+        ordered.append(it)
+    return ordered

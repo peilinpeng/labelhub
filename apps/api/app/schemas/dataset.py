@@ -66,3 +66,17 @@ class UpdateDatasetItemRequest(BaseModel):
     status: Literal["AVAILABLE", "DISABLED"] | None = Field(
         None, description="仅允许手动设置 AVAILABLE/DISABLED；LOCKED/COMPLETED 由分配系统管理"
     )
+
+
+class BatchUpdateItemsRequest(BaseModel):
+    """批量编辑题目（§4.1 数据集管理·批量编辑）：对选中题目应用同一 patch。"""
+    itemIds: list[str] = Field(..., min_length=1, description="待批量更新的题目 ID 列表")
+    status: Literal["AVAILABLE", "DISABLED"] | None = Field(
+        None, description="批量设置状态；仅允许 AVAILABLE/DISABLED"
+    )
+    sourcePayload: dict | None = Field(None, description="批量覆盖 sourcePayload（按需）")
+
+
+class BatchUpdateItemsResponse(BaseModel):
+    updatedCount: int
+    items: list[DatasetItemResponse]

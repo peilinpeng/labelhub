@@ -10,6 +10,8 @@ from app.schemas.dataset import (
     DatasetItemResponse,
     ListItemsResponse,
     UpdateDatasetItemRequest,
+    BatchUpdateItemsRequest,
+    BatchUpdateItemsResponse,
 )
 
 router = APIRouter(tags=["dataset"])
@@ -75,3 +77,25 @@ def update_item(
     """更新题目 sourcePayload 或 status（status 仅限 AVAILABLE/DISABLED）。"""
     item = dataset_domain.update_item(db, item_id, actor, body)
     return DatasetItemResponse.from_orm(item)
+
+
+@router.post(
+    "/tasks/{task_id}/items/batch-update",
+    response_model=BatchUpdateItemsResponse,
+    summary="批量编辑题目（§4.1 数据集管理）",
+)
+def batch_update_items(
+    task_id: str,
+    body: BatchUpdateItemsRequest,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> BatchUpdateItemsResponse:
+    """对选中题目批量应用同一 patch（status / sourcePayload）。
+
+    所有 itemIds 必须属于该任务，否则整体 404（不部分提交）。
+    """
+    items = dataset_domain.batch_update_items(db, task_id, actor, body)
+    return BatchUpdateItemsResponse(
+        updatedCount=len(items),
+        items=[DatasetItemResponse.from_orm(it) for it in items],
+    )
