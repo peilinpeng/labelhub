@@ -41,9 +41,9 @@
 
 ```txt
 分支：    integration/joint-test（主线；feature/schema-governance-upgrade 已于 81ad726 受控合并进主线）
-commit：  50ba8f0   feat(renderer): 轻量富文本编辑器替代 input.richtext 纯文本框降级
+commit：  e625d63   feat(labeler): 实现「我的提交」页（替换占位桩，对接已就绪后端）
 工作区：  clean（仅 .claude/ 本地 preview 产物未跟踪，不提交）
-更新时间：2026-06-07（Claude Code：组件覆盖审计 + upload 缺口/富文本修复，已 push）
+更新时间：2026-06-07（Claude Code：对照官方 PDF 修复草稿自动保存 + 我的提交页，已 push）
 更新者：  Claude Code
 
 三条主线均已完成并 push：
@@ -218,6 +218,20 @@ cd apps/web && npm run typecheck && npm run build
 ## 9. 上一班工作日志（收班时追加，最新在上）
 
 ```txt
+### 2026-06-07 | Claude Code（对照官方 PDF 修复 Labeler 两缺口，已 push e625d63）
+- 背景：按官方课题 PDF（LabelHub·AI全栈课题实现要求）逐条核对 4.1~4.6。绝大部分已真实落地；
+  发现 2 个 Labeler 功能完备性缺口（属验收 60% 桶）。
+- 5d20b49 草稿自动保存：原徽章写死「草稿已自动保存 18:02:31」假文案 + 仅手动按钮。
+  修：答案变更防抖 1.2s 自动 saveDraft + 真实时间戳 + 基线脏检查（切题/载入不误存）。
+  文件：apps/web/src/features/labeler/AssignmentPage.tsx。
+- e625d63 我的提交页：原 LABELER_SUBMISSIONS 是 PlaceholderPage，但后端 GET /me/submissions 已就绪。
+  修：新增 LabelerSubmissionsPage（归类统计+KPI+筛选+列表）+ api listMyAssignments + App 路由接入。
+  文件：apps/web/src/features/labeler/LabelerSubmissionsPage.tsx、api/labeler.ts、app/App.tsx。
+- 是否触碰边界：未改 packages/contracts/、未改架构契约；仅 apps/web。
+- 验证：web typecheck+build ✅；真实后端浏览器复验——自动保存触发真实 PUT/draft+真实时间戳；
+  我的提交渲染 6 条、标题解析、KPI/筛选正确 ✅。
+- 结论：Labeler 全流程完整闭环。可选加分项未做：移动端、O5 大表单虚拟化。
+
 ### 2026-06-07 | Claude Code（组件覆盖审计 + upload 缺口/富文本修复，已 push 50ba8f0）
 - 背景：拿举办方测试数据（~/Downloads/datasets，已核对 = 仓库 seed = 运行库，零偏差）做组件覆盖度审计。
   对照两份「标注要求.md」点名物料，逐项核对 + 浏览器在真实数据上实测。

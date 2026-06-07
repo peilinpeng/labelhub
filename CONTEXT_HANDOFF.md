@@ -1,6 +1,6 @@
 # 迁移上下文 / 交接文档（复制给新会话即可接手）
 
-> 更新：2026-06-07（最终迭代阶段；已落地 O7/O8 + O9 清脏数据 + **Schema Runtime Engine 受控合并 `81ad726`** + **ShowItem 媒体真渲染 P0 修复 `55a1bc0`** + **组件覆盖审计修复 upload 缺口 `f3f3cfa` / 富文本编辑器 `50ba8f0`**；搭档转纯 UI 分工）。新会话**第一件事**：读本文件 → `CLAUDE.md` → `docs/final-iteration-plan.md`。
+> 更新：2026-06-07（最终迭代阶段；已落地 O7/O8 + O9 清脏数据 + **Schema Runtime Engine 受控合并 `81ad726`** + **ShowItem 媒体真渲染 P0 修复 `55a1bc0`** + **组件覆盖审计修复 upload 缺口 `f3f3cfa` / 富文本编辑器 `50ba8f0`** + **官方要求对照修复：草稿真实自动保存 `5d20b49` / 我的提交页 `e625d63`**；搭档转纯 UI 分工）。新会话**第一件事**：读本文件 → `CLAUDE.md` → `docs/final-iteration-plan.md`。
 > 本文件记录客观事实 + 待办 + 等搭档项。
 
 ---
@@ -14,7 +14,7 @@
 
 ## 1. 仓库 / 分支 / 同步
 - 路径：`/Users/xiongweiluo/LabelHub_Coding/labelhub`，远程 `git@github.com:peilinpeng/labelhub.git`（默认分支 `main`）。
-- 当前分支：`integration/joint-test`，**已与远程同步（HEAD=`50ba8f0`，含 Schema Runtime Engine 合并 + ShowItem 媒体渲染 + upload 缺口修复 + 富文本编辑器），工作区干净**（仅 `.claude/` 本地 preview 产物未跟踪，不要提交）。
+- 当前分支：`integration/joint-test`，**已与远程同步（HEAD=`e625d63`，含 Schema Runtime Engine 合并 + ShowItem 媒体渲染 + upload 缺口修复 + 富文本编辑器 + 草稿自动保存 + 我的提交页），工作区干净**（仅 `.claude/` 本地 preview 产物未跟踪，不要提交）。
 - 已开 PR：`integration/joint-test → dev`（base=dev，惯例 feature→dev→main）。push 后自动更新。本机**无 `gh`**，建 PR 走 GitHub 网页。
 - 搭档分支 `feature/schema-governance-upgrade`（Schema Runtime Engine）**已于 `81ad726` 受控合并进主线**（详见 §6）。**分工已变更（2026-06-07）**：搭档此后只做**纯 UI/视觉优化（可能会动一点组件逻辑）**，从最新 `origin/integration/joint-test`（已含引擎）新开 `feature/ui-polish` 分支、早开 draft PR、勤 rebase；合并 + contracts 把关由**本人（合并负责人）**统一处理。她 UI 工作最可能撞的文件：`apps/web/src/features/labeler/AssignmentPage.tsx`、`apps/web/src/styles.css`、`packages/schema-renderer/src/renderers/ContainerRenderer.tsx`（O7）。
 
@@ -32,6 +32,10 @@
 ## 3. 本迭代已完成（commit 在 `integration/joint-test`）
 - 后端优化计划 Part A–E（早期）+ 另一账号的 worker 修复(celery include + AI 解析鲁棒性)、audit-events 契约对齐、publish 前置校验(P2-E)、数据集导入 UI(P1-A)、富文本说明(P2-A)、clean_demo(P2-D)。
 - **本会话**：
+  - **对照官方课题 PDF 全量核查 + 缺口修复**（`LabelHub 数据标注平台 · AI全栈课题实现要求.pdf`）：逐条核对 4.1~4.6，确认绝大部分已真实落地（任务管理状态机/奖励/Excel导入、动态搭建全物料+联动+自定义校验+多Tab、AI预审 Function Calling+指数退避重试、审核流转 diff/批量/审计、导出 JSON/JSONL/CSV/EXCEL 真实生成+异步+列映射）。发现并修复 2 个 Labeler 功能完备性缺口：
+    - `5d20b49` **草稿真实自动保存**（4.3）：原顶栏徽章是写死 `草稿已自动保存 18:02:31`（固定时间戳假文案），实际仅手动按钮无自动回存。修：答案变更且与上次已保存不同→空闲 1.2s 防抖 `saveDraft`；首次载入只建基线、切题重置基线避免误存；徽章改真实状态（保存中/草稿已自动保存 HH:MM:SS/草稿未保存）。实测编辑后触发 1 次真实 PUT /draft + 真实时间戳。
+    - `e625d63` **「我的提交」页**（4.3）：原 `LABELER_SUBMISSIONS` 路由是 PlaceholderPage（"尚未完成"），但后端 `GET /me/submissions` + api `listMyAssignments` 早已就绪。修：新增 `LabelerSubmissionsPage` 按 status 归类统计（已提交·审核中/已通过/打回·待修改/进行中）+ KPI + 筛选 + 列表（状态徽章/任务标题/题目/更新时间/进入工作台，打回引导"查看意见并修改"）。实测真实后端渲染 6 条、标题解析、计数/筛选正确。
+    - 结论：**Labeler 全流程已完整闭环**（领取→作答→自动保存→提交→我的提交看状态/打回→修改）。可选加分项仍未做：移动端适配、大表单虚拟化(O5)。
   - **组件覆盖度审计（B）+ 缺口修复**：对照举办方两份「标注要求.md」点名的全部物料组件，逐项核对契约/默认引擎(formily-v2)/legacy/seed 实际使用，**浏览器在真实数据上实测**。结论：标注要求点名组件 seed 已 100% 用到，但默认引擎有 1 真缺口 + 1 降级，均已修复：
     - `f3f3cfa` **upload 字段缺口修复**：默认 formily-v2 的 `getComponentName` 缺 `upload.*` 分支、registry 未注册 FileInput → `upload.image`/`upload.file` 整块不渲染；叠加 qa_quality 的 O11 联动 `setRequired(evidence)`（勾「安全违规」触发）会出现**填不了的必填字段、卡提交**。修：新增 `FormilyFileAdapter`（复用占位 FileInput，与 legacy 一致）+ 注册 `COMPONENT_NAMES.FILE` + `getComponentName`/`buildComponentProps` 加 upload 分支。实测：勾「安全违规」后证据素材上传组件正确出现（fileInputs 0→1）。
     - `50ba8f0` **富文本编辑器（替代 input.richtext 纯文本框降级）**：richtext 此前两个引擎都映射成普通 textarea。新增**零依赖** `RichTextInput`（不引 TipTap/Quill，沿用仓库零依赖+防 XSS+控包体策略）= Markdown 编辑器（工具栏加粗/标题/列表/行内代码/链接 + 文本域 + 实时预览，复用 `MarkdownPreview`；只读态直接渲染 Markdown）。字段值即 Markdown 文本，与展示侧 `show.richtext` 一致，存储/哈希无额外格式负担。`getComponentName: input.richtext → RICHTEXT`；legacy FieldRenderer 拆出走 RichTextInput。实测：联动显示「修订建议」后出现富文本工具栏，点加粗插入 `**xx**`、切预览渲染 `<strong>`。
