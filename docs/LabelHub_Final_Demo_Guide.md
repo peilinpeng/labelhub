@@ -40,7 +40,7 @@ VITE_ENABLE_MSW=true npm run dev
 | API 请求 404 | 未加 `VITE_ENABLE_MSW=true` | 重启 dev server |
 | 页面空白 | 未 `npm install` 或依赖不完整 | 重跑 `npm install` |
 | Reviewer 提交 409 | 状态机保护，非 bug | 刷新页面或用不同 sub_xxx |
-| AI 联动不触发 | 需先切到 formily-v2 engine | 见 Demo 2 说明 |
+| 需要 fallback 到经典渲染 | 调试需求 | 访问 `?renderer=legacy` |
 
 ---
 
@@ -169,14 +169,9 @@ http://localhost:5180/owner/tasks/task_demo_schema_migration_required/designer
 http://localhost:5180/labeler/workspace/asn_1001
 ```
 
-### 4.1 启用 Formily 引擎
-
-页面顶部有引擎切换开关（[debug] 区域）：
-
-1. 找到页面顶部的 `[引擎：legacy]` 标记
-2. 点击切换按钮，切换到 `formily-v2`
-
-> 注意：切换后 Formily 联动才会生效。默认为 `legacy` 引擎（保证向后兼容）。
+> **默认即为智能联动渲染（formily-v2 引擎），无需切换。**
+> Fallback：访问 `?renderer=legacy` 可切回经典渲染。
+> 开发者模式：访问 `?showRendererToggle=1` 可显示运行模式切换控件。
 
 ### 4.2 测试 qualityScore 触发联动
 
@@ -205,8 +200,8 @@ docs/qa-assets/03-formily-linkage-required.png
 
 **失败 fallback：**
 
-- 若联动未触发，确认已切换到 `formily-v2` 引擎
-- 若页面报错，切回 `legacy` 引擎（legend 引擎不受影响）
+- 若联动未触发，检查访问路径是否包含 `?renderer=legacy`（legacy 不走 Formily runtime）
+- 若页面报错，访问 `?renderer=legacy` 切回经典渲染验证
 
 ---
 
@@ -218,7 +213,8 @@ docs/qa-assets/03-formily-linkage-required.png
 http://localhost:5180/labeler/workspace/asn_1001
 ```
 
-> 此 demo 在 **legacy 引擎** 下运行（切回 legacy，或保持默认）。
+> 此 demo 在**智能联动渲染（formily-v2）下**运行（默认即可，无需切换）。
+> AI Assist preflight 现已与 Formily runtime 统一——动态联动与 AI 预检走同一条 Schema Runtime Engine 路径。
 
 ### 5.1 触发 AI Assist
 
@@ -393,8 +389,9 @@ Demo 1 → Demo 3 → Demo 5
 
 ### Q2：Formily 联动没有触发
 
-- 确认已切换到 `formily-v2` engine（页面顶部 debug 切换）
-- 联动只在 formily-v2 引擎下生效，legacy 引擎不走 Formily runtime
+- 默认已使用智能联动渲染（formily-v2），无需手动切换
+- 确认 URL 中没有 `?renderer=legacy`（legacy 引擎不走 Formily runtime）
+- 若有此参数，去掉后刷新即可
 
 ### Q3：Reviewer 提交 409
 

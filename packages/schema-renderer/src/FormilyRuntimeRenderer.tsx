@@ -8,6 +8,7 @@ import type {
   ContainerNode,
   FieldLinkageEffect,
   FieldNode,
+  LLMAssistNode,
   SchemaNode,
 } from "@labelhub/contracts";
 import { buildReactionPlan } from "@labelhub/schema-compiler";
@@ -16,7 +17,8 @@ import { evaluateExpression, resolveNodeVisibility } from "@labelhub/schema-core
 import type { RuntimeContextWithOutput } from "@labelhub/schema-core";
 import type { ComponentRegistry } from "./ComponentRegistry";
 import { COMPONENT_NAMES } from "./ComponentRegistry";
-import type { SchemaRendererProps } from "./types";
+import { LLMAssistRenderer } from "./renderers/LLMAssistRenderer";
+import type { RenderNodeContext, SchemaRendererProps } from "./types";
 
 export interface FormilyRuntimeRendererProps extends SchemaRendererProps {
   /** FE-2 傳入包裝後的 adapter 集合；registry 為空時 field 不渲染 */
@@ -66,9 +68,14 @@ export function FormilyRuntimeRenderer({
   context,
   mode,
   onAnswersChange,
+  onLLMAssist,
+  onAssistOutcome,
+  readonly: readonlyProp,
+  patchedAnswers: patchedAnswersProp,
+  onUnsupportedNode,
   registry,
 }: FormilyRuntimeRendererProps) {
-  const isReadonly = mode === "REVIEW_READONLY" || mode === "REVIEW_DIFF";
+  const isReadonly = (readonlyProp === true) || mode === "REVIEW_READONLY" || mode === "REVIEW_DIFF";
 
   const form = useMemo(
     () => createForm({ initialValues: answers }),
@@ -119,7 +126,10 @@ export function FormilyRuntimeRenderer({
       }
 
       // 在所有 reaction（含 clearValue）完成后，上报最终 answers
-      onAnswersChangeRef.current(form.values as AnswerPayload);
+      // 必须 spread 成新的 plain object：form.values 是 Formily mutable proxy，
+      // 始终是同一引用，直接传入会导致 React setAnswers 做 Object.is 比较后
+      // 认为引用未变而跳过 re-render，上层 useMemo([answers]) 不重新计算。
+      onAnswersChangeRef.current({ ...(form.values as AnswerPayload) });
     });
     return () => {
       form.unsubscribe(id);
@@ -133,6 +143,52 @@ export function FormilyRuntimeRenderer({
 
   const entries = registry?.entries ?? {};
 
+  function renderLLMAssistNode(node: LLMAssistNode): React.ReactNode {
+    const formAnswers = form.values as AnswerPayload;
+    const renderContext: RenderNodeContext = {
+      schema,
+      context: { ...context, answers: formAnswers },
+      answers: formAnswers,
+      patchedAnswers: patchedAnswersProp ?? formAnswers,
+      mode,
+      readonly: isReadonly,
+      errorsByField: new Map(),
+      onFieldChange: () => undefined,
+      onLLMAssist,
+      onAssistOutcome,
+      onApplySuggestedPatch: (nextAnswers: AnswerPayload) => {
+        // 屏蔽中间 reaction，整批完成后再统一触发
+        applyingReactionsRef.current = true;
+        try {
+          const currentValues = form.values as Record<string, unknown>;
+          // 删除 nextAnswers 中不存在或 undefined 的字段（normalize 清理）
+          for (const key of Object.keys(currentValues)) {
+            if (!(key in nextAnswers) || nextAnswers[key] === undefined) {
+              form.deleteValuesIn(key);
+            }
+          }
+          // 只写入有明确值的字段
+          const definedAnswers = Object.fromEntries(
+            Object.entries(nextAnswers).filter(([, v]) => v !== undefined),
+          ) as AnswerPayload;
+          form.setValues(definedAnswers);
+        } finally {
+          applyingReactionsRef.current = false;
+        }
+        // patch 写入后统一重跑 reactions，确保联动规则（clearValue / setRequired / setVisible）继续触发
+        const runtimeCtx: RuntimeContextWithOutput = {
+          ...contextRef.current,
+          answers: form.values as AnswerPayload,
+        };
+        applyReactionPlan(form, reactionPlan, runtimeCtx);
+        // 同理：spread 成新 plain object，确保上层 setAnswers 触发 re-render
+        onAnswersChangeRef.current({ ...(form.values as AnswerPayload) });
+      },
+      onUnsupportedNode,
+    };
+    return <LLMAssistRenderer key={node.id} node={node} renderContext={renderContext} />;
+  }
+
   function renderSchemaNode(node: SchemaNode): React.ReactNode {
     if (node.kind === "FIELD") {
       // FE-5：FieldNode 始终挂载，由 Formily field state.display 控制可见性
@@ -143,6 +199,10 @@ export function FormilyRuntimeRenderer({
       // ContainerNode 暂保留 legacy visibility gate（FE-5 不做 container reaction）
       if (!resolveNodeVisibility(node, contextWithAnswers)) return null;
       return renderContainerNode(node);
+    }
+
+    if (node.kind === "LLM_ASSIST") {
+      return renderLLMAssistNode(node);
     }
 
     return null;

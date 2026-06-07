@@ -127,16 +127,21 @@ cd apps/web && npm run typecheck && npm run build
 
 **URL：** `http://localhost:5180/labeler/workspace/asn_1001`
 
-### 5.1 智能联动渲染模式启用
+### 5.1 智能联动渲染模式确认
 
 > 表单联动运行时由 schema-compiler 编译生成 Formily x-reactions 驱动。
-> 切换至智能联动渲染模式（内部引擎 formily-v2）后，联动规则才会在前端运行时生效。
+> 页面默认使用智能联动渲染（formily-v2），无需手动切换。
+>
+> **URL 参数说明：**
+> - 默认（无参数）：智能联动渲染（formily-v2）
+> - `?renderer=legacy`：经典渲染（fallback，联动不生效）
+> - `?showRendererToggle=1`：显示开发者模式切换控件
 
 | 检查项 | 结果 | 备注 |
 |---|---|---|
-| 页面顶部可见表单运行模式切换区域 | `（填写）` | |
-| 切换至智能联动渲染模式（formily-v2 engine） | `（填写）` | |
-| 切换后页面无报错（Console 无 error） | `（填写）` | |
+| 默认页面 Console 无 error | `（填写）` | 访问 `/labeler/workspace/asn_1001` |
+| 不显示 `[debug]`、`legacy`、`formily-v2` 文字 | `（填写）` | 普通 UI 无引擎标签 |
+| `?renderer=legacy` fallback 可用（AI Assist 按钮仍可见） | `（填写）` | |
 
 ### 5.2 qualityScore 联动测试
 
@@ -160,7 +165,7 @@ cd apps/web && npm run typecheck && npm run build
 
 **URL：** `http://localhost:5180/labeler/workspace/asn_1001`
 
-> 注意：切回 `legacy` engine 进行此测试（或保持默认）
+> **默认即为 formily-v2（智能联动渲染）。AI Assist preflight 与动态联动走同一 Schema Runtime Engine 路径，无需切换引擎。**
 
 ### 6.1 BLOCKED 场景
 
