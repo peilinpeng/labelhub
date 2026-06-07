@@ -236,6 +236,23 @@ describe("LLMAssistRenderer preflight UI", () => {
     // 无确认按钮（requireUserConfirm with empty outputBindings = true, but no patch）
   });
 
+  test("空 suggestedPatch 时不显示确认按钮，也不显示 preflight block", async () => {
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 输出",
+      suggestedPatch: {}, // 空对象：AI 未给出任何字段建议
+      callId: "llm_test_empty_patch",
+    } as LLMRuntimeResponse);
+
+    renderWithSchema(makeSimpleSchema(), { onLLMAssist });
+    await clickAiButton();
+
+    await waitFor(() => expect(screen.getByText("AI 输出")).toBeTruthy());
+    // 空 patch → 跳过 preflight（无 block）且不渲染可点的"确认应用建议"按钮
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "确认应用建议" })).toBeNull();
+  });
+
   test("SAFE 状态显示'预检通过'", async () => {
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Literal, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from app.schemas.task import AuditLogSummaryResponse
 
 
@@ -75,6 +75,14 @@ class BatchUpdateItemsRequest(BaseModel):
         None, description="批量设置状态；仅允许 AVAILABLE/DISABLED"
     )
     sourcePayload: dict | None = Field(None, description="批量覆盖 sourcePayload（按需）")
+
+    @model_validator(mode="after")
+    def _require_at_least_one_field(self) -> "BatchUpdateItemsRequest":
+        # status / sourcePayload 全空时本次批量更新无实际改动，拒绝该 no-op 请求
+        # （否则会返回 updatedCount=N 声称改了 N 条但实际未改任何字段，误导调用方）。
+        if self.status is None and self.sourcePayload is None:
+            raise ValueError("status 与 sourcePayload 至少需提供一个")
+        return self
 
 
 class BatchUpdateItemsResponse(BaseModel):

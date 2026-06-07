@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -165,12 +166,15 @@ def register_error_handlers(app: FastAPI) -> None:
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         """Pydantic v2 请求体校验失败 → 422 VALIDATION_FAILED。"""
+        # jsonable_encoder：model_validator/field_validator 抛 ValueError 时，pydantic
+        # 会把原始异常对象放进 error 的 ctx 里（不可直接 JSON 序列化），需编码为可序列化
+        # 形式，否则 JSONResponse 会抛 TypeError 退化成 500。对齐 FastAPI 默认处理。
         return JSONResponse(
             status_code=422,
             content={
                 "code": "VALIDATION_FAILED",
                 "message": "请求参数校验失败",
-                "details": exc.errors(),
+                "details": jsonable_encoder(exc.errors()),
                 "traceId": uuid.uuid4().hex,
             },
         )

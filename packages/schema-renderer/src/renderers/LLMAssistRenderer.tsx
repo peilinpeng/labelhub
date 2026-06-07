@@ -35,7 +35,12 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
   const [preflightResult, setPreflightResult] = useState<PreflightResult | undefined>();
   const notifiedOutcomesRef = useRef<Set<string>>(new Set());
 
-  const hasSuggestedPatch = response?.suggestedPatch !== undefined && requireUserConfirm(node);
+  // 空对象 patch（AI 未给出任何字段建议）不应渲染可点的"确认应用"按钮——否则会
+  // 跳过 preflight（其判定也以 length > 0 为准）却仍可点击，应用空操作并误记 ACCEPTED。
+  const hasSuggestedPatch =
+    response?.suggestedPatch !== undefined &&
+    Object.keys(response.suggestedPatch).length > 0 &&
+    requireUserConfirm(node);
   const preflightBlocked = preflightResult !== undefined && !preflightResult.ok;
   const canApply = hasSuggestedPatch && !preflightBlocked;
   const patchFieldNames = Object.keys(response?.suggestedPatch ?? {}).sort();

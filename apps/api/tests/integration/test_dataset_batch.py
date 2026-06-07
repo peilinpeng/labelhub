@@ -75,3 +75,14 @@ def test_batch_update_empty_item_ids_rejected(client, auth, db_session):
         headers=auth["OWNER"],
     )
     assert resp.status_code == 422  # min_length=1 校验
+
+
+def test_batch_update_rejects_empty_patch(client, auth, db_session):
+    """status 与 sourcePayload 全空 → 422，拒绝 no-op（否则会返回 updatedCount 误导）。"""
+    task_id, item_ids = _published_task_with_items(client, db_session, auth["OWNER"], n=2)
+    resp = client.post(
+        f"/api/v1/tasks/{task_id}/items/batch-update",
+        json={"itemIds": item_ids},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 422
