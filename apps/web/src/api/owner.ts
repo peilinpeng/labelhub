@@ -41,6 +41,7 @@ export async function createTask(
   request: Pick<Task, "title" | "quota" | "distributionStrategy" | "reviewPolicy"> & {
     description?: string;
     tags?: string[];
+    instructionRichText?: Task["instructionRichText"];
   }
 ): Promise<Task> {
   const res = await apiPost<{ task: Task; auditLog: unknown }>("/api/v1/tasks", request);

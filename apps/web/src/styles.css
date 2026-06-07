@@ -6963,3 +6963,29 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Markdown 任务说明（P2-A）─────────────────────────────────────────── */
+.markdown-body { font-size: 13px; line-height: 1.6; color: var(--lh-text); }
+.markdown-body h4 { font-size: 15px; font-weight: 700; margin: 10px 0 4px; }
+.markdown-body h5 { font-size: 14px; font-weight: 700; margin: 8px 0 4px; }
+.markdown-body h6 { font-size: 13px; font-weight: 700; margin: 6px 0 4px; color: var(--lh-muted); }
+.markdown-body p { margin: 6px 0; }
+.markdown-body ul, .markdown-body ol { margin: 6px 0; padding-left: 20px; }
+.markdown-body li { margin: 2px 0; }
+.markdown-body strong { font-weight: 700; }
+.markdown-body code {
+  background: var(--lh-surface-soft); border-radius: 4px;
+  padding: 1px 5px; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.markdown-empty { color: var(--lh-muted); }
+
+.markdown-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.markdown-editor__pane { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.markdown-editor__label { font-size: 12px; color: var(--lh-muted); }
+.markdown-editor__preview {
+  border: 1px solid var(--lh-border); border-radius: var(--lh-radius-control);
+  padding: 10px 12px; background: var(--lh-surface); min-height: 120px; overflow: auto;
+}
+@media (max-width: 980px) { .markdown-editor { grid-template-columns: 1fr; } }
+
+.owner-readonly-field--muted { color: var(--lh-muted); }

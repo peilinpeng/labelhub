@@ -7,6 +7,7 @@ import { createLocalPublishedTask } from "../../mocks/local-task-store";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Input, Select, Textarea } from "../../ui/primitives";
+import { MarkdownEditor, markdownToDoc } from "../../ui/markdown";
 
 interface OwnerNewTaskPageProps {
   role: Role;
@@ -19,6 +20,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [instruction, setInstruction] = useState("");
   const [quotaTotal, setQuotaTotal] = useState(100);
   const [distributionType, setDistributionType] = useState<DistributionType>("FIRST_COME_FIRST_SERVED");
   const [reviewPolicyType, setReviewPolicyType] = useState<ReviewPolicyType>("SINGLE_REVIEW");
@@ -63,6 +65,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
       const task = await createTask({
         title: title.trim(),
         description: description.trim(),
+        instructionRichText: instruction.trim() ? markdownToDoc(instruction) : undefined,
         quota: { total: quotaTotal },
         distributionStrategy:
           distributionType === "FIRST_COME_FIRST_SERVED"
@@ -140,9 +143,13 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
             <Textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="请输入任务说明、验收标准或标注背景"
+              placeholder="一句话简介，显示在任务列表"
             />
           </label>
+          <div className="field-label">
+            标注说明（富文本 / Markdown，标注员作答时可见）
+            <MarkdownEditor value={instruction} onChange={setInstruction} />
+          </div>
           <label className="field-label">
             配额总数 *
             <Input

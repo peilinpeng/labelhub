@@ -4,6 +4,7 @@ import { getDemoWorkflowState } from "../../mocks/demo-workflow-store";
 import { tasksMock } from "../../mocks/data/tasks.mock";
 import { findLocalTaskById } from "../../mocks/local-task-store";
 import { Badge, Card } from "../../ui/primitives";
+import { MarkdownPreview, docToMarkdown } from "../../ui/markdown";
 import type { Task } from "@labelhub/contracts";
 
 interface OwnerTaskDetailPageProps {
@@ -89,6 +90,18 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
             <label>
               <span>任务说明</span>
               <div className="owner-readonly-field owner-readonly-field--multiline">{taskDescription(task)}</div>
+            </label>
+            <label>
+              <span>标注说明（标注员作答时可见）</span>
+              {docToMarkdown(task.instructionRichText).trim() ? (
+                <div className="owner-readonly-field owner-readonly-field--multiline">
+                  <MarkdownPreview source={docToMarkdown(task.instructionRichText)} />
+                </div>
+              ) : (
+                <div className="owner-readonly-field owner-readonly-field--multiline owner-readonly-field--muted">
+                  未填写标注说明
+                </div>
+              )}
             </label>
             <div className="owner-detail-form-grid">
               <label>

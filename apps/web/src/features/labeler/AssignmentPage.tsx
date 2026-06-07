@@ -6,6 +6,7 @@ import { callLLMAssist, getAssignmentContext, listAssignmentItems, saveDraft, su
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card } from "../../ui/primitives";
+import { MarkdownPreview, docToMarkdown } from "../../ui/markdown";
 import { DEMO_ASSIGNMENT_ID, submitDemoAssignment } from "../../mocks/demo-workflow-store";
 import { getAssignmentContext as getMockAssignmentContext } from "../../mocks/mock-db";
 import { datasetItemsMock } from "../../mocks/data/dataset-items.mock";
@@ -516,6 +517,13 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
         </main>
 
         <aside className="labeler-runner-side">
+          {docToMarkdown(context.task.instructionRichText).trim() ? (
+            <section className="labeler-runner-side-card">
+              <h3>标注须知</h3>
+              <MarkdownPreview source={docToMarkdown(context.task.instructionRichText)} />
+            </section>
+          ) : null}
+
           <section className="labeler-runner-side-card">
             <h3>我的贡献（本任务）</h3>
             <div className="labeler-runner-stats">

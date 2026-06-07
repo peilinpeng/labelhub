@@ -195,9 +195,21 @@ def main() -> None:
         print("\n🧹 已清理旧演示任务数据")
 
         # 任务（先建 DRAFT，发布 schema 后转 PUBLISHED）
+        instruction_md = (
+            "# 标注须知\n\n"
+            "请阅读原文标题与正文后进行质量评级。\n\n"
+            "## 评级标准\n"
+            "- **高质量**：信息完整、来源可靠、表述准确\n"
+            "- **中等**：基本可用但有小瑕疵\n"
+            "- **低质量**：标题党、事实存疑或表述混乱\n\n"
+            "## 注意\n"
+            "1. 标题党一律判 `低质量`\n"
+            "2. 评语需说明判定理由"
+        )
         task = Task(
             id=TASK_ID, title="新闻质量标注（演示）",
             description="对新闻条目进行质量评级与评语标注，用于端到端演示。",
+            instruction_rich_text_json={"type": "doc", "content": [{"type": "markdown", "text": instruction_md}]},
             tags_json=["demo", "news"],
             quota_json={"total": 100, "perLabeler": 20},
             distribution_strategy_json={"type": "FIRST_COME_FIRST_SERVED"},
