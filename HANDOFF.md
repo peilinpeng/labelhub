@@ -40,10 +40,10 @@
 ## 1. 当前 Git 基线（每次开班核对，每次收班更新）
 
 ```txt
-分支：    feature/schema-governance-upgrade
-commit：  cf3317a   feat(schema-renderer): add AI assist preflight UI
-工作区：  clean（无未提交改动）
-更新时间：2026-06-07（Claude Code 文档收束）
+分支：    integration/joint-test（主线；feature/schema-governance-upgrade 已于 81ad726 受控合并进主线）
+commit：  55a1bc0   fix(renderer): ShowItem 按类型真渲染媒体 + formily-v2 渲染 ShowItem（P0 真实数据缺口）
+工作区：  clean（仅 .claude/ 本地 preview 产物未跟踪，不提交）
+更新时间：2026-06-07（Claude Code：ShowItem 媒体渲染 P0 修复，已 push）
 更新者：  Claude Code
 
 三条主线均已完成并 push：
@@ -218,6 +218,23 @@ cd apps/web && npm run typecheck && npm run build
 ## 9. 上一班工作日志（收班时追加，最新在上）
 
 ```txt
+### 2026-06-07 | Claude Code（ShowItem 媒体渲染 P0 修复，已 push 55a1bc0）
+- 背景：核对 ShowItem 对 image/video/markdown 渲染时挖出真实竞赛数据 P0 缺口——
+  默认 formily-v2 引擎对 SHOW_ITEM return null（标注员看不到 prompt/答案/媒体），
+  legacy ShowItemRenderer 又只输出纯文本（媒体不渲染），且页面源数据面板是电商 demo 残留。
+- 改动文件：
+  - packages/schema-renderer/src/FormilyRuntimeRenderer.tsx（默认引擎渲染 SHOW_ITEM）
+  - packages/schema-renderer/src/renderers/ShowItemRenderer.tsx（按 node.type 真渲染 + URL 净化）
+  - packages/schema-renderer/src/markdown.tsx（新，零依赖轻量 Markdown，移植自 apps/web 扩展图片/链接）
+  - apps/web/src/features/labeler/AssignmentPage.tsx（删电商残留「原始商品标题」面板）
+  - apps/web/src/styles.css（媒体不溢出）
+  - apps/api/scripts/seed_competition.py（_show 加 visibleWhen 按 media_type 网关）
+  - 测试：ShowItemRenderer.test.tsx（新，7）+ FormilyRuntimeRenderer.test.tsx（+formily-v2 P0 集成测试）
+- 运行库补丁：sv_qa_quality_v1 的 schema_json 已手工注入 3 个 visibleWhen（seed 幂等不更新现有任务，故现库需直接打补丁）。
+- 是否触碰边界：未改 packages/contracts/、未改架构契约；动了 apps/web 渲染层（合并负责人职责内）。
+- 验证：schema-renderer typecheck + 64 测试 ✅；web typecheck+build ✅；真实后端浏览器复验 video/image/markdown 三类渲染正确、visibleWhen 网关生效 ✅。
+- commit：55a1bc0（已 push，integration/joint-test 与远程同步）。
+
 ### 2026-06-07 | Claude Code（文档收束）
 - 任务：最终交付收束——更新 HANDOFF.md + 新增 Final Demo Guide + QA_TEST_RECORD + qa-assets 目录
 - 改动文件：

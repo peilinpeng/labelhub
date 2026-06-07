@@ -1,6 +1,6 @@
 # 迁移上下文 / 交接文档（复制给新会话即可接手）
 
-> 更新：2026-06-07（最终迭代阶段；已落地 O7/O8 + O9 清脏数据 + **Schema Runtime Engine 受控合并 `81ad726`**；搭档转纯 UI 分工）。新会话**第一件事**：读本文件 → `CLAUDE.md` → `docs/final-iteration-plan.md`。
+> 更新：2026-06-07（最终迭代阶段；已落地 O7/O8 + O9 清脏数据 + **Schema Runtime Engine 受控合并 `81ad726`** + **ShowItem 媒体真渲染 P0 修复 `55a1bc0`**；搭档转纯 UI 分工）。新会话**第一件事**：读本文件 → `CLAUDE.md` → `docs/final-iteration-plan.md`。
 > 本文件记录客观事实 + 待办 + 等搭档项。
 
 ---
@@ -14,7 +14,7 @@
 
 ## 1. 仓库 / 分支 / 同步
 - 路径：`/Users/xiongweiluo/LabelHub_Coding/labelhub`，远程 `git@github.com:peilinpeng/labelhub.git`（默认分支 `main`）。
-- 当前分支：`integration/joint-test`，**已与远程同步（HEAD=`81ad726`，含 Schema Runtime Engine 合并），工作区干净**（仅 `.claude/` 本地 preview 产物未跟踪，不要提交）。
+- 当前分支：`integration/joint-test`，**已与远程同步（HEAD=`55a1bc0`，含 Schema Runtime Engine 合并 + ShowItem 媒体渲染 P0 修复），工作区干净**（仅 `.claude/` 本地 preview 产物未跟踪，不要提交）。
 - 已开 PR：`integration/joint-test → dev`（base=dev，惯例 feature→dev→main）。push 后自动更新。本机**无 `gh`**，建 PR 走 GitHub 网页。
 - 搭档分支 `feature/schema-governance-upgrade`（Schema Runtime Engine）**已于 `81ad726` 受控合并进主线**（详见 §6）。**分工已变更（2026-06-07）**：搭档此后只做**纯 UI/视觉优化（可能会动一点组件逻辑）**，从最新 `origin/integration/joint-test`（已含引擎）新开 `feature/ui-polish` 分支、早开 draft PR、勤 rebase；合并 + contracts 把关由**本人（合并负责人）**统一处理。她 UI 工作最可能撞的文件：`apps/web/src/features/labeler/AssignmentPage.tsx`、`apps/web/src/styles.css`、`packages/schema-renderer/src/renderers/ContainerRenderer.tsx`（O7）。
 
@@ -32,6 +32,7 @@
 ## 3. 本迭代已完成（commit 在 `integration/joint-test`）
 - 后端优化计划 Part A–E（早期）+ 另一账号的 worker 修复(celery include + AI 解析鲁棒性)、audit-events 契约对齐、publish 前置校验(P2-E)、数据集导入 UI(P1-A)、富文本说明(P2-A)、clean_demo(P2-D)。
 - **本会话**：
+  - `55a1bc0` **ShowItem 媒体真渲染 P0 修复**（真实竞赛数据缺口）：① 默认 `formily-v2` 引擎此前对 SHOW_ITEM 节点 `return null`，而 seed_competition 用 ShowItem 承载 prompt/model_answer/reference/媒体 → 标注员在默认页**看不到要标的内容**；现 `FormilyRuntimeRenderer.renderSchemaNode` 加 SHOW_ITEM 分支（沿用 visibility gate）。② legacy `ShowItemRenderer` 旧实现只看 transform、永远输出纯文本，`show.image`/`show.file`/`show.richtext` 一律当文本不渲染；现按 `node.type` 真渲染 image=`<img>` / file(video)=`<video>`或下载链接 / richtext=Markdown / json=`<pre>`，含 URL 净化防 XSS，空值无 fallback 则整块隐藏。③ 新增 `packages/schema-renderer/src/markdown.tsx`（零依赖轻量 Markdown 子集渲染器，移植自 `apps/web/src/ui/markdown.tsx` 并扩展图片/链接；schema-renderer 不能反向 import apps/web 故独立一份）。④ `seed_competition._show` 加 `visibleWhen` 参数，按 `media_type` 网关 3 个媒体 ShowItem（否则视频题渲染坏图、图片题渲染空视频）；**运行库 `sv_qa_quality_v1` 已手工补丁注入同样的 visibleWhen**（seed 按标题幂等跳过，不会更新现有任务）。⑤ `AssignmentPage` 收掉电商残留「原始商品标题（不可编辑）」面板（写死读 title/body，竞赛数据无此字段 → 只显示空白），改为仅在有通用 title/body 源数据时显示。⑥ styles 加 ShowItem 媒体自适应不溢出。验证：schema-renderer typecheck + **64 测试**（含 7 ShowItem 单测 + formily-v2 渲染 ShowItem 的 P0 集成测试）；web typecheck+build；**真实后端浏览器复验**（默认 formily-v2）：video 题仅 `<video>` 无坏图、image 题仅 `<img>` 无空视频、text 题媒体块按空值隐藏、3 个文本源数据正常渲染。
   - `4bf322d` linkageRules 兼容回归测试（Schema Runtime Engine 对接，后端天然兼容）。
   - `7545548` **P1-B Designer 真实拖拽**（物料拖放 + 节点重排，原生 DnD）。
   - `284c3d3` **P2-C 响应式**（修 Reviewer 详情页 1280×800 三列溢出）。
