@@ -1,7 +1,7 @@
 import type { LabelHubSchema, NodeType, SchemaNode } from "@labelhub/contracts";
 import { findNodeById } from "@labelhub/schema-core";
 import { createNodeFromMaterial } from "./materials";
-import { insertNode, moveNode, removeNode, updateNode } from "./node-operations";
+import { insertNode, moveNode, removeNode, reorderNode as reorderNodeOp, updateNode } from "./node-operations";
 import type { DesignerActionContext } from "./types";
 
 export function addMaterialNode(context: DesignerActionContext, type: NodeType): void {
@@ -32,6 +32,13 @@ export function moveSelectedNode(context: DesignerActionContext, nodeId: string,
     return;
   }
   context.onSchemaChange(moveNode(context.schema, nodeId, direction));
+}
+
+export function reorderSelectedNode(context: DesignerActionContext, draggedId: string, targetId: string): void {
+  if (context.readonly) {
+    return;
+  }
+  context.onSchemaChange(reorderNodeOp(context.schema, draggedId, targetId));
 }
 
 export function patchNode(context: DesignerActionContext, nodeId: string, patch: Partial<SchemaNode>): void {

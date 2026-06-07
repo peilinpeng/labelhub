@@ -9,6 +9,7 @@ export interface DesignerCanvasProps {
   onDelete(nodeId: string): void;
   onMoveUp(nodeId: string): void;
   onMoveDown(nodeId: string): void;
+  onReorder?: ((draggedId: string, targetId: string) => void) | undefined;
 }
 
 export function DesignerCanvas(props: DesignerCanvasProps) {
@@ -17,12 +18,12 @@ export function DesignerCanvas(props: DesignerCanvasProps) {
       <div className="schema-designer-panel__header">
         <div>
           <h2>Schema 画布</h2>
-          <p>按树形结构组织展示、字段与 AI 辅助节点</p>
+          <p>从左侧拖拽组件到此处；拖拽节点手柄可重排</p>
         </div>
         <span>{props.nodes.length}</span>
       </div>
       <div className="schema-designer-canvas-surface">
-        {props.nodes.length === 0 ? <p className="schema-designer-empty">暂无节点，请从左侧添加组件。</p> : null}
+        {props.nodes.length === 0 ? <p className="schema-designer-empty">暂无节点，请从左侧拖拽或点击添加组件。</p> : null}
         {props.nodes.map((node) => (
           <TreeNode key={node.id} node={node} depth={0} {...props} />
         ))}
@@ -40,6 +41,7 @@ function TreeNode({
   onDelete,
   onMoveUp,
   onMoveDown,
+  onReorder,
 }: DesignerCanvasProps & { node: SchemaNode; depth: number }) {
   return (
     <div className="schema-designer-tree-node" style={{ marginLeft: depth * 18 }}>
@@ -50,6 +52,7 @@ function TreeNode({
         onDelete={onDelete}
         onMoveDown={onMoveDown}
         onMoveUp={onMoveUp}
+        onReorder={onReorder}
         onSelect={onSelect}
       />
       {node.kind === "CONTAINER"
@@ -64,6 +67,7 @@ function TreeNode({
               onDelete={onDelete}
               onMoveDown={onMoveDown}
               onMoveUp={onMoveUp}
+              onReorder={onReorder}
               onSelect={onSelect}
             />
           ))

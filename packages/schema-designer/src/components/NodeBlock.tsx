@@ -1,4 +1,5 @@
 import type { SchemaNode } from "@labelhub/contracts";
+import { useState } from "react";
 
 export interface NodeBlockProps {
   node: SchemaNode;
@@ -8,17 +9,64 @@ export interface NodeBlockProps {
   onDelete(nodeId: string): void;
   onMoveUp(nodeId: string): void;
   onMoveDown(nodeId: string): void;
+  onReorder?: ((draggedId: string, targetId: string) => void) | undefined;
 }
 
-export function NodeBlock({ node, selected, readonly, onSelect, onDelete, onMoveUp, onMoveDown }: NodeBlockProps) {
+/** 画布内节点拖拽重排的 dataTransfer key（与物料拖拽 key 区分，避免冲突）。 */
+export const NODE_MOVE_DRAG_TYPE = "application/x-labelhub-node-move";
+
+export function NodeBlock({ node, selected, readonly, onSelect, onDelete, onMoveUp, onMoveDown, onReorder }: NodeBlockProps) {
+  const [dragOver, setDragOver] = useState(false);
+  const reorderEnabled = !readonly && onReorder !== undefined;
+
   return (
     <div
       className="schema-node-card"
       data-node-id={node.id}
       data-node-kind={node.kind}
       data-selected={selected ? "true" : "false"}
+      data-drag-over={dragOver ? "true" : "false"}
+      onDragOver={(event) => {
+        if (!reorderEnabled || !event.dataTransfer.types.includes(NODE_MOVE_DRAG_TYPE)) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "move";
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(event) => {
+        if (!reorderEnabled) {
+          return;
+        }
+        const draggedId = event.dataTransfer.getData(NODE_MOVE_DRAG_TYPE);
+        if (!draggedId) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        setDragOver(false);
+        if (draggedId !== node.id) {
+          onReorder?.(draggedId, node.id);
+        }
+      }}
     >
       <div className="schema-node-card__topline">
+        {reorderEnabled ? (
+          <span
+            aria-label="拖拽重排"
+            className="schema-node-card__drag-handle"
+            draggable
+            title="拖拽重排"
+            onDragStart={(event) => {
+              event.dataTransfer.setData(NODE_MOVE_DRAG_TYPE, node.id);
+              event.dataTransfer.effectAllowed = "move";
+            }}
+          >
+            ⠿
+          </span>
+        ) : null}
         <strong>{node.title}</strong>
         <span>{node.type}</span>
       </div>

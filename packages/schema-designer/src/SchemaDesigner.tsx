@@ -7,7 +7,7 @@ import { EmptyPropertyPanel, PropertyPanel } from "./components/PropertyPanel";
 import { MaterialPanel } from "./components/MaterialPanel";
 import { SchemaPreview } from "./components/SchemaPreview";
 import { ValidationPanel } from "./components/ValidationPanel";
-import { addMaterialNode, deleteSelectedNode, moveSelectedNode, patchNode } from "./designer-actions";
+import { addMaterialNode, deleteSelectedNode, moveSelectedNode, patchNode, reorderSelectedNode } from "./designer-actions";
 import { createDesignerState, syncDesignerState, validateDesignerSchema } from "./designer-state";
 import type { DesignerActionContext, DesignerState, SchemaDesignerProps } from "./types";
 
@@ -65,6 +65,7 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
           onDelete={(nodeId) => deleteSelectedNode(actionContext, nodeId)}
           onMoveDown={(nodeId) => moveSelectedNode(actionContext, nodeId, "DOWN")}
           onMoveUp={(nodeId) => moveSelectedNode(actionContext, nodeId, "UP")}
+          onReorder={(draggedId, targetId) => reorderSelectedNode(actionContext, draggedId, targetId)}
           onSelect={(nodeId) => setState((current) => ({ ...current, selectedNodeId: nodeId }))}
         />
       }
