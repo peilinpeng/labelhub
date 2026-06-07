@@ -1,10 +1,16 @@
 import type { AnswerPayload, ReviewPatch, ValidationError } from "@labelhub/contracts";
 import { normalizeAnswers, validateAnswers, validateSchemaShape } from "@labelhub/schema-core";
 import { useMemo, useState } from "react";
+import { DEFAULT_FORMILY_REGISTRY } from "./adapters";
+import { FormilyRuntimeRenderer } from "./FormilyRuntimeRenderer";
 import { renderNode } from "./render-node";
 import type { RenderNodeContext, SchemaRendererProps } from "./types";
 
 export function SchemaRenderer(props: SchemaRendererProps) {
+  if (props.engine === "formily-v2") {
+    return <FormilyRuntimeRenderer {...props} registry={DEFAULT_FORMILY_REGISTRY} />;
+  }
+
   const { schema, answers, context, mode, onAnswersChange } = props;
   const [submitErrors, setSubmitErrors] = useState<ValidationError[]>([]);
   const contextWithAnswers = useMemo(() => ({ ...context, answers }), [context, answers]);

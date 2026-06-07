@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@labelhub/contracts": new URL("../contracts/src/index.ts", import.meta.url).pathname,
+      "@labelhub/schema-compiler": new URL("../schema-compiler/src/index.ts", import.meta.url).pathname,
       "@labelhub/schema-core": new URL("../schema-core/src/index.ts", import.meta.url).pathname,
     },
   },

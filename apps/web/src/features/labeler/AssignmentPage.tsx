@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
+import { runSchemaPreflight } from "@labelhub/schema-compiler";
+import { collectFieldNodes } from "@labelhub/schema-core";
 import { SchemaRenderer, type LLMAssistOutcome } from "@labelhub/schema-renderer";
 import { Role } from "../../app/routes";
 import { callLLMAssist, getAssignmentContext, listAssignmentItems, saveDraft, submitAssignment } from "../../api/labeler";
@@ -77,6 +79,14 @@ function getNavigationStatus(
 
 export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const { assignmentId } = useParams<{ assignmentId: string }>();
+  const [searchParams] = useSearchParams();
+  // URL: ?renderer=legacy → legacy; ?renderer=smart or default → formily-v2
+  const rendererParam = searchParams.get("renderer");
+  const showRendererToggle = searchParams.get("showRendererToggle") === "1";
+  const urlEngine: "legacy" | "formily-v2" = rendererParam === "legacy" ? "legacy" : "formily-v2";
+  // 开发者切换控件（仅 ?showRendererToggle=1 时可见）
+  const [toggleEngine, setToggleEngine] = useState<"legacy" | "formily-v2">(urlEngine);
+  const rendererEngine = showRendererToggle ? toggleEngine : urlEngine;
   const [context, setContext] = useState<AssignmentContextResponse | null>(null);
   const [answers, setAnswers] = useState<AnswerPayload>({});
   const [answersByItemId, setAnswersByItemId] = useState<Record<string, AnswerPayload>>({});
@@ -176,6 +186,20 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
         },
       };
 
+  const fieldTitleMap = useMemo<Map<string, string>>(() => {
+    if (!context) return new Map();
+    return new Map(collectFieldNodes(context.schema).map((n) => [n.name, n.title]));
+  }, [context]);
+
+  const missingRequiredFields = useMemo<Array<{ name: string; title: string }>>(() => {
+    if (!context) return [];
+    const result = runSchemaPreflight({ schema: context.schema, currentAnswers: answers, patch: [] });
+    return result.requiredMissingFieldNames.map((name) => ({
+      name,
+      title: fieldTitleMap.get(name) ?? name,
+    }));
+  }, [context, answers, fieldTitleMap]);
+
   const handleSaveDraft = async () => {
     if (!assignmentId) return;
     try {
@@ -199,6 +223,8 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
   const confirmDemoSubmit = async (submitAnswers: AnswerPayload = answers) => {
     if (!context || !assignmentId) return;
+    const preflight = runSchemaPreflight({ schema: context.schema, currentAnswers: submitAnswers, patch: [] });
+    if (preflight.requiredMissingFieldNames.length > 0) return;
     try {
       await submitAssignment(assignmentId, { answers: submitAnswers, clientRevision: 0 });
     } catch (error) {
@@ -219,7 +245,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     );
 
     if (nextItem) {
-      setSubmitNotice("提交成功，已进入下一题。");
+      setSubmitNotice("标注已提交，已进入审核队列。");
       window.setTimeout(() => {
         setContext((current) => (current ? { ...current, item: nextItem } : current));
         setAnswers(nextAnswersByItem[nextItem.id] ?? {});
@@ -229,7 +255,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       return;
     }
 
-    setSubmitNotice("提交成功，当前任务已完成。");
+    setSubmitNotice("标注已提交，已进入审核队列。当前任务所有题目已完成！");
   };
 
   const requestDemoSubmit = (submitAnswers: AnswerPayload = answers) => {
@@ -478,6 +504,16 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
             </section>
 
             <section className="labeler-runner-form">
+              {showRendererToggle ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "4px 0" }}>
+                  <span style={{ fontSize: 12, color: "#666" }}>表单运行模式</span>
+                  <Button
+                    onClick={() => setToggleEngine((e) => (e === "legacy" ? "formily-v2" : "legacy"))}
+                  >
+                    {toggleEngine === "legacy" ? "经典渲染" : "智能联动渲染"}
+                  </Button>
+                </div>
+              ) : null}
               <div className="renderer-frame labeler-renderer-frame labeler-schema-renderer-surface">
                 <SchemaRenderer
                   schema={context.schema}
@@ -486,6 +522,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                   mode="LABELING"
                   readonly={false}
                   errors={errors}
+                  engine={rendererEngine}
                   onAnswersChange={handleRendererAnswersChange}
                   onSubmit={handleSubmit}
                   onLLMAssist={handleLLMAssist}
@@ -506,10 +543,15 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
             </div>
             <div className="labeler-runner-submit-group">
               <span>⌘+Enter 提交 · ⌘+S 保存草稿</span>
+              {missingRequiredFields.length > 0 ? (
+                <span className="labeler-runner-required-warning">
+                  请补充必填字段：{missingRequiredFields.map((f) => f.title).join("、")}
+                </span>
+              ) : null}
               <Button onClick={handleSaveDraft} disabled={saving}>
                 {saving ? "保存中..." : "保存草稿"}
               </Button>
-              <Button tone="primary" onClick={() => requestDemoSubmit()}>
+              <Button tone="primary" disabled={missingRequiredFields.length > 0} onClick={() => requestDemoSubmit()}>
                 提交本题 →
               </Button>
             </div>

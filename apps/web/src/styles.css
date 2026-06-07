@@ -4436,6 +4436,12 @@ a {
   font-weight: 750;
 }
 
+.labeler-runner-required-warning {
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .labeler-runner-side {
   display: grid;
   align-content: start;
