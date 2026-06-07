@@ -65,11 +65,15 @@ def add_item(db_session, task_id, *, payload=None) -> str:
     return item.id
 
 
-def publish_task(client, auth_owner, task_id, schema_version_id) -> dict:
-    """发布任务，返回 task dict（PUBLISHED）。"""
+def publish_task(client, auth_owner, task_id, schema_version_id, *, review_disabled=True) -> dict:
+    """发布任务，返回 task dict（PUBLISHED）。
+
+    默认 reviewDisabledExplicitly=True：测试一般不单独配 ReviewConfig，
+    发布校验要求「已配 ReviewConfig 或显式禁用」二选一。
+    """
     resp = client.post(
         f"/api/v1/tasks/{task_id}/publish",
-        json={"schemaVersionId": schema_version_id, "reviewDisabledExplicitly": False},
+        json={"schemaVersionId": schema_version_id, "reviewDisabledExplicitly": review_disabled},
         headers=auth_owner,
     )
     assert resp.status_code == 200, resp.text

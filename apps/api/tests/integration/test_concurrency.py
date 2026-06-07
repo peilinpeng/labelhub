@@ -90,7 +90,7 @@ def test_concurrent_claim_no_oversell(live_api):
         db.close()
 
     httpx.post(f"{BASE}/tasks/{tid}/publish", headers=_h(owner), timeout=10,
-               json={"schemaVersionId": sv, "reviewDisabledExplicitly": False})
+               json={"schemaVersionId": sv, "reviewDisabledExplicitly": True})
 
     # 3) 并发抢同一道题（同一 labeler 多次并发）
     def _claim(_):

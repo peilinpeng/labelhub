@@ -285,7 +285,7 @@ fi
 step_header 7 "POST /tasks/$TASK_ID/publish — 发布任务"
 PUBLISH_BODY="{
   \"schemaVersionId\": \"$SCHEMA_VERSION_ID\",
-  \"reviewDisabledExplicitly\": false
+  \"reviewDisabledExplicitly\": true
 }"
 RAW=$(do_post "$BASE/tasks/$TASK_ID/publish" "$OWNER_TOKEN" "$PUBLISH_BODY")
 split_resp "$RAW"
@@ -645,7 +645,7 @@ it = DatasetItem(id='item_rw_'+uuid4().hex[:8], task_id='$RW_TASK', external_key
 db.add(it); db.commit(); print(it.id); db.close()
 " | grep '^item_rw_' | tr -d '[:space:]')
 do_post "$BASE/tasks/$RW_TASK/publish" "$OWNER_TOKEN" \
-  "{\"schemaVersionId\": \"$RW_SV\", \"reviewDisabledExplicitly\": false}" >/dev/null
+  "{\"schemaVersionId\": \"$RW_SV\", \"reviewDisabledExplicitly\": true}" >/dev/null
 
 # 第一轮：领取 → 提交 → 绕过 → reviewer 打回
 RAW=$(do_post "$BASE/tasks/$RW_TASK/claim" "$LABELER_TOKEN" '{}'); split_resp "$RAW"

@@ -68,3 +68,68 @@ def test_publish_with_foreign_schema_version_404(client, auth):
         headers=auth["OWNER"],
     )
     assert resp.status_code == 404
+
+
+# —— P2-E：发布前置校验（数据集已导入 + AI审核已配置/显式禁用）——
+
+def test_publish_without_items_rejected(client, auth):
+    """无可领取题目 → 发布被拒 422。"""
+    task = create_task(client, auth["OWNER"])
+    sv = publish_schema(client, auth["OWNER"], task["id"])
+    resp = client.post(
+        f"/api/v1/tasks/{task['id']}/publish",
+        json={"schemaVersionId": sv, "reviewDisabledExplicitly": True},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 422
+    assert "数据集" in resp.json()["message"]
+
+
+def test_publish_without_reviewconfig_not_disabled_rejected(client, auth, db_session):
+    """有题目但未配 ReviewConfig 且未显式禁用 → 422。"""
+    task = create_task(client, auth["OWNER"])
+    sv = publish_schema(client, auth["OWNER"], task["id"])
+    add_item(db_session, task["id"])
+    resp = client.post(
+        f"/api/v1/tasks/{task['id']}/publish",
+        json={"schemaVersionId": sv, "reviewDisabledExplicitly": False},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 422
+    assert "AI 审核" in resp.json()["message"]
+
+
+def test_publish_with_review_disabled_ok(client, auth, db_session):
+    """有题目 + 显式禁用审核 → 发布成功。"""
+    task = create_task(client, auth["OWNER"])
+    sv = publish_schema(client, auth["OWNER"], task["id"])
+    add_item(db_session, task["id"])
+    resp = client.post(
+        f"/api/v1/tasks/{task['id']}/publish",
+        json={"schemaVersionId": sv, "reviewDisabledExplicitly": True},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["task"]["status"] == "PUBLISHED"
+
+
+def test_publish_with_reviewconfig_ok(client, auth, db_session):
+    """有题目 + 已配 ReviewConfig（不显式禁用）→ 发布成功。"""
+    from app.models.review import ReviewConfig
+    from uuid import uuid4
+    task = create_task(client, auth["OWNER"])
+    sv = publish_schema(client, auth["OWNER"], task["id"])
+    add_item(db_session, task["id"])
+    db_session.add(ReviewConfig(
+        id="cfg_" + uuid4().hex, task_id=task["id"], enabled=True,
+        model_policy_id="ep-x", prompt_template="t",
+        dimensions_json=[], thresholds_json={}, conclusion_mapping_json={}, max_retries=3,
+    ))
+    db_session.commit()
+    resp = client.post(
+        f"/api/v1/tasks/{task['id']}/publish",
+        json={"schemaVersionId": sv, "reviewDisabledExplicitly": False},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["task"]["status"] == "PUBLISHED"

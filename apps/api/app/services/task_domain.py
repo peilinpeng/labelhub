@@ -15,6 +15,7 @@ from app.middleware.error_handler import (
     ResourceNotFoundException,
     InvalidStateTransitionException,
     PermissionDeniedException,
+    ValidationFailedException,
 )
 from app.middleware.auth import Actor
 from app.schemas.task import (
@@ -152,10 +153,13 @@ def publish_task(
     publishTask 命令（契约 §16 / §18.1）：
     - DRAFT → PUBLISHED
     - 校验 schemaVersionId 属于当前 task
+    - 校验 dataset 已导入（至少 1 条可领取题目）
+    - 校验 reviewConfig 已配置 或 显式禁用（reviewDisabledExplicitly=true）
     - 设置 Task.activeSchemaVersionId
-    - TODO: 校验 dataset 已导入（等 dataset 路由实现后补充）
-    - TODO: 校验 reviewConfig 已配置或显式禁用（等 review_config 路由实现后补充）
     """
+    from app.models.dataset import DatasetItem
+    from app.models.review import ReviewConfig
+
     task = _get_task_or_404(db, task_id)
     _assert_owner(task, actor)
 
@@ -167,6 +171,24 @@ def publish_task(
     if sv is None or sv.task_id != task_id:
         raise ResourceNotFoundException(
             f"SchemaVersion {req.schemaVersionId!r} 不属于任务 {task_id!r}"
+        )
+
+    # 校验数据集已导入：至少 1 条可领取（AVAILABLE）题目，避免发布空任务
+    available_items = (
+        db.query(DatasetItem)
+        .filter(DatasetItem.task_id == task_id, DatasetItem.status == "AVAILABLE")
+        .count()
+    )
+    if available_items == 0:
+        raise ValidationFailedException(
+            "发布前必须导入数据集（至少 1 条可领取题目）"
+        )
+
+    # 校验 AI 审核配置：已配置 ReviewConfig 或显式声明禁用
+    review_config = db.query(ReviewConfig).filter_by(task_id=task_id).first()
+    if review_config is None and not req.reviewDisabledExplicitly:
+        raise ValidationFailedException(
+            "发布前必须配置 AI 审核（ReviewConfig），或显式设置 reviewDisabledExplicitly=true"
         )
 
     task.status = "PUBLISHED"
