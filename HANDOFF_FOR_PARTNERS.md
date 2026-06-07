@@ -1,6 +1,6 @@
 # 交接说明 · 给 UI / 测试搭档团队
 
-> 你们接手后负责：**UI 视觉调整 + 网页端手动测试 + 后续迭代优化**。
+> 你们接手后负责：**UI 视觉调整 + 网页端手动测试 + 后续迭代优化（含前端、后端，或前后端统一调整）**。
 > 本文件是给你们的「上手第一篇」。读完即可把项目跑起来、知道改哪里、知道现在还差什么。
 > （另有两份给 AI 协作工具的内部交接：`HANDOFF.md` / `AGENTS.md`，你们不必细读，需要历史时再查。）
 
@@ -56,21 +56,35 @@ docker compose exec -w /workspace/apps/api api python scripts/seed_competition.p
 
 ---
 
-## 4. UI 改哪里 / 绝对别动哪里 ⭐ 重要
+## 4. 文件边界 / 契约纪律 ⭐ 全栈接手必读
 
-### ✅ 你们可以改（UI 层）
-- `apps/web/src/styles.css` —— 全局样式（颜色、间距、布局大头都在这）
-- `apps/web/src/features/owner|labeler|reviewer/` —— 三个角色的页面组件
-- `apps/web/src/app/` —— 应用壳、路由、导航
-- `packages/schema-renderer/src/` —— 表单物料的渲染组件（输入框、上传、富文本等长相）
-- `packages/schema-designer/src/` —— 拖拽搭建器的界面
+你们是**全栈接手**，前端、后端、共享库原则上都可以改。但这套项目是 **contract-driven（契约驱动）**，有一条不可逾越的红线，理解它就不会把全栈改散。
 
-### 🚫 绝对别动（动了会破坏全栈一致性）
-- `packages/contracts/` —— 全栈共享类型/错误码/审计动作的**唯一来源**，前后端都依赖它
-- `labelhub-architecture-contract.md` —— 最高架构契约
-- `apps/api/` —— 后端逻辑（除非你们也负责后端）
+### 各部分定位
+| 目录 | 是什么 | 改动姿势 |
+|---|---|---|
+| `apps/web/src/` | 前端（页面/路由/壳） | ✅ 可改 |
+| `apps/web/src/styles.css` | 全局样式（颜色/间距/布局大头） | ✅ UI 主战场 |
+| `packages/schema-renderer/src/` | 表单物料渲染组件 | ✅ 可改 |
+| `packages/schema-designer/src/` | 拖拽搭建器界面 | ✅ 可改 |
+| `apps/api/` | 后端（FastAPI/SQLAlchemy/Celery） | ✅ 可改 |
+| `apps/api/app/schemas/*.py` | 后端的契约**镜像**（Pydantic） | ⚠️ 见红线 |
+| `packages/contracts/` | 全栈共享类型/错误码/审计动作的**唯一来源** | ⚠️ 见红线 |
+| `labelhub-architecture-contract.md` | 最高架构契约（v1.1，设计准则） | ⚠️ 见红线 |
 
-> 原则：**只改长相，不改契约和数据结构**。改 UI 时如果发现「不动 contracts 就改不了」，先停下来对齐，别擅自改 contracts。
+### 🚨 唯一红线：契约要改，必须三处同步
+`packages/contracts`（TS 源头）↔ `apps/web`（前端消费）↔ `apps/api/app/schemas/*.py`（Python 镜像）
+**描述的是同一套数据结构 / 错误码 / 审计动作。**
+
+- 改 UI / 改后端逻辑但**数据结构不变** → 随便改，互不影响。
+- 一旦要**动字段名、加错误码、加审计动作、改接口形状**：
+  1. 先改 `packages/contracts`（源头）
+  2. 同步 `apps/api/app/schemas/*.py`（Python 侧，文件头写明「字段命名必须与契约 v1.1 一致」）
+  3. 同步 `apps/web` 消费处
+  4. 若是设计级改动，更新 `labelhub-architecture-contract.md`
+- **禁止**：在某个业务模块里「就地重新定义」一份契约类型、或只改一侧不改另一侧 —— 这会让前后端悄悄对不上，是最难查的 bug。
+
+> 一句话：**改长相、改逻辑随意；改"前后端共享的数据约定"必须成套改、别只改一半。**
 
 ---
 
@@ -109,12 +123,22 @@ docker compose exec -w /workspace/apps/api api python scripts/seed_competition.p
 ## 7. 协作纪律
 
 - **分支**：主线是 `integration/joint-test`。做 UI 迭代请开自己的 feature 分支（如 `feature/ui-polish`），改完提 PR / 合并前对齐，别直接往主线推半成品。
-- **改完自检**：
+- **改完自检（按你改了哪侧跑对应的）**：
   ```bash
-  cd apps/web && npm run typecheck && npm run build   # 必须通过
+  # 前端 / 共享库改动
+  cd apps/web && npm run typecheck && npm run build              # 必须通过
+
+  # 后端改动（在 api 容器内，或本地 venv）
+  docker compose exec -w /workspace/apps/api api alembic upgrade head      # 改了模型要建迁移
+  docker compose exec -w /workspace/apps/api api pytest -m "not integration" -q   # 预期 153 passed
+  docker compose exec -w /workspace/apps/api api pytest -m integration             # 需真实 MySQL（行锁/并发）
+
+  # 端到端（前后端一起改完，强烈建议跑）
+  bash apps/api/scripts/e2e_test.sh                              # 预期 21/21
   ```
-- **commit 信息**用中文+前缀（参考现有：`fix(web): ...` / `feat(labeler): ...` / `chore(web): ...`）
-- 改了 UI 但**逻辑/数据结构没变**，就只动 `apps/web` 和 `packages/schema-renderer`，别牵连 contracts。
+- **改了契约（contracts / schemas / 接口形状）→ 三处同步后，前端 typecheck + 后端 pytest + e2e 都要过**，确认没把前后端改散。
+- **数据库模型改了** → 用 alembic 生成迁移（别手改库），保证别人 `alembic upgrade head` 能复现。
+- **commit 信息**用中文+前缀（参考现有：`fix(web): ...` / `feat(api): ...` / `feat(labeler): ...` / `chore(web): ...`）。
 
 ---
 
@@ -124,7 +148,9 @@ docker compose exec -w /workspace/apps/api api python scripts/seed_competition.p
 |---|---|
 | 项目全景 / 启动 / 已实现能力 | [`README.md`](README.md) |
 | 提交物清单与进度 | [`submission/README.md`](submission/README.md) |
-| 架构契约（最高准则，别改） | [`labelhub-architecture-contract.md`](labelhub-architecture-contract.md) |
+| 架构契约（最高准则，改前慎重） | [`labelhub-architecture-contract.md`](labelhub-architecture-contract.md) |
+| 后端模块说明 | [`apps/api/README.md`](apps/api/README.md) |
+| 后端架构 / Schema 设计决策 | [`SCHEMA_ARCH_AGENT.md`](SCHEMA_ARCH_AGENT.md) / [`AGENTS.md`](AGENTS.md) |
 | 完整 Demo 剧本 | [`docs/LabelHub_Demo_Guide.md`](docs/LabelHub_Demo_Guide.md) |
 | 历史详细状态（AI 轮班用） | [`HANDOFF.md`](HANDOFF.md) |
 | API 文档 | `apps/api/openapi.json`（导入 Postman/Apifox）/ 服务起后 `http://<host>:3000/docs` |
