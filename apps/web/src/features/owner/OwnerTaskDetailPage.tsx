@@ -66,6 +66,9 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
           <Link to={RoutePath.OWNER_TASKS} className="lh-button">
             返回任务
           </Link>
+          <Link to={`/owner/tasks/${task.id}/dataset`} className="lh-button">
+            管理数据集
+          </Link>
           <Link to={`/owner/tasks/${task.id}/designer`} className="lh-button lh-button--primary">
             配置模板
           </Link>

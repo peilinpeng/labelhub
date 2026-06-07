@@ -7,6 +7,7 @@ import OwnerAIPage from "../features/owner/OwnerAIPage";
 import OwnerExportPage from "../features/owner/OwnerExportPage";
 import OwnerNewTaskPage from "../features/owner/OwnerNewTaskPage";
 import OwnerTaskDetailPage from "../features/owner/OwnerTaskDetailPage";
+import OwnerDatasetPage from "../features/owner/OwnerDatasetPage";
 import LabelerWorkspace from "../features/labeler/LabelerWorkspace";
 import AssignmentPage from "../features/labeler/AssignmentPage";
 import ReviewerWorkspace from "../features/reviewer/ReviewerWorkspace";
@@ -235,6 +236,7 @@ function AppRoutes({ role }: { role: Role }) {
       <Route path={RoutePath.OWNER_TASKS} element={<OwnerWorkspace role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_NEW} element={<OwnerNewTaskPage role={role} />} />
       <Route path={RoutePath.OWNER_TASK_DETAIL} element={<OwnerTaskDetailPage role={role} />} />
+      <Route path={RoutePath.OWNER_TASKS_DATASET} element={<OwnerDatasetPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_DESIGNER} element={<OwnerSchemaPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_AI_CONFIG} element={<OwnerAIPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_EXPORT} element={<OwnerExportPage role={role} />} />
