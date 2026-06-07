@@ -104,8 +104,18 @@ def test_llm_assist_unknown_node_422(client, auth, db_session):
     assert resp.status_code == 422
 
 
-def test_llm_assist_calls_model_with_llm_node(client, auth, db_session):
-    """带 llm.assist 节点：会走到模型调用，无有效 key → 502 LLM_ASSIST_FAILED。"""
+def test_llm_assist_calls_model_with_llm_node(client, auth, db_session, monkeypatch):
+    """带 llm.assist 节点：走到模型调用；模型抛错 → 502 LLM_ASSIST_FAILED。
+
+    用 monkeypatch 强制 OpenAI 失败，保证确定性 —— 不依赖环境是否配了真实 DOUBAO key
+    （容器若注入了真实 key，真实调用会成功返回 200，导致原先"无 key→502"的假设失效）。
+    """
+    class _BoomOpenAI:
+        def __init__(self, *a, **k):
+            raise RuntimeError("forced LLM failure for test")
+
+    monkeypatch.setattr("openai.OpenAI", _BoomOpenAI)
+
     schema = {"nodes": [
         {"id": "node-text-1", "type": "input.text", "name": "summary", "label": "摘要"},
         {"id": "node-llm-1", "type": "llm.assist", "promptTemplate": "生成摘要",

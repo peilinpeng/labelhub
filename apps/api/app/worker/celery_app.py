@@ -5,6 +5,12 @@ celery_app = Celery(
     "labelhub",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
+    # 必须显式 include 任务模块，否则 worker 启动时 @celery_app.task 不会注册，
+    # 导致 "Received unregistered task ... run_ai_review"（AI 预审 / 导出任务无法执行）
+    include=[
+        "app.worker.ai_review_worker",
+        "app.worker.export_worker",
+    ],
 )
 
 celery_app.conf.update(
