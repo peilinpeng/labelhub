@@ -1,6 +1,6 @@
 # 迁移上下文 / 交接文档（复制给新会话即可接手）
 
-> 更新：2026-06-07（最终迭代阶段，已落地 O7/O8，搭档转纯 UI 分工）。新会话**第一件事**：读本文件 → `CLAUDE.md` → `docs/final-iteration-plan.md`。
+> 更新：2026-06-07（最终迭代阶段；已落地 O7/O8 + O9 清脏数据 + **Schema Runtime Engine 受控合并 `81ad726`**；搭档转纯 UI 分工）。新会话**第一件事**：读本文件 → `CLAUDE.md` → `docs/final-iteration-plan.md`。
 > 本文件记录客观事实 + 待办 + 等搭档项。
 
 ---
@@ -14,9 +14,9 @@
 
 ## 1. 仓库 / 分支 / 同步
 - 路径：`/Users/xiongweiluo/LabelHub_Coding/labelhub`，远程 `git@github.com:peilinpeng/labelhub.git`（默认分支 `main`）。
-- 当前分支：`integration/joint-test`，**已与远程同步（HEAD=`21e8e3f`），工作区干净**（仅 `.claude/` 本地 preview 产物未跟踪，不要提交）。
+- 当前分支：`integration/joint-test`，**已与远程同步（HEAD=`81ad726`，含 Schema Runtime Engine 合并），工作区干净**（仅 `.claude/` 本地 preview 产物未跟踪，不要提交）。
 - 已开 PR：`integration/joint-test → dev`（base=dev，惯例 feature→dev→main）。push 后自动更新。本机**无 `gh`**，建 PR 走 GitHub 网页。
-- 搭档分支 `feature/schema-governance-upgrade`（Schema Runtime Engine，**未 final**，今天仍在提交）：集成独有 36 / 搭档独有 10。**分工已变更（2026-06-07）**：搭档此后只做**纯 UI/视觉优化（可能会动一点组件逻辑）**，建议她从最新 `origin/integration/joint-test` 新开 `feature/ui-polish` 分支、早开 draft PR、勤 rebase；schema 引擎那 10 个提交 + 合并 + contracts 把关由**本人（合并负责人）**统一处理。实际冲突面文件：`apps/web/src/features/labeler/AssignmentPage.tsx`、`apps/web/src/styles.css`（O7 已加 tab 样式）；`ContainerRenderer.tsx`（O7 改动）搭档分支未碰、不冲突。
+- 搭档分支 `feature/schema-governance-upgrade`（Schema Runtime Engine）**已于 `81ad726` 受控合并进主线**（详见 §6）。**分工已变更（2026-06-07）**：搭档此后只做**纯 UI/视觉优化（可能会动一点组件逻辑）**，从最新 `origin/integration/joint-test`（已含引擎）新开 `feature/ui-polish` 分支、早开 draft PR、勤 rebase；合并 + contracts 把关由**本人（合并负责人）**统一处理。她 UI 工作最可能撞的文件：`apps/web/src/features/labeler/AssignmentPage.tsx`、`apps/web/src/styles.css`、`packages/schema-renderer/src/renderers/ContainerRenderer.tsx`（O7）。
 
 ## 2. 环境关键坑（必须知道）
 1. 后端跑在 Docker 镜像 `/app`，**无 hot-reload**；改后端代码必须 `docker compose build api worker && docker compose up -d api worker`。
@@ -46,21 +46,26 @@
 - 已确认无 API key 泄漏（.env gitignore，.env.example 占位）。
 
 ## 4. 验证基线（全绿）
-pytest **156**（+O8 3 测试）/ integration 1 / E2E 21/21 / 前端 hash vectors 10 / schema-renderer **16**（+O7 3 测试）/ packages 全测试 / web typecheck+build。
+pytest **156**（+O8 3 测试）/ integration 1 / E2E 21/21 / 前端 hash vectors 10 / schema-renderer **55**（含 O7 3 + 合并的 Formily 测试）/ schema-compiler **31**（合并引入）/ packages 全测试 / web typecheck+build。**合并后需先 `npm install`**（新包 + Formily 依赖）。
 
 ## 5. 待办 TODO（我可独立做）
 > 详见 `docs/final-iteration-plan.md`，对照官方 PDF 的评估见 `~/.claude/plans/`（或文档内）。
 
 - [x] ~~O7 `container.tabs` 真 Tab~~ —— 已完成 `285b72b`（见 §3）。
 - [x] ~~O8 审核详情展示原始 Prompt~~ —— 已完成 `21e8e3f`（后端响应已附 promptTemplate；UI 展示受契约边界所限未做，见 §3 注意）。
-- [ ] **O9 demo 前清理脏数据**：`docker compose exec -w /workspace/apps/api api python scripts/clean_demo.py`（已实锤：labeler marketplace 混了大量「E2E测试任务」）。
+- [x] ~~O9 demo 前清理脏数据~~ —— 已执行 `clean_demo.py --apply`，删 6 个「E2E测试任务」，市场剩 3 个演示任务（pref_compare / qa_quality / news_quality）。
+- [ ] **O11 联动 demo seed（推荐，demo 含金量高）**：给某 seed schema（建议 `task_demo_qa_quality`）加 `linkageRules`，让字段联动能在真实后端现场 demo（合并回归里唯一没跑到的实时联动；契约形状见 `packages/contracts/src/schema.ts` 的 `FieldLinkageRule/Effect`）。
 - [ ] **O10 交付物冻结前 code review**：对累计 diff 跑 `/code-review` 扫正确性/质量。
 - [ ] O5 大表单虚拟化性能、O6 移动端 —— 明确可选加分，时间够再说，否则 defer。
 
-## 6. 等搭档（不要自己做，等她交付后合并）
-- **O2 高级字段联动（⭐⭐⭐ 核心难点）**：完整 Formily linkage runtime + headless preflight + AI assist preflight 在 `feature/schema-governance-upgrade`（**未 final**，她说做完给完整版）。主线 legacy renderer 只有基础 visibleWhen。
-- **合并策略**：等她 final 后受控合并。冲突面已评估**很小**（两分支都改的文件主要是 `apps/web/src/features/labeler/AssignmentPage.tsx`）。合并清单：`npm install`(新包 `@labelhub/schema-compiler`) → contracts 逐项核对(`linkageRules?` optional 保留 / 不引入 `clearWhenHidden` / `target=FieldNode.name`) → 全量 typecheck/test/build → 浏览器回归(legacy/formily-v2 切换、联动、AI preflight)。
-- **demo 提示**：高级联动 demo 前建议切 `formily-v2` 渲染器（Labeler 页有 toggle），或等合并后演示，否则 ⭐⭐⭐ 联动展示不充分。
+## 6. Schema Runtime Engine 合并（✅ 已完成 2026-06-07）
+- **O2 高级字段联动（⭐⭐⭐ 核心难点）已并入主线**：受控合并提交 `81ad726`（merge `feature/schema-governance-upgrade` @ `6ce93fe`，她的 10 提交 + merge commit），**零冲突**，已 push。
+- **引入能力**：新包 `@labelhub/schema-compiler`（dependency-graph + linkage runtime + headless preflight）+ schema-renderer `FormilyRuntimeRenderer` + 7 个 Formily adapters + `ComponentRegistry` + AI assist preflight UI + contracts 联动类型（`BaseFieldNode.linkageRules?` + `FieldLinkageRule/Effect`，三条规则核对通过：optional 保留 / 未引入 `clearWhenHidden` / `target=FieldNode.name`）。
+- **合并后验证（全绿）**：npm install（+19 Formily 依赖）→ packages typecheck/test（schema-compiler 31 / schema-renderer 55）→ web typecheck+build → 后端 pytest **156**。
+- **浏览器回归（真实后端 + 真实 LLM，全绿）**：formily-v2/legacy 渲染 + 切换无错；**AI 辅助→真实 DOUBAO 200→headless preflight 正确阻断**（必填字段在 patch 后为空）；O7 tabs 在 legacy 真 ARIA tab 可切换。**唯一没跑到**：实时字段联动 reactions —— 真实 seed schema 无 `linkageRules` 数据（仅 MSW mock 有），逻辑由 31+ 单测覆盖。
+- **渲染器入口**：Labeler 页 URL `?renderer=legacy`（经典）/默认 `formily-v2`（智能联动）；`?showRendererToggle=1` 显示开发者切换按钮。
+- **待办（demo 含金量高）**：给某个 seed schema（如 `task_demo_qa_quality`）加 `linkageRules`，让字段联动能现场 demo（回归里唯一没跑到的实时联动）。
+- **搭档后续**：已转纯 UI（见 §1），基于最新 `origin/integration/joint-test` 起 `feature/ui-polish`。
 
 ## 7. 提交物 §八（需用户本人，非代码）
 - [ ] 演示视频 5–10min（剧本见 `docs/LabelHub_Demo_Guide.md` 真实后端全链路一节）。
