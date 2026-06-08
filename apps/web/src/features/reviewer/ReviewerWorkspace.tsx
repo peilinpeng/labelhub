@@ -54,14 +54,21 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
       try {
         setLoading(true);
         const data = await listReviewQueue({ status: reviewQueueStatusFor(filter) });
-        setSubmissions(data);
-        setSelectedId((current) => current ?? data[0]?.submission.id ?? null);
+        // 后端/mock 可能返回缺少嵌套 submission 的脏数据，统一在入口过滤，
+        // 保证下游 stats / 过滤 / 选中 / 渲染读取 item.submission.* 时不会崩溃。
+        const safeData = data.filter(
+          (item): item is ReviewQueueItem =>
+            item != null && item.submission != null && typeof item.submission.id === "string",
+        );
+        setSubmissions(safeData);
+        setSelectedId((current) => current ?? safeData[0]?.submission?.id ?? null);
         setSelectedBatchIds([]);
         setOfflineNotice(null);
       } catch (error) {
+        console.warn("审核队列加载失败：", error);
         setSubmissions([]);
         setSelectedId(null);
-        setOfflineNotice(error instanceof Error ? error.message : "审核队列接口暂不可用。");
+        setOfflineNotice("审核队列加载失败，请稍后重试。");
       } finally {
         setLoading(false);
       }
@@ -261,6 +268,9 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                 </div>
               );
             })}
+            {filteredSubmissions.length === 0 ? (
+              <div className="empty-state">{offlineNotice ? "审核队列加载失败，请稍后重试。" : "暂无待审核任务"}</div>
+            ) : null}
           </div>
         </Card>
 
