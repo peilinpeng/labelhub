@@ -2966,6 +2966,10 @@ a {
   color: #16a34a;
 }
 
+.owner-summary-item--warning strong {
+  color: #b45309;
+}
+
 .owner-management-layout {
   display: block;
 }
@@ -8751,4 +8755,188 @@ a {
 
 .owner-version-item--active {
   box-shadow: inset 3px 0 0 var(--lh-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+   Quality Center Lite（Owner 质量中心入口）
+--------------------------------------------------------------------------- */
+.quality-center-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.quality-center-entry {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 16px;
+  border: 1px solid var(--lh-border);
+  border-radius: 12px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.quality-center-entry:hover,
+.quality-center-entry:focus-visible {
+  border-color: rgba(79, 70, 229, 0.35);
+  box-shadow: 0 12px 28px rgba(79, 70, 229, 0.1);
+  transform: translateY(-1px);
+}
+
+.quality-center-entry__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quality-center-entry__head strong {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--lh-text);
+}
+
+.quality-center-entry p {
+  margin: 0;
+  color: var(--lh-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.quality-center-entry__cta {
+  color: var(--lh-primary);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.quality-center-passport__head,
+.quality-center-clues__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quality-center-passport__head h3,
+.quality-center-clues__head h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.quality-center-passport__head p,
+.quality-center-clues__head p {
+  margin: 0;
+  max-width: 640px;
+  color: var(--lh-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.quality-center-clue-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quality-center-clue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--lh-border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.quality-center-clue__meta {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------------
+   Reviewer「我的审核概览」
+--------------------------------------------------------------------------- */
+.reviewer-overview {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--lh-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.reviewer-overview__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.reviewer-overview__head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.reviewer-overview__head span {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.reviewer-overview__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.reviewer-overview__item {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--lh-border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.reviewer-overview__item span {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reviewer-overview__item strong {
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1;
+  color: var(--lh-text);
+}
+
+.reviewer-overview__item em {
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.reviewer-overview__item--warning strong {
+  color: #b45309;
+}
+
+.reviewer-overview__item--success strong {
+  color: #16a34a;
+}
+
+.reviewer-overview__item--danger strong {
+  color: #b91c1c;
 }

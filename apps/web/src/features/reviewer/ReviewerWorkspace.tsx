@@ -156,6 +156,37 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
         </div>
       ) : null}
 
+      <section className="reviewer-overview" aria-label="我的审核概览">
+        <div className="reviewer-overview__head">
+          <h2>我的审核概览</h2>
+          <span>仅展示与你审核任务相关的真实队列数据</span>
+        </div>
+        {stats.pending + stats.passed + stats.returned === 0 ? (
+          <div className="empty-state">
+            暂无审核记录。完成审核后，这里会显示你的审核反馈与退回记录。
+          </div>
+        ) : (
+          <div className="reviewer-overview__grid">
+            <div className="reviewer-overview__item reviewer-overview__item--warning">
+              <span>待我处理</span>
+              <strong>{stats.pending}</strong>
+            </div>
+            <div className="reviewer-overview__item reviewer-overview__item--success">
+              <span>当前队列已通过</span>
+              <strong>{stats.passed}</strong>
+            </div>
+            <div className="reviewer-overview__item reviewer-overview__item--danger">
+              <span>当前队列已退回</span>
+              <strong>{stats.returned}</strong>
+            </div>
+            <div className="reviewer-overview__item">
+              <span>AI 预审辅助</span>
+              <em>进入审核详情可查看 AI 评语与维度评分，作为人工决策参考。</em>
+            </div>
+          </div>
+        )}
+      </section>
+
       <div className="review-ai-layout">
         <Card className="review-ai-queue">
           <div className="review-ai-tabs" role="tablist" aria-label="AI 预审状态">
