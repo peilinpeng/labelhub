@@ -4639,6 +4639,14 @@ a {
   box-shadow: var(--lh-shadow-button);
 }
 
+.ai-quality-panel__apply:disabled {
+  border-color: var(--lh-border-strong);
+  background: #e2e8f0;
+  color: #64748b;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .ai-quality-panel__feedback {
   border: 1px solid rgba(99, 102, 241, 0.22);
   background: #fff;

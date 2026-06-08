@@ -89,7 +89,7 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
                   <li key={item.fieldName}>
                     <div className="ai-quality-panel__field">
                       <strong>{item.label}</strong>
-                      <small>{item.fieldName}</small>
+                      {item.label !== item.fieldName ? <small>{item.fieldName}</small> : null}
                     </div>
                     <div className="ai-quality-panel__diff">
                       <span>{item.currentValue}</span>
@@ -110,43 +110,45 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
       {response !== undefined && preflightResult !== undefined ? (
         <PreflightStatusBlock result={preflightResult} patchFieldNames={patchFieldNames} />
       ) : null}
-      {hasSuggestedPatch ? (
-        <button
-          className="ai-quality-panel__apply"
-          disabled={!canApply}
-          type="button"
-          onClick={() => {
-            if (!canApply) return;
-            const patch = response?.suggestedPatch;
-            if (patch === undefined) return;
-            const nextAnswers = { ...renderContext.answers, ...patch };
-            const normalized = normalizeAnswers(renderContext.schema, nextAnswers, {
-              ...renderContext.context,
-              answers: nextAnswers,
-            });
-            renderContext.onApplySuggestedPatch(normalized.answers);
-            notifyAssistOutcome(renderContext, notifiedOutcomesRef.current, {
-              callId: response?.callId ?? "",
-              nodeId: node.id,
-              action: "ACCEPTED",
-              appliedPatchFieldNames: Object.keys(patch).sort(),
-            });
-            setResponse(undefined);
-            setPreflightResult(undefined);
-          }}
-        >
-          一键采纳
-        </button>
-      ) : null}
       {response !== undefined ? (
-        <button
-          className="ai-quality-panel__feedback"
-          disabled
-          title="反馈功能暂未接入，请先手动调整本题答案。"
-          type="button"
-        >
-          反馈问题
-        </button>
+        <div className="ai-quality-panel__actions">
+          {hasSuggestedPatch ? (
+            <button
+              className="ai-quality-panel__apply"
+              disabled={!canApply}
+              type="button"
+              onClick={() => {
+                if (!canApply) return;
+                const patch = response?.suggestedPatch;
+                if (patch === undefined) return;
+                const nextAnswers = { ...renderContext.answers, ...patch };
+                const normalized = normalizeAnswers(renderContext.schema, nextAnswers, {
+                  ...renderContext.context,
+                  answers: nextAnswers,
+                });
+                renderContext.onApplySuggestedPatch(normalized.answers);
+                notifyAssistOutcome(renderContext, notifiedOutcomesRef.current, {
+                  callId: response?.callId ?? "",
+                  nodeId: node.id,
+                  action: "ACCEPTED",
+                  appliedPatchFieldNames: Object.keys(patch).sort(),
+                });
+                setResponse(undefined);
+                setPreflightResult(undefined);
+              }}
+            >
+              一键采纳
+            </button>
+          ) : null}
+          <button
+            className="ai-quality-panel__feedback"
+            disabled
+            title="反馈功能暂未接入，请先手动调整本题答案。"
+            type="button"
+          >
+            反馈问题
+          </button>
+        </div>
       ) : null}
     </section>
   );
