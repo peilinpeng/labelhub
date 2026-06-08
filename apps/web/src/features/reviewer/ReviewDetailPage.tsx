@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
+import { queryAuditEvents } from "../../api/audit";
 import { claimReview, decideReview, getReviewDetail } from "../../api/reviewer";
-import { getReviewDetail as getMockReviewDetail } from "../../mocks/mock-db";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Textarea } from "../../ui/primitives";
-import { applyDemoSubmissionState, DEMO_SUBMISSION_ID, reviewDemoSubmission } from "../../mocks/demo-workflow-store";
-import type { ID, ReviewDecisionRequest, ReviewDetailResponse } from "@labelhub/contracts";
+import type { AuditEventRecord, ReviewDecisionRequest, ReviewDetailResponse, ReviewPatch } from "@labelhub/contracts";
 import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-display";
 import { computeReviewPatches } from "./reviewer-diff";
 import {
@@ -23,18 +22,17 @@ interface ReviewDetailPageProps {
 }
 
 type ReviewDecision = "PASS" | "RETURN";
-
-function getFallbackDetail(submissionId?: string): ReviewDetailResponse | undefined {
-  const detail = getMockReviewDetail(submissionId ?? DEMO_SUBMISSION_ID) ?? getMockReviewDetail(DEMO_SUBMISSION_ID);
-  if (!detail || !submissionId || detail.submission.id === submissionId) return detail;
-  return {
-    ...detail,
-    submission: {
-      ...detail.submission,
-      id: submissionId as ID,
-    },
-  };
-}
+type ReviewDetailWithTrace = ReviewDetailResponse & {
+  aiTrace?: {
+    modelPolicyId?: string;
+    promptSnapshotHash?: string;
+    promptTemplate?: string | null;
+    promptSnapshotMatches?: boolean | null;
+    status?: string;
+    totalTokens?: number | null;
+    latencyMs?: number | null;
+  } | null;
+};
 
 function valueText(value: unknown): string {
   if (Array.isArray(value)) return value.join("，");
@@ -47,15 +45,17 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const { submissionId } = useParams<{ submissionId: string }>();
   const navigate = useNavigate();
   const [detail, setDetail] = useState<ReviewDetailResponse | null>(null);
-  const [comments, setComments] = useState("本轮修改已覆盖第 1 轮打回意见，关键词丰富度与类目准确性均达标。同意 AI 预审结论。");
+  const [comments, setComments] = useState("");
   const [loading, setLoading] = useState(true);
   const [deciding, setDeciding] = useState(false);
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<ReviewDecision | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([submissionId ?? DEMO_SUBMISSION_ID]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(submissionId ? [submissionId] : []);
   const [aiReviewFeedback, setAiReviewFeedback] = useState<AiReviewFeedback>("NOT_USED");
   const [correctedAnswersText, setCorrectedAnswersText] = useState("");
   const [correctedAnswersParseError, setCorrectedAnswersParseError] = useState<string | null>(null);
+  const [auditEvents, setAuditEvents] = useState<AuditEventRecord[]>([]);
+  const [auditEventsError, setAuditEventsError] = useState<string | null>(null);
   const startedAuditSubmissionIdsRef = useRef<Set<string>>(new Set());
   const reviewOpenedAtMsRef = useRef(Date.now());
 
@@ -66,14 +66,11 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         setLoading(true);
         if (submissionId) {
           const data = await getReviewDetail(submissionId);
-          setDetail({ ...data, submission: applyDemoSubmissionState(data.submission) });
+          setDetail(data);
         }
       } catch (error) {
-        console.warn("Review detail API unavailable, using local detail.", error);
-        const fallback = getFallbackDetail(submissionId);
-        if (fallback) {
-          setDetail({ ...fallback, submission: applyDemoSubmissionState(fallback.submission) });
-        }
+        console.warn("审核详情加载失败：", error);
+        setDetail(null);
       } finally {
         setLoading(false);
       }
@@ -99,22 +96,48 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
     }
   }, [detail]);
 
+  useEffect(() => {
+    if (!submissionId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await queryAuditEvents({ submissionId, limit: 30 });
+        if (!cancelled) {
+          setAuditEvents(response.events);
+          setAuditEventsError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAuditEvents([]);
+          setAuditEventsError(error instanceof Error ? error.message : "审计事件加载失败。");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [submissionId]);
+
   const aiResult = detail?.aiResult?.aiResult;
+  const aiTrace = (detail as ReviewDetailWithTrace | null)?.aiTrace;
   const answers = (detail?.submission.answers ?? {}) as Record<string, unknown>;
   const sourcePayload = (detail?.item.sourcePayload ?? {}) as Record<string, unknown>;
   const dimensionScores = useMemo(
     () =>
       aiResult?.dimensionScores?.length
         ? aiResult.dimensionScores
-        : [
-            { key: "综合", score: 86, reason: "整体可通过" },
-            { key: "相关性", score: 92, reason: "与原始数据一致" },
-            { key: "准确性", score: 84, reason: "字段含义明确" },
-            { key: "格式合规", score: 88, reason: "满足提交规范" },
-            { key: "安全", score: 99, reason: "无敏感风险" },
-          ],
+        : [],
     [aiResult],
   );
+  const previewPatches = useMemo<ReviewPatch[]>(() => {
+    try {
+      const parsed = JSON.parse(correctedAnswersText) as unknown;
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return [];
+      return computeReviewPatches(answers, parsed as Record<string, unknown>);
+    } catch {
+      return [];
+    }
+  }, [answers, correctedAnswersText]);
 
   const handleDecision = async (decision: ReviewDecision) => {
     if (!submissionId || !detail) return;
@@ -158,7 +181,6 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
             };
       await claimReview(submissionId).catch(() => undefined);
       const response = await decideReview(submissionId, request);
-      reviewDemoSubmission(decision);
       setDecisionMessage(decision === "PASS" ? "审核通过，结果已进入可导出数据。" : "已打回，等待标注员修改后重新提交。");
       const reviewDurationMs = Math.max(0, Date.now() - reviewOpenedAtMsRef.current);
       appendReviewSubmittedAuditSafely({
@@ -243,20 +265,16 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
     issue: aiResult?.summary ?? "该提交需要人工确认字段完整性和审核结论。",
     recommendation: "待人工复核",
   };
-  const queueItems = listKnownReviewDisplays().map((item) => ({
-    id: item.id,
-    title: item.title,
-    score: item.recommendation === "建议通过" ? 88 : item.recommendation === "已打回" ? 55 : 62,
-    status: item.recommendation,
-  }));
+  const queueItems = listKnownReviewDisplays();
+  const reviewStage = detail.submission.status === "FINAL_REVIEWING" ? "FINAL_REVIEW" : "HUMAN_REVIEW";
+  const reviewStageLabel = reviewStage === "FINAL_REVIEW" ? "终审视图" : "复审视图";
+  const reviewPolicyLabel = detail.task.reviewPolicy.type === "DOUBLE_REVIEW" ? "双轮审核" : "单轮审核";
 
   return (
     <div className="review-human-page">
       <Card className="review-human-list">
         <div className="review-human-tabs">
-          <button className="review-human-tab review-human-tab--active" type="button">待复核 <strong>47</strong></button>
-          <button className="review-human-tab" type="button">建议通过 <strong>128</strong></button>
-          <button className="review-human-tab" type="button">转人工 <strong>9</strong></button>
+          <button className="review-human-tab review-human-tab--active" type="button">当前详情</button>
         </div>
         <div className="review-human-batch">
           <label>
@@ -267,8 +285,8 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
             />
             已选 {selectedIds.length} 条
           </label>
-          <button type="button">批量通过</button>
-          <button type="button">批量打回</button>
+          <button type="button" disabled title="批量操作请在审核队列页选择已领取项后执行">批量通过</button>
+          <button type="button" disabled title="批量操作请在审核队列页选择已领取项后执行">批量打回</button>
         </div>
         <div className="review-human-queue">
           {queueItems.map((item) => (
@@ -279,15 +297,15 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
             >
               <span>
                 <input checked={item.id === detail.submission.id} readOnly type="checkbox" />
-                {item.id} · 李雷 · 18:01:02
+                {item.id}
               </span>
               <strong>{item.title}</strong>
               <small>
-                <Badge tone={item.score >= 80 ? "success" : "warning"}>AI {item.score}</Badge>
-                <Badge tone={item.score >= 80 ? "success" : "warning"}>{item.status}</Badge>
+                <Badge tone="warning">{item.recommendation}</Badge>
               </small>
             </Link>
           ))}
+          {queueItems.length === 0 ? <div className="empty-state">暂无真实队列摘要</div> : null}
         </div>
       </Card>
 
@@ -296,15 +314,22 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
           <section className="review-human-heading">
             <div>
               <h1>{detail.submission.id} · {display.title}</h1>
-              <p>题目 {detail.item.id} · {display.taskTitle} · 模板 r{detail.schema.schemaVersionNo ?? 12}</p>
+              <p>题目 {detail.item.id} · {display.taskTitle} · 模板 r{detail.schema.schemaVersionNo ?? "-"} · {reviewPolicyLabel}</p>
             </div>
-            <Badge tone="warning">第 2 轮 · 复审中</Badge>
+            <Badge tone={reviewStage === "FINAL_REVIEW" ? "primary" : "warning"}>第 {detail.submission.attemptNo} 轮 · {reviewStageLabel}</Badge>
           </section>
+          <div className="review-human-stage-strip">
+            <span>AI 预审</span>
+            <strong>{reviewStageLabel}</strong>
+            <span>第 1 / 2 轮 diff</span>
+            <span>AI 评语</span>
+            <span>完整审计时间线</span>
+          </div>
         </Card>
 
         <div className="review-human-compare">
           <Card className="review-human-compare-card">
-            <h3>第 1 轮提交（已打回）</h3>
+            <h3>原始数据</h3>
             <dl>
               <dt>cleaned_title</dt>
               <dd>{valueText(display.previousPayload.cleaned_title ?? display.previousPayload.news_title ?? sourcePayload.title ?? display.title)}</dd>
@@ -315,7 +340,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
             </dl>
           </Card>
           <Card className="review-human-compare-card">
-            <h3>第 2 轮提交（本轮修改后）</h3>
+            <h3>本轮提交</h3>
             <dl>
               <dt>cleaned_title</dt>
               <dd>{valueText(display.payload.cleaned_title ?? display.payload.news_title ?? answers.cleaned_title ?? answers.rewriteSuggestion ?? display.title)}</dd>
@@ -329,15 +354,29 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
 
         <Card className="review-human-ai">
           <div className="review-human-ai__head">
-            <h3>AI 预审 · 本轮重跑结果</h3>
-            <Badge tone="primary">v2.3 · doubao-pro-32k</Badge>
+            <h3>AI 评语与预审结果</h3>
+            <Badge tone="primary">{aiTrace?.modelPolicyId ?? "AI Agent"}</Badge>
           </div>
-          <div className="review-human-ai__scores">
-            {dimensionScores.map((score) => (
-              <span key={score.key}>{score.key} <strong>{score.score}</strong></span>
-            ))}
-          </div>
+          {dimensionScores.length > 0 ? (
+            <div className="review-human-ai__scores">
+              {dimensionScores.map((score) => (
+                <span key={score.key}>{score.key} <strong>{score.score}</strong></span>
+              ))}
+            </div>
+          ) : <div className="empty-state">暂无真实 AI 维度评分</div>}
           <p>{aiResult?.summary ?? display.issue}</p>
+          <div className="review-human-ai-trace">
+            <span>Prompt 快照：{aiTrace?.promptSnapshotHash ?? "暂无"}</span>
+            <span>调用状态：{aiTrace?.status ?? "暂无"}</span>
+            <span>Token：{aiTrace?.totalTokens ?? "-"}</span>
+            <span>耗时：{aiTrace?.latencyMs !== undefined && aiTrace?.latencyMs !== null ? `${aiTrace.latencyMs}ms` : "-"}</span>
+          </div>
+          {aiTrace?.promptTemplate ? (
+            <details className="review-human-prompt">
+              <summary>查看 Prompt 模板</summary>
+              <pre>{aiTrace.promptTemplate}</pre>
+            </details>
+          ) : null}
           {aiResult ? (
             <fieldset className="review-human-ai-feedback">
               <legend>AI 预审是否对本次审核有帮助？</legend>
@@ -378,7 +417,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         <Card className="review-human-corrected-answers">
           <h3>审核修正答案</h3>
           <p className="review-human-corrected-answers__desc">
-            Reviewer 可以在这里修改标注答案；系统会在提交审核时生成字段级 patches。
+            审核员可以在这里修改标注答案；系统会在提交审核时生成字段级修订记录。
           </p>
           <label className="review-human-corrected-answers__label">
             <span>修正后的答案（JSON 格式）</span>
@@ -405,6 +444,19 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
           {correctedAnswersParseError !== null && (
             <p className="danger-text review-human-corrected-answers__error">{correctedAnswersParseError}</p>
           )}
+          <div className="review-human-diff-preview">
+            <strong>本轮 diff 预览（{previewPatches.length}）</strong>
+            {previewPatches.length > 0 ? (
+              <ul>
+                {previewPatches.map((patch) => (
+                  <li key={patch.fieldName}>
+                    <span>{patch.fieldName}</span>
+                    <em>{valueText(patch.previousValue)} → {valueText(patch.nextValue)}</em>
+                  </li>
+                ))}
+              </ul>
+            ) : <p>当前未产生字段修订。</p>}
+          </div>
         </Card>
 
         <Card className="review-human-decision-card">
@@ -416,10 +468,15 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
           {decisionMessage ? <Badge tone="success">{decisionMessage}</Badge> : null}
 
           <div className="review-human-tags">
-            <button type="button">关键词缺失</button>
-            <button type="button">类目错误</button>
-            <button type="button">标题超长</button>
-            <button type="button">格式不规范</button>
+            {["关键词缺失", "类目错误", "标题超长", "格式不规范"].map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => setComments((current) => current.includes(tag) ? current : `${current}${current ? "；" : ""}${tag}`)}
+              >
+                {tag}
+              </button>
+            ))}
           </div>
 
           <div className="review-human-decisions">
@@ -427,9 +484,9 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               打回修改
               <span>返回标注员 · 第 3 轮</span>
             </Button>
-            <Button disabled={deciding}>
-              直接修订
-              <span>审核员就地改写</span>
+            <Button disabled={deciding} onClick={() => requestDecision("PASS")}>
+              保存修订并通过
+              <span>生成 diff 后入库</span>
             </Button>
             <Button tone="success" onClick={() => requestDecision("PASS")} disabled={deciding}>
               通过入库
@@ -441,22 +498,36 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
 
       <aside className="review-human-aside">
         <Card className="review-human-metrics">
-          <div><span>我今日已审</span><strong>214</strong></div>
-          <div><span>我今日通过率</span><strong className="success-text">87%</strong></div>
-          <div><span>待我审核</span><strong className="warning-text">47</strong></div>
-          <div><span>SLA 剩余</span><strong className="primary-text">02:14:00</strong></div>
+          <div><span>审核统计</span><strong>-</strong></div>
+          <p className="page-subtitle">暂无真实个人审核统计接口数据</p>
         </Card>
 
         <Card className="review-human-timeline">
           <h3>审计时间线（{detail.submission.id}）</h3>
-          <div className="timeline">
-            <div className="timeline-item"><strong>李雷</strong><span>05-16 14:22 · 第 1 轮提交</span></div>
-            <div className="timeline-item"><strong>AI Agent</strong><span>05-16 14:22 · 预审 62 分 → 建议打回</span></div>
-            <div className="timeline-item"><strong>王芳 · 复审</strong><span>05-16 15:08 · 采纳 AI 结论 → 打回</span></div>
-            <div className="timeline-item"><strong>李雷</strong><span>05-16 18:01 · 第 2 轮提交</span></div>
-            <div className="timeline-item"><strong>AI Agent</strong><span>05-16 18:01 · 重审 86 分 → 建议通过</span></div>
-            <div className="timeline-item"><strong>王芳 · 复审中</strong><span>当前 · 本次决策将写入终审待办</span></div>
+          <div className="review-human-history">
+            {detail.history.map((record, index) => (
+              <div key={record.id}>
+                <strong>第 {index + 1} 轮 · {record.stage}</strong>
+                <span>{record.decision} · {new Date(record.createdAt).toLocaleString("zh-CN")}</span>
+              </div>
+            ))}
+            {detail.auditLogs.map((log) => (
+              <div key={log.id}>
+                <strong>{log.action}</strong>
+                <span>{new Date(log.createdAt).toLocaleString("zh-CN")}</span>
+              </div>
+            ))}
+            {auditEvents.map((event) => (
+              <div key={event.id}>
+                <strong>{event.type}</strong>
+                <span>{new Date(event.createdAt).toLocaleString("zh-CN")} · {event.actor.role}</span>
+              </div>
+            ))}
           </div>
+          {auditEventsError ? <p className="danger-text">{auditEventsError}</p> : null}
+          {detail.history.length === 0 && detail.auditLogs.length === 0 && auditEvents.length === 0 && !auditEventsError ? (
+            <div className="empty-state">暂无真实审计时间线数据</div>
+          ) : null}
         </Card>
 
         <Link className="lh-button" to={RoutePath.REVIEWER_QUEUE}>返回 AI 预审队列</Link>

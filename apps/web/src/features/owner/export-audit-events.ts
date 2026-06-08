@@ -88,11 +88,17 @@ export function appendExportGeneratedAuditSafely({
 }
 
 function createOwnerActor(): AuditActor {
-  return {
-    id: "usr_owner_demo",
-    role: "OWNER",
-    displayName: "Owner Demo",
-  };
+  const actor = readStoredActor();
+  return { id: actor?.id ?? "owner", role: "OWNER", displayName: actor?.displayName ?? "任务负责人" };
+}
+
+function readStoredActor(): { id?: string; displayName?: string } | null {
+  try {
+    const value = localStorage.getItem("labelhub_actor");
+    return value ? JSON.parse(value) as { id?: string; displayName?: string } : null;
+  } catch {
+    return null;
+  }
 }
 
 function createExportTarget({

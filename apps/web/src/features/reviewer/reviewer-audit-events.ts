@@ -13,10 +13,18 @@ import { hashCanonicalJson } from "../../mocks/hash-utils";
 type ReviewerDecision = "PASS" | "RETURN";
 export type AiReviewFeedback = "HELPFUL" | "NOT_HELPFUL" | "NOT_USED";
 
-const DEMO_REVIEWER_ID = "usr_reviewer_demo";
+function currentReviewerId(): string {
+  try {
+    const value = localStorage.getItem("labelhub_actor");
+    const actor = value ? JSON.parse(value) as { id?: string } : null;
+    return actor?.id ?? "reviewer";
+  } catch {
+    return "reviewer";
+  }
+}
 
 export function appendReviewStartedAuditSafely(detail: ReviewDetailResponse): void {
-  const reviewerId = DEMO_REVIEWER_ID;
+  const reviewerId = currentReviewerId();
   const submissionId = detail.submission.id;
   const payload = {
     summary: "审核详情已打开",
@@ -51,7 +59,7 @@ export function appendReviewSubmittedAuditSafely(input: {
   commentLength: number;
   patchCount?: number;
 }): void {
-  const reviewerId = DEMO_REVIEWER_ID;
+  const reviewerId = currentReviewerId();
   const reviewId = input.response.reviewResult.id;
   const submittedDecision = mapReviewDecisionForAudit(input.decision);
   const reasonCode = input.decision === "PASS" ? "APPROVED" : "RETURNED_TO_LABELER";
@@ -103,7 +111,7 @@ export function appendAiReviewFeedbackAuditSafely(input: {
     return;
   }
 
-  const reviewerId = DEMO_REVIEWER_ID;
+  const reviewerId = currentReviewerId();
   const reviewId = input.response.reviewResult.id;
   const submissionId = input.detail.submission.id;
   const payload = {
@@ -147,7 +155,7 @@ export function appendReviewDiffGeneratedAuditSafely(input: {
   correctedAnswers: Record<string, unknown>;
 }): void {
   void (async () => {
-    const reviewerId = DEMO_REVIEWER_ID;
+    const reviewerId = currentReviewerId();
     const reviewId = input.response.reviewResult.id;
     const submissionId = input.detail.submission.id;
     const patchedFieldNames = input.patches.map((p) => p.fieldName);

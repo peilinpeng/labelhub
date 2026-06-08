@@ -40,11 +40,11 @@
 ## 1. 当前 Git 基线（每次开班核对，每次收班更新）
 
 ```txt
-分支：    integration/joint-test（主线；feature/schema-governance-upgrade 已于 81ad726 受控合并进主线）
-commit：  2cf3c7e   chore(deploy): 新增 .env.example 模板（云部署一键可填，占位符无真实密钥）
-工作区：  clean（仅 .claude/ 本地 preview 产物未跟踪，不提交）
-更新时间：2026-06-07（Claude Code：登录健壮性 + bundle 代码分割 + .env.example 云部署模板，已 push）
-更新者：  Claude Code
+分支：    fix/joint-test-web-shell（基线：origin/integration/joint-test @ 87abab0，本轮未 commit / 未 push）
+commit：  87abab0   origin/integration/joint-test 当前同步基线
+工作区：  dirty（apps/web UI/真实链路清理 + schema-renderer AI Assist UI polish，未提交；不要误认为 clean）
+更新时间：2026-06-08（Codex：AI 预审/人工审核职责澄清 + ReviewConfig 前端链路 + Reviewer 验收视图补强）
+更新者：  Codex
 
 近三次收尾（本轮）：
   - b4cd12b fix(web): 登录健壮性——失败不再静默放行 + token 失效跳登录
@@ -215,14 +215,77 @@ cd apps/web && npm run typecheck && npm run build
 - FE-9~14（Trace Panel / Designer / Virtual List）
 
 **当前工作区：**
-- clean（无未提交改动）
-- 文档更新：HANDOFF.md / docs/LabelHub_Final_Demo_Guide.md / docs/QA_TEST_RECORD.md / docs/qa-assets/.gitkeep
+- dirty（本轮前端改动未 commit，遵守“未明确要求不 commit/push”）
+- 已验证：apps/web typecheck ✅；apps/web build ✅；packages/schema-designer typecheck ✅；packages/schema-renderer typecheck ✅；git diff --check ✅（仅 CRLF warning）
 
 ---
 
 ## 9. 上一班工作日志（收班时追加，最新在上）
 
 ```txt
+### 2026-06-08 | Codex（AI 预审职责 + 人工审核验收 UI，未 commit）
+- 任务：按用户要求明确 AI 预审与人工审核边界：
+  - AI 预审相关设置由任务负责人操作，覆盖 4.4 AI Agent：异步队列、维度评分 / function_calling 结构化输出、Prompt 模板、失败重试与人工兜底。
+  - 人工审核侧覆盖 4.5 多角色审核流转：复审 / 终审视图、第 1 / 2 轮 diff、AI 评语、批量操作、完整审计时间线。
+- 改动文件：
+  - apps/web/src/api/reviewer.ts：新增 ReviewConfig 前端 client（get/create/update），复用现有 review API，不改 contracts。
+  - apps/web/src/features/owner/OwnerAIPage.tsx：Owner AI 预审设置改为真实配置表单，含模型、自动通过/打回阈值、失败重试次数、Prompt 模板、维度权重、function_calling 结构化输出说明与流转预览。
+  - apps/web/src/features/reviewer/ReviewerWorkspace.tsx：审核队列增加“人工审核验收”说明、任务负责人维护规则提示、复审/终审/第 N 轮 diff 流程条、批量通过/批量打回入口；批量请求仍走 batchDecideReview。
+  - apps/web/src/features/reviewer/ReviewDetailPage.tsx：审核详情去除 mock fallback，展示 AI 评语与预审 trace、修订 diff 预览、审核/终审阶段条、完整时间线（history/auditLogs/queryAuditEvents）。
+  - apps/web/src/styles.css：补充 Owner AI 配置与 Reviewer 审核验收相关样式。
+  - apps/web/src/main.tsx：增加 bootstrap 失败可见兜底，避免启动失败时白屏。
+- 浏览器验证：
+  - http://localhost:5180/owner/tasks/task_news_quality/ai-config 可见“任务负责人维护 AI Agent 配置：异步队列、结构化评分、Prompt 模板、失败重试与人工兜底”，可见 function_calling 输出、重试后转人工等说明。
+  - 当前后端/MSW 对 GET /api/v1/tasks/task_news_quality/review-config 返回 500 时，Owner 页面显示“尚未读取到已保存配置：Request failed: 500 Internal Server Error”，但页面可继续编辑默认配置。
+  - ReviewerWorkspace 组件与完整 App 的服务端渲染探针均能渲染审核队列 loading 壳；应用内浏览器直接打开 /reviewer/items 曾出现 root 空白，未能继续刷新验证（浏览器安全策略阻止该页刷新），需下一班在干净浏览器会话复查真实客户端深链路。
+- 验证：
+  - npm.cmd --prefix apps/web run typecheck ✅
+  - npm.cmd --prefix apps/web run build ✅（仍有既有 circular chunk warning: vendor -> vendor-react -> vendor）
+  - npm.cmd --prefix packages/schema-renderer run typecheck ✅
+  - git diff --check ✅（仅 CRLF warning）
+- 是否触碰边界：修改 apps/web 前端 UI/API client 与 main 启动兜底；未改 apps/api，未改 packages/schema-core / schema-renderer runtime 逻辑，未改 contracts。
+
+### 2026-06-08 | Codex（Owner Schema Designer UI polish，未 commit）
+- 针对 Owner 模板搭建页继续 UI polish：
+  - 新建空白预设模板不再继承任务名，默认显示“未命名预设模板 / 空白模板”，另存输入框默认同名。
+  - packages/schema-designer 右侧属性面板改成人话表达：隐藏 visibleWhen / disabledWhen / validations / sourcePath / transform 等工程 JSON 入口；展示内容改为“读取内容”选择；字段属性改为“保存字段 / 必填 / 隐藏时保留”等短文案。
+  - 画布节点不再显示 show.text / input.textarea / choice.radio 等紫色工程类型；底部从“Schema 校验通过”改为“模板检查 / 本地结构检查 / 当前模板结构无错误”，避免误认为服务端发布校验。
+  - 选项属性改为每项一组“选项文字”textarea + “保存值”input，修复看起来像不可编辑的右对齐文字。
+  - apps/web 样式移除右侧属性面板伪造的“校验规则 / 字段联动 / 新增联动规则”内容；分屏窄宽度下模板搭建页保持可横向滚动的三栏编辑器，不再把工具条和标题挤成竖排。
+  - 预设命名区从画布下方移动到常用预设区之后、模板画布之前；预设名称和说明始终可编辑，并实时同步到当前 schema 的 meta/root 标题说明。
+  - “新建预设”卡片加号改为 CSS 几何十字，避免字体基线导致视觉不居中。
+- 浏览器验证：http://localhost:5180/owner/tasks/task_news_quality/designer 在 753px 分屏宽度下工具条宽 760px，设计器三栏为 190/420/300；可见文本不再包含 RuntimeContext、show.text、sourcePath、validations、visibleWhen、disabledWhen、noEmoji、属性面板等工程词；点击“新建预设”后标题和另存输入为“未命名预设模板”。
+- 追加浏览器验证：预设命名卡位于画布之前；点击“新建预设”后名称=“未命名预设模板”、说明=“空白模板。”、节点=0；编辑名称/说明后下方模板标题和说明实时同步；加号 CSS 十字中心为 21px/21px。
+- 验证：
+  - npm.cmd --prefix apps/web run typecheck ✅
+  - npm.cmd --prefix packages/schema-designer run typecheck ✅
+  - npm.cmd --prefix apps/web run build ✅（仍有既有 circular chunk warning: vendor -> vendor-react -> vendor）
+  - npm.cmd --prefix packages/schema-renderer run typecheck ✅
+- 是否触碰边界：修改 apps/web 样式与 OwnerSchemaPage，以及 packages/schema-designer 显示层组件；未改 apps/api，未改 schema-core / schema-renderer runtime 逻辑。
+
+### 2026-06-08 | Codex（fix/joint-test-web-shell：UI polish + 真实链路清理，未 commit）
+- 基线：当前分支 fix/joint-test-web-shell；已同步 origin/integration/joint-test @ 87abab0；未覆盖 backup/web-shell-dev-before-joint。
+- AI Assist Panel：packages/schema-renderer/src/renderers/LLMAssistRenderer.tsx 已改为“AI 质量检查建议”面板，保留 existing preflight / onApplySuggestedPatch 安全链路，不展示 raw prompt / answers JSON / sourcePayload / 工程 preflight 字段。
+- 恢复并保留 web-shell-dev 侧 apps/web UI polish：紫/橙主题、移动端适配、Owner/Reviewer/Labeler 中文文案、Owner 详情看板、Owner AI 预审配置、Reviewer 去 AI 设置入口等。
+- 本轮新增：AppShell 头像不再用 CSS 伪元素硬编码姓名，改读取真实 labelhub_actor；补 `.app-user-avatar` 居中样式。
+- 本轮新增：移除前端 API 失败后自动回退 mock/local/demo 数据的路径：
+  - OwnerWorkspace / LabelerWorkspace：API 失败显示空态与错误；过滤后端已知 seed/demo 任务（task_news_quality、task_product_title、Demo A/B/C 等），真实新建任务仍显示。
+  - OwnerNewTaskPage：真实 createTask 失败时不再创建 task_local_* 本地临时任务，也不再跳转到必然不存在的 designer 页；后端未启动时停留在新建页显示失败原因。createTask 前端解包兼容真实后端 `{ task, auditLog }` 与 MSW 直接 Task 响应，修复 “Cannot read properties of undefined (reading 'id')”。
+  - OwnerSchemaPage：常用预设区新增“新建预设模板”卡片，可创建空白 schema 起点；模板画布下新增“另存为预设模板”，将当前 schema 快照保存到浏览器本地预设库并可在后续任务中重新加载。
+  - AssignmentPage：不再 fallback 到 mock assignment / datasetItems / demo submit；submit 失败显示错误；LLM 失败只返回不可用提示和空 patch。
+  - ReviewerWorkspace / ReviewDetailPage / review-display：不再塞 fallbackQueue / sub_1001~1004 假内容 / 假分数 / 假时间线 / 假个人统计。
+  - OwnerTaskDetailPage：改 fetchTask 真实加载；无真实统计接口时显示 `-` 或空态，不再显示假标注员与 128/121/7 等统计。
+  - OwnerExportPage：改 fetchTask + listExportJobs 真实加载；不再创建 exp_demo_001、不再本地异步假导出、不再生成本地假下载文件。
+  - owner/reviewer audit actor：不再写 usr_owner_demo / usr_reviewer_demo，改读取登录 actor，缺失时使用角色兜底。
+- 浏览器验证：http://localhost:5180/owner/tasks 刷新后头像 grid 居中，seed/demo 任务不显示，Owner 列表为空态（0 个任务，等待真实链路创建任务）。
+- 验证：
+  - npm.cmd --prefix apps/web run typecheck ✅
+  - npm.cmd --prefix apps/web run build ✅（仍有既有 circular chunk warning: vendor -> vendor-react -> vendor）
+  - npm.cmd --prefix packages/schema-renderer run typecheck ✅
+  - git diff --check ✅（仅 CRLF warning）
+- 是否触碰边界：主要 apps/web；保留早前 schema-renderer AI Assist UI polish；未改 apps/api，未改 schema-core 核心逻辑。
+- 遗留提醒：当前工作区 dirty，未 commit/push；如果要推 joint-test，先由维护者确认是否直接 push 或开 PR。
+
 ### 2026-06-07 | Claude Code（体验健壮性 + 工程打磨 + 云部署模板，已 push 2cf3c7e）
 - 背景：对照官方提交物要求收尾三项（跳过移动端/虚拟化等可选加分）。
 - b4cd12b 登录健壮性：原 App.tsx handleRoleSelect 把登录失败 catch 吞掉仍进工作台

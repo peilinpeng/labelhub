@@ -6,7 +6,7 @@ import type {
   BatchReviewResponse,
   Submission,
 } from "@labelhub/contracts";
-import { apiGet, apiPost } from "./client";
+import { apiGet, apiPost, apiPut } from "./client";
 
 /**
  * GET /review/queue 返回的单条队列项。
@@ -68,6 +68,53 @@ export async function decideReview(submissionId: string, request: ReviewDecision
 
 export async function batchDecideReview(request: BatchReviewRequest): Promise<BatchReviewResponse> {
   return apiPost<BatchReviewResponse>("/api/v1/review/batch-decision", request);
+}
+
+export interface ReviewConfigPayload {
+  enabled: boolean;
+  modelPolicyId: string;
+  promptTemplate: string;
+  dimensions: Array<{
+    key: string;
+    label: string;
+    description: string;
+    weight: number;
+    scoreRange: [number, number];
+  }>;
+  thresholds: {
+    passScore: number;
+    returnScore: number;
+  };
+  conclusionMapping: {
+    passWhen: string;
+    returnWhen: string;
+    humanReviewOtherwise: boolean;
+  };
+  maxRetries: number;
+}
+
+export interface ReviewConfigRecord extends ReviewConfigPayload {
+  id: string;
+  taskId: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+type ReviewConfigEnvelope = { reviewConfig: ReviewConfigRecord };
+
+export async function getReviewConfig(taskId: string): Promise<ReviewConfigRecord> {
+  const res = await apiGet<ReviewConfigEnvelope>(`/api/v1/tasks/${taskId}/review-config`);
+  return res.reviewConfig;
+}
+
+export async function createReviewConfig(taskId: string, payload: ReviewConfigPayload): Promise<ReviewConfigRecord> {
+  const res = await apiPost<ReviewConfigEnvelope>(`/api/v1/tasks/${taskId}/review-config`, payload);
+  return res.reviewConfig;
+}
+
+export async function updateReviewConfig(taskId: string, payload: Partial<ReviewConfigPayload>): Promise<ReviewConfigRecord> {
+  const res = await apiPut<ReviewConfigEnvelope>(`/api/v1/tasks/${taskId}/review-config`, payload);
+  return res.reviewConfig;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

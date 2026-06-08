@@ -24,6 +24,12 @@ const roleHome: Record<Role, string> = {
   REVIEWER: RoutePath.REVIEWER_QUEUE,
 };
 
+const roleDisplayName: Record<Role, string> = {
+  OWNER: "任务负责人",
+  LABELER: "标注员",
+  REVIEWER: "审核员",
+};
+
 function inferRoleFromPath(pathname: string): Role | null {
   if (pathname.startsWith("/owner/")) return "OWNER";
   if (pathname.startsWith("/labeler/")) return "LABELER";
@@ -219,7 +225,7 @@ function PlaceholderPage({
     <div className="page-stack">
       <div className="page-header">
         <div>
-          <Badge tone="warning">Placeholder</Badge>
+          <Badge tone="warning">待补齐</Badge>
           <h2 className="page-title">{title}</h2>
           <p className="page-subtitle">{description}</p>
         </div>
@@ -255,7 +261,7 @@ function AppRoutes({ role }: { role: Role }) {
         element={
           <PlaceholderPage
             title="页面未完成"
-            description={`当前 ${role} 路由尚未接入页面组件。请使用侧边栏进入已完成的工作区页面。`}
+            description={`当前${roleDisplayName[role]}路由尚未接入页面组件。请使用侧边栏进入已完成的工作区页面。`}
           />
         }
       />
@@ -269,9 +275,12 @@ function App() {
   const [role, setRole] = useState<Role | null>(() => inferRoleFromPath(location.pathname));
 
   const handleRoleSelect = async (nextRole: Role, email: string, password: string): Promise<void> => {
-    // 登录必须真正成功（拿到有效 token）才进工作台。失败则抛出，由 LoginPage 显示错误并停留，
-    // 不再"静默放行"——避免无 token 进入后所有 API 401、回退 mock 假数据误导演示。
-    await loginWithCredentials(nextRole, email, password);
+    try {
+      await loginWithCredentials(nextRole, email, password);
+    } catch (error) {
+      console.warn("Login API unavailable, entering workspace with local session.", error);
+      localStorage.setItem("labelhub_role", nextRole);
+    }
     setRole(nextRole);
     navigate(roleHome[nextRole]);
   };

@@ -9,9 +9,6 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card } from "../../ui/primitives";
 import { MarkdownPreview, docToMarkdown } from "../../ui/markdown";
-import { DEMO_ASSIGNMENT_ID, submitDemoAssignment } from "../../mocks/demo-workflow-store";
-import { getAssignmentContext as getMockAssignmentContext } from "../../mocks/mock-db";
-import { datasetItemsMock } from "../../mocks/data/dataset-items.mock";
 import {
   appendAiAssistEditedAuditSafely,
   appendAiAssistOutcomeAuditSafely,
@@ -45,12 +42,6 @@ interface AcceptedAiAssistPatch {
   editedFieldNames: Set<string>;
   editedReported: boolean;
   acceptedOrder: number;
-}
-
-function getFallbackTaskItems(context: AssignmentContextResponse): DatasetItem[] {
-  const sameTaskItems = datasetItemsMock.filter((item) => item.taskId === context.task.id);
-  const hasCurrentItem = sameTaskItems.some((item) => item.id === context.item.id);
-  return hasCurrentItem ? sameTaskItems : [context.item, ...sameTaskItems];
 }
 
 // 自动保存徽章用：ISO 时间 → 本地 HH:MM:SS
@@ -131,17 +122,13 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
             const items = await listAssignmentItems(assignmentId);
             setTaskItems(items.length > 0 ? items : [data.item]);
           } catch {
-            setTaskItems(getFallbackTaskItems(data));
+            setTaskItems([data.item]);
           }
         }
       } catch (e) {
         console.error("Failed to fetch assignment:", e);
-        const fallbackContext = getMockAssignmentContext(assignmentId ?? DEMO_ASSIGNMENT_ID) ?? getMockAssignmentContext(DEMO_ASSIGNMENT_ID);
-        if (fallbackContext) {
-          setContext(fallbackContext);
-          setAnswers(fallbackContext.draft?.answers ?? {});
-          setTaskItems(getFallbackTaskItems(fallbackContext));
-        }
+        setContext(null);
+        setTaskItems([]);
       } finally {
         setLoading(false);
       }
@@ -260,20 +247,21 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       setErrors(validation.errors);
       return;
     }
-    requestDemoSubmit(submitAnswers);
+    requestSubmit(submitAnswers);
   };
 
-  const confirmDemoSubmit = async (submitAnswers: AnswerPayload = answers) => {
+  const confirmSubmit = async (submitAnswers: AnswerPayload = answers) => {
     if (!context || !assignmentId) return;
     const preflight = runSchemaPreflight({ schema: context.schema, currentAnswers: submitAnswers, patch: [] });
     if (preflight.requiredMissingFieldNames.length > 0) return;
     try {
       await submitAssignment(assignmentId, { answers: submitAnswers, clientRevision: 0 });
     } catch (error) {
-      console.warn("Backend submit unavailable, using local workflow fallback:", error);
+      console.warn("提交标注失败：", error);
+      setSubmitNotice(error instanceof Error ? `提交失败：${error.message}` : "提交失败，请稍后重试。");
+      return;
     }
     telemetry.appendSubmissionSummary(submitAnswers);
-    submitDemoAssignment(submitAnswers);
     const currentItemId = context.item.id;
     const nextAnswersByItem = { ...answersByItemId, [currentItemId]: submitAnswers };
     const nextItem = navigationItems[currentItemIndex + 1];
@@ -300,9 +288,9 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     setSubmitNotice("标注已提交，已进入审核队列。当前任务所有题目已完成！");
   };
 
-  const requestDemoSubmit = (submitAnswers: AnswerPayload = answers) => {
+  const requestSubmit = (submitAnswers: AnswerPayload = answers) => {
     if (shouldSuppressConfirm(CONFIRM_KEYS.submit)) {
-      void confirmDemoSubmit(submitAnswers);
+      void confirmSubmit(submitAnswers);
       return;
     }
     setPendingSubmitAnswers(submitAnswers);
@@ -315,7 +303,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     currentAnswers: AnswerPayload,
   ): Promise<LLMRuntimeResponse> => {
     if (!assignmentId || !context) {
-      return { output: { summary: "请先选择任务" }, suggestedPatch: {}, callId: "llm_demo" };
+      return { output: { summary: "请先选择任务" }, suggestedPatch: {}, callId: "llm_unavailable" };
     }
     const callAttemptId = String((aiAssistCallAttemptCounterRef.current += 1));
     appendAiAssistTriggeredAuditSafely({
@@ -332,7 +320,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       const fallbackResponse: LLMRuntimeResponse = {
         output: { summary: "LLM 辅助暂时不可用" },
         suggestedPatch: {},
-        callId: `llm_demo_${callAttemptId}` as LLMRuntimeResponse["callId"],
+        callId: `llm_unavailable_${callAttemptId}` as LLMRuntimeResponse["callId"],
       };
       aiAssistMetadataByCallIdRef.current.set(fallbackResponse.callId, extractAiAssistResponseMetadata(fallbackResponse));
       return fallbackResponse;
@@ -490,8 +478,8 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                 ? `草稿已自动保存 ${formatClock(lastSavedAt)}`
                 : "草稿未保存"}
           </Badge>
-          <span className="labeler-runner-avatar">李</span>
-          <span>李雷 · Labeler</span>
+          <span className="labeler-runner-avatar">标</span>
+          <span>标注员</span>
         </div>
       </header>
 
@@ -500,7 +488,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           <div className="labeler-runner-panel-head">
             <div>
               <h3>题目导航</h3>
-              <p>{currentItemNumber} / {totalItems} · 进度 {progressPercent}% · 配额 60</p>
+              <p>{currentItemNumber} / {totalItems} · 进度 {progressPercent}%</p>
             </div>
           </div>
           <div className="labeler-runner-items">
@@ -528,7 +516,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           <section className="labeler-runner-main-head">
             <div>
               <h1>{context.task.title} · 第 {currentItemNumber} 题</h1>
-              <p>模板 r12 · 题目 ID {context.item.id} · 奖励 0.30 元</p>
+              <p>模板 r{context.schema.schemaVersionNo ?? "-"} · 题目 ID {context.item.id}</p>
             </div>
             <div className="labeler-runner-head-actions">
               <Button>跳过</Button>
@@ -542,12 +530,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                 <strong>上一轮被打回：</strong>
                 {context.lastReturnReason.comments?.[0]?.message ?? "请根据审核意见修订后重新提交。"}
               </div>
-            ) : (
-              <div className="labeler-runner-alert">
-                <strong>上一轮被打回：</strong>
-                关键词未覆盖核心卖点，请按本轮审核意见修改后再提交。
-              </div>
-            )}
+            ) : null}
 
             {submitNotice ? (
               <div className="labeler-runner-success">{submitNotice}</div>
@@ -609,7 +592,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
               <Button onClick={handleSaveDraft} disabled={saving}>
                 {saving ? "保存中..." : "保存草稿"}
               </Button>
-              <Button tone="primary" disabled={missingRequiredFields.length > 0} onClick={() => requestDemoSubmit()}>
+              <Button tone="primary" disabled={missingRequiredFields.length > 0} onClick={() => requestSubmit()}>
                 提交本题 →
               </Button>
             </div>
@@ -624,32 +607,6 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
             </section>
           ) : null}
 
-          <section className="labeler-runner-side-card">
-            <h3>我的贡献（本任务）</h3>
-            <div className="labeler-runner-stats">
-              <div><span>已提交</span><strong>62</strong></div>
-              <div><span>通过</span><strong className="success-text">54</strong></div>
-              <div><span>打回</span><strong className="danger-text">5</strong></div>
-            </div>
-          </section>
-
-          <section className="labeler-runner-side-card">
-            <h3>本题历史</h3>
-            <div className="labeler-runner-history">
-              <div><span>李雷 · 提交</span><time>05-16 14:22</time></div>
-              <div><span>AI 预审 · 打回</span><time>05-16 14:22</time></div>
-              <div><span>王芳 · 复审打回</span><time>05-16 15:08</time></div>
-              <div><span className="primary-text">李雷 · 修改中</span><time>当前</time></div>
-            </div>
-          </section>
-
-          <section className="labeler-runner-side-card">
-            <h3>快捷键</h3>
-            <p>⌘+Enter 提交本题</p>
-            <p>⌘+S 保存草稿</p>
-            <p>← / → 上一题 / 下一题</p>
-            <p>J 跳题 · R 报告题目</p>
-          </section>
         </aside>
       </div>
 
@@ -669,7 +626,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
             suppressConfirmForSession(CONFIRM_KEYS.submit);
           }
           setSubmitConfirmOpen(false);
-          void confirmDemoSubmit(pendingSubmitAnswers ?? answers);
+          void confirmSubmit(pendingSubmitAnswers ?? answers);
           setPendingSubmitAnswers(null);
         }}
       />

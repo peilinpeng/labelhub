@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import type { ID } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
 import { createTask } from "../../api/owner";
-import { createLocalPublishedTask } from "../../mocks/local-task-store";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Input, Select, Textarea } from "../../ui/primitives";
@@ -79,17 +78,9 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
             : { type: "DOUBLE_REVIEW", requireFinalReview: true },
       });
       navigate(`/owner/tasks/${task.id}/designer`);
-    } catch {
-      const task = createLocalPublishedTask({
-        title,
-        description,
-        quotaTotal,
-        distributionType,
-        reviewPolicyType,
-        assigneeIds,
-      });
-      setNotice("后端暂不可用，已创建本地演示任务。");
-      window.setTimeout(() => navigate(`/owner/tasks/${task.id}/designer`), 350);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "任务创建失败，请检查后端服务。";
+      setNotice(`任务创建失败：${message}`);
     } finally {
       setLoading(false);
     }
@@ -127,7 +118,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
 
       {notice ? (
         <Card className="labeler-return-card">
-          <Badge tone="warning">离线模式</Badge>
+          <Badge tone="danger">创建失败</Badge>
           <p>{notice}</p>
         </Card>
       ) : null}

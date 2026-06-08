@@ -68,10 +68,8 @@ export function NodeBlock({ node, selected, readonly, onSelect, onDelete, onMove
           </span>
         ) : null}
         <strong>{node.title}</strong>
-        <span>{node.type}</span>
       </div>
-      <div className="schema-node-card__meta">{node.id}</div>
-      {node.kind === "FIELD" ? <div className="schema-node-card__field">字段：{node.name}</div> : null}
+      {node.kind === "FIELD" ? <div className="schema-node-card__field">保存字段：{node.name}</div> : null}
       <div className="schema-node-card__badges">
         {node.hidden === true ? <span>隐藏</span> : null}
         {node.disabled === true ? <span>禁用</span> : null}

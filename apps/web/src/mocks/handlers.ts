@@ -75,6 +75,20 @@ import {
 const idempotencyRecords = new Map<string, IdempotencyRecord>();
 
 export const handlers = [
+  http.post("/api/v1/auth/login", async ({ request }) => {
+    const body = await readJson<{ email?: unknown; password?: unknown }>(request);
+    const email = typeof body.email === "string" ? body.email : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    const actor = demoActorForEmail(email);
+    if (actor === undefined || password.length === 0) {
+      return errorJson("PERMISSION_DENIED", "账号或密码不正确", 401);
+    }
+    return okJson({
+      token: `mock_token_${actor.role.toLowerCase()}`,
+      actor,
+    });
+  }),
+
   http.get("/api/v1/tasks", () => okJson(mockDb.tasks)),
 
   http.post("/api/v1/tasks", async ({ request }) => {
@@ -495,4 +509,17 @@ async function handleAppRouteRequest(request: Request): Promise<Response | undef
       "Content-Type": "text/html; charset=utf-8",
     },
   });
+}
+
+function demoActorForEmail(email: string): { id: string; role: "OWNER" | "LABELER" | "REVIEWER"; displayName: string } | undefined {
+  switch (email) {
+    case "owner@labelhub.test":
+      return { id: "usr_owner", role: "OWNER", displayName: "任务负责人" };
+    case "labeler@labelhub.test":
+      return { id: "usr_labeler", role: "LABELER", displayName: "标注员" };
+    case "reviewer@labelhub.test":
+      return { id: "usr_reviewer", role: "REVIEWER", displayName: "审核员" };
+    default:
+      return undefined;
+  }
 }

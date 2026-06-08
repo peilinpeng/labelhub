@@ -4,34 +4,29 @@ import { Role } from "../../app/routes";
 import { claimTask, listMarketplaceTasks } from "../../api/labeler";
 import { Badge, Button, Card, KpiCard } from "../../ui/primitives";
 import type { ClaimTaskResponse, Task } from "@labelhub/contracts";
-import { claimDemoAssignment, DEMO_ASSIGNMENT_ID, getDemoWorkflowState } from "../../mocks/demo-workflow-store";
-import { tasksMock } from "../../mocks/data/tasks.mock";
-import { listLocalTasks } from "../../mocks/local-task-store";
 
 interface LabelerWorkspaceProps {
   role: Role;
 }
 
 export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
+  void role;
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
   const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
-  const [claimedAssignmentId, setClaimedAssignmentId] = useState<string | null>(() =>
-    getDemoWorkflowState().assignmentStatus ? DEMO_ASSIGNMENT_ID : null,
-  );
 
   useEffect(() => {
     void (async () => {
       try {
         setLoading(true);
         const data = await listMarketplaceTasks();
-        setTasks(data);
+        setTasks(data.filter((task) => !isPlaceholderTask(task)));
         setOfflineNotice(null);
       } catch (e) {
-        setTasks(getLocalMarketplaceTasks());
-        setOfflineNotice(`后端 API 暂不可用，当前显示本地任务数据。${(e as Error).message}`);
+        setTasks([]);
+        setOfflineNotice(`未加载任何占位数据。${(e as Error).message}`);
       } finally {
         setLoading(false);
       }
@@ -41,14 +36,10 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
   const handleClaimTask = async (taskId: string) => {
     try {
       setClaimingTaskId(taskId);
-      claimDemoAssignment();
-      setClaimedAssignmentId(DEMO_ASSIGNMENT_ID);
-      try {
-        const response: ClaimTaskResponse = await claimTask(taskId, {});
-        navigate(`/labeler/workspace/${response.context.assignment.id}`);
-      } catch {
-        navigate(`/labeler/workspace/${DEMO_ASSIGNMENT_ID}`);
-      }
+      const response: ClaimTaskResponse = await claimTask(taskId, {});
+      navigate(`/labeler/workspace/${response.context.assignment.id}`);
+    } catch (error) {
+      setOfflineNotice(error instanceof Error ? error.message : "领取任务失败，请稍后重试。");
     } finally {
       setClaimingTaskId(null);
     }
@@ -63,21 +54,19 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
       <div className="page-header">
         <div>
           <h2 className="page-title">任务市场</h2>
-          <p className="page-subtitle">当前角色：{role}。领取任务后进入标注工作台，填写答案并提交审核。</p>
+          <p className="page-subtitle">领取任务后进入标注工作台，填写答案并提交审核。</p>
         </div>
       </div>
 
       {offlineNotice ? (
         <Card className="labeler-return-card">
-          <Badge tone="warning">离线模式</Badge>
+          <Badge tone="danger">接口异常</Badge>
           <p>{offlineNotice}</p>
         </Card>
       ) : null}
 
       <div className="kpi-grid">
-        <KpiCard label="可领取任务" value={tasks.length} hint={offlineNotice ? "来自本地任务数据" : "来自任务市场"} />
-        <KpiCard label="预计单题奖励" value="0.30" hint="元 / 通过 item" />
-        <KpiCard label="今日草稿" value="0" hint="保存后由 workflow 更新" />
+        <KpiCard label="可领取任务" value={tasks.length} hint="来自真实任务市场接口" />
       </div>
 
       <div className="soft-grid">
@@ -86,8 +75,8 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
             <div className="form-stack">
               <div>
                 <div className="page-actions">
-                  <Badge tone="success">{task.status}</Badge>
-                  <Badge tone="primary">{task.distributionStrategy.type}</Badge>
+                  <Badge tone="success">{task.status === "PUBLISHED" ? "已发布" : task.status}</Badge>
+                  <Badge tone="primary">{distributionLabel(task.distributionStrategy.type)}</Badge>
                 </div>
                 <h3 className="task-title">{task.title}</h3>
                 <p className="page-subtitle">{task.description}</p>
@@ -104,7 +93,7 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
                 onClick={() => handleClaimTask(task.id)}
                 disabled={claimingTaskId === task.id}
               >
-                {claimingTaskId === task.id ? "领取中..." : claimedAssignmentId ? "已领取 / 继续标注" : "领取任务"}
+                {claimingTaskId === task.id ? "领取中..." : "领取任务"}
               </Button>
             </div>
           </Card>
@@ -116,12 +105,13 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
   );
 }
 
-function getLocalMarketplaceTasks(): Task[] {
-  const byId = new Map<string, Task>();
-  [...listLocalTasks(), ...tasksMock].forEach((task) => {
-    if (task.status === "PUBLISHED") {
-      byId.set(task.id, task);
-    }
-  });
-  return Array.from(byId.values());
+function distributionLabel(type: Task["distributionStrategy"]["type"]): string {
+  if (type === "FIRST_COME_FIRST_SERVED") return "先到先得";
+  if (type === "ASSIGNMENT") return "指派";
+  return "配额抢单";
+}
+
+function isPlaceholderTask(task: Task): boolean {
+  const text = `${task.id} ${task.title} ${task.description ?? ""}`;
+  return /task_news_quality|task_product_title|新闻质量标注|商品标题清洗|商品标题清洗 v3|\bDemo\s*[A-Z]\b|Breaking Change|Deprecated|安全发布|破坏性模板调整|发布前检查会阻断|字段进入废弃流程/i.test(text);
 }

@@ -53,6 +53,7 @@ const FILTERS: Array<{ key: FilterKey; label: string }> = [
 ];
 
 export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageProps) {
+  void role;
   const navigate = useNavigate();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [taskTitleById, setTaskTitleById] = useState<Record<string, string>>({});
@@ -104,7 +105,7 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
         <div>
           <h2 className="page-title">我的提交</h2>
           <p className="page-subtitle">
-            当前角色：{role}。这里汇总你的全部作答记录与状态，打回的题目可直接进入工作台修改。
+            这里汇总你的全部作答记录与状态，打回的题目可直接进入工作台修改。
           </p>
         </div>
       </div>

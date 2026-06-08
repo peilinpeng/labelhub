@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listTasks } from "../../api/owner";
-import { tasksMock } from "../../mocks/data/tasks.mock";
-import { listLocalTasks } from "../../mocks/local-task-store";
 import { Badge, Card, Input, Select } from "../../ui/primitives";
 import type { Task } from "@labelhub/contracts";
 
@@ -78,17 +76,9 @@ function taskDescription(task: Task): string {
   return description;
 }
 
-function progressValue(task: Task): number {
-  if (task.status === "DRAFT") return 0;
-  if (task.status === "PUBLISHED") return Math.min(100, Math.round((2340 / Math.max(1, task.quota.total)) * 100));
-  if (task.status === "PAUSED") return 49;
-  return 100;
-}
-
-function withLocalTasks(tasks: Task[]): Task[] {
-  const localTasks = listLocalTasks();
-  const localTaskIds = new Set(localTasks.map((task) => task.id));
-  return [...localTasks, ...tasks.filter((task) => !localTaskIds.has(task.id))];
+function isPlaceholderTask(task: Task): boolean {
+  const text = `${task.id} ${task.title} ${task.description ?? ""}`;
+  return /task_news_quality|task_product_title|新闻质量标注|商品标题清洗|商品标题清洗 v3|\bDemo\s*[A-Z]\b|Breaking Change|Deprecated|安全发布|破坏性模板调整|发布前检查会阻断|字段进入废弃流程/i.test(text);
 }
 
 export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
@@ -104,11 +94,11 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       try {
         setLoading(true);
         const data = await listTasks();
-        setTasks(withLocalTasks(data));
+        setTasks(data.filter((task) => !isPlaceholderTask(task)));
         setError(null);
-      } catch {
-        setTasks(withLocalTasks(tasksMock));
-        setError("后端 API 暂不可用，当前显示本地任务数据。");
+      } catch (cause) {
+        setTasks([]);
+        setError(cause instanceof Error ? cause.message : "任务接口暂不可用，请检查后端服务。");
       } finally {
         setLoading(false);
       }
@@ -155,8 +145,8 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
     <div className="page-stack">
       {error ? (
         <Card className="owner-fallback-notice">
-          <Badge tone="warning">离线模式</Badge>
-          <span>{error}</span>
+          <Badge tone="danger">加载失败</Badge>
+          <span>未加载任何占位数据。{error}</span>
         </Card>
       ) : null}
 
@@ -177,8 +167,8 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
           <strong>{draftCount}</strong>
         </div>
         <div className="owner-summary-item owner-summary-item--success">
-          <span>本周新增提交</span>
-          <strong>3,481</strong>
+          <span>任务总数</span>
+          <strong>{tasks.length}</strong>
         </div>
       </div>
 
@@ -225,13 +215,12 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                 <th>任务</th>
                 <th>状态</th>
                 <th>分发策略</th>
-                <th>数据量 / 进度</th>
+                <th>数据量</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
               {visibleTasks.map((task) => {
-                const progress = progressValue(task);
                 return (
                   <tr
                     className={["owner-task-row", selectedTask?.id === task.id ? "owner-task-row--selected" : ""]
@@ -263,9 +252,6 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                     <td>
                       <div className="owner-progress-cell">
                         <span>{task.quota.total.toLocaleString()} 条</span>
-                        <div className="soft-progress" aria-label="任务进度">
-                          <span className="soft-progress__bar" style={{ width: `${progress}%` }} />
-                        </div>
                       </div>
                     </td>
                     <td>
@@ -354,22 +340,13 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                 <div className="owner-readonly-field">
                   {selectedTask.rewardRule
                     ? `${selectedTask.rewardRule.amount} ${selectedTask.rewardRule.currency ?? "CNY"} / 条`
-                    : "0.30 CNY / 条"}
+                    : "未配置"}
                 </div>
               </label>
               <label>
                 <span>分发策略</span>
                 <div className="owner-readonly-field">{strategyLabel(selectedTask.distributionStrategy)}</div>
               </label>
-              <div>
-                <div className="task-publish-progress-line">
-                  <span>发布准备度</span>
-                  <strong>{progressValue(selectedTask)}%</strong>
-                </div>
-                <div className="soft-progress soft-progress--wide" aria-label="发布准备度">
-                  <span className="soft-progress__bar" style={{ width: `${progressValue(selectedTask)}%` }} />
-                </div>
-              </div>
             </div>
 
             <div className="owner-detail-actions">

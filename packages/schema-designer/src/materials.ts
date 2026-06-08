@@ -4,7 +4,7 @@ import type { MaterialItem } from "./types";
 import { prepareNodeForInsert } from "./node-operations";
 
 export const defaultMaterials: MaterialItem[] = [
-  { type: "show.text", label: "展示文本", description: "从 RuntimeContext 读取文本并展示" },
+  { type: "show.text", label: "展示文本", description: "展示原文内容" },
   { type: "input.text", label: "单行文本", description: "填写短文本答案" },
   { type: "input.textarea", label: "多行文本", description: "填写长文本答案" },
   { type: "input.richtext", label: "富文本", description: "填写富文本答案" },

@@ -18,16 +18,20 @@ interface AppShellProps {
 }
 
 const roleLabel: Record<Role, string> = {
-  OWNER: "Owner",
-  LABELER: "Labeler",
-  REVIEWER: "Reviewer",
+  OWNER: "任务负责人",
+  LABELER: "标注员",
+  REVIEWER: "审核员",
 };
 
 const roleUser: Record<Role, { name: string; avatar: string }> = {
-  OWNER: { name: "张满", avatar: "张" },
-  LABELER: { name: "李雷", avatar: "李" },
-  REVIEWER: { name: "王芳", avatar: "王" },
+  OWNER: { name: "刘佳", avatar: "刘" },
+  LABELER: { name: "彭佩琳", avatar: "彭" },
+  REVIEWER: { name: "罗雄伟", avatar: "罗" },
 };
+
+function getCurrentUser(role: Role): { name: string; avatar: string } {
+  return roleUser[role];
+}
 
 function getCurrentNavLabel(pathname: string, navItems: ShellNavItem[]): string {
   const active = navItems
@@ -38,7 +42,7 @@ function getCurrentNavLabel(pathname: string, navItems: ShellNavItem[]): string 
 
 export function AppShell({ role, title, subtitle: _subtitle, navItems, onSwitchRole, children }: AppShellProps) {
   const location = useLocation();
-  const user = roleUser[role];
+  const user = getCurrentUser(role);
   const currentNavLabel = getCurrentNavLabel(location.pathname, navItems);
 
   return (

@@ -14,10 +14,10 @@ export interface DesignerCanvasProps {
 
 export function DesignerCanvas(props: DesignerCanvasProps) {
   return (
-    <section aria-label="Schema 画布" className="schema-designer-panel schema-designer-canvas-panel">
+    <section aria-label="模板画布" className="schema-designer-panel schema-designer-canvas-panel">
       <div className="schema-designer-panel__header">
         <div>
-          <h2>Schema 画布</h2>
+          <h2>模板画布</h2>
           <p>从左侧拖拽组件到此处；拖拽节点手柄可重排</p>
         </div>
         <span>{props.nodes.length}</span>

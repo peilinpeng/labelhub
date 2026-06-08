@@ -44,8 +44,8 @@ export async function createTask(
     instructionRichText?: Task["instructionRichText"];
   }
 ): Promise<Task> {
-  const res = await apiPost<{ task: Task; auditLog: unknown }>("/api/v1/tasks", request);
-  return res.task;
+  const res = await apiPost<Task | { task: Task; auditLog: unknown }>("/api/v1/tasks", request);
+  return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
 }
 
 export async function fetchSchemaDraft(taskId: string): Promise<LabelHubSchema> {

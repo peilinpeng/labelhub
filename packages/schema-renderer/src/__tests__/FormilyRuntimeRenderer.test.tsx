@@ -419,14 +419,14 @@ function renderFormilyWithLLM(
 
 async function clickAiButtonFormily(): Promise<void> {
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
   });
 }
 
 describe("FormilyRuntimeRenderer（formily-v2）：LLM_ASSIST 集成", () => {
-  test("formily-v2 能渲染 LLM_ASSIST 节点（AI 辅助按钮可见）", () => {
+  test("formily-v2 能渲染 LLM_ASSIST 节点（AI 质量检查按钮可见）", () => {
     renderFormilyWithLLM(createLLMAssistSchema());
-    expect(screen.getByRole("button", { name: "AI 辅助" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "检查质量" })).toBeTruthy();
   });
 
   test("点击 AI 辅助后显示 AI output", async () => {
@@ -443,7 +443,7 @@ describe("FormilyRuntimeRenderer（formily-v2）：LLM_ASSIST 集成", () => {
     });
   });
 
-  test("有 suggestedPatch 时显示 preflight block", async () => {
+  test("有 suggestedPatch 时显示 AI 质量检查状态", async () => {
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
       suggestedPatch: { fieldA: "建议值" },
@@ -454,12 +454,12 @@ describe("FormilyRuntimeRenderer（formily-v2）：LLM_ASSIST 集成", () => {
     await clickAiButtonFormily();
 
     await waitFor(() => {
-      expect(screen.getByText(/预检通过/)).toBeTruthy();
+      expect(screen.getByText(/可以一键采纳/)).toBeTruthy();
     });
     expect(screen.getByRole("status")).toBeTruthy();
   });
 
-  test("BLOCKED 时确认按钮 disabled", async () => {
+  test("BLOCKED 时一键采纳按钮 disabled", async () => {
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
       suggestedPatch: { nonExistentField: "x" },
@@ -473,11 +473,11 @@ describe("FormilyRuntimeRenderer（formily-v2）：LLM_ASSIST 集成", () => {
       return document.querySelector("[data-preflight-status='BLOCKED']") !== null;
     });
 
-    const confirmBtn = screen.getByRole("button", { name: "确认应用建议" }) as HTMLButtonElement;
+    const confirmBtn = screen.getByRole("button", { name: "一键采纳" }) as HTMLButtonElement;
     expect(confirmBtn.disabled).toBe(true);
   });
 
-  test("SAFE 时确认按钮可点击", async () => {
+  test("SAFE 时一键采纳按钮可点击", async () => {
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
       suggestedPatch: { fieldA: "建议值" },
@@ -487,9 +487,9 @@ describe("FormilyRuntimeRenderer（formily-v2）：LLM_ASSIST 集成", () => {
     renderFormilyWithLLM(createLLMAssistSchema(), { onLLMAssist });
     await clickAiButtonFormily();
 
-    await waitFor(() => screen.queryByText(/预检通过/) !== null);
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
 
-    const confirmBtn = screen.getByRole("button", { name: "确认应用建议" }) as HTMLButtonElement;
+    const confirmBtn = screen.getByRole("button", { name: "一键采纳" }) as HTMLButtonElement;
     expect(confirmBtn.disabled).toBe(false);
   });
 
@@ -509,10 +509,10 @@ describe("FormilyRuntimeRenderer（formily-v2）：LLM_ASSIST 集成", () => {
     });
     await clickAiButtonFormily();
 
-    await waitFor(() => screen.queryByText(/预检通过/) !== null);
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+      fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
     });
 
     // ACCEPTED audit 事件应触发
@@ -540,10 +540,10 @@ describe("FormilyRuntimeRenderer（formily-v2）：LLM_ASSIST 集成", () => {
       onAnswersChange,
     });
     await clickAiButtonFormily();
-    await waitFor(() => screen.queryByText(/预检通过/) !== null);
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+      fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
     });
 
     expect(onAnswersChange).toHaveBeenCalled();
@@ -586,7 +586,7 @@ describe("FormilyRuntimeRenderer（formily-v2）：LLM_ASSIST 集成", () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+      fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
     });
 
     // patch 应用后 reactions 重跑：note 隐藏（被 setVisible:false）并清空

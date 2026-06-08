@@ -44,35 +44,75 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
   const preflightBlocked = preflightResult !== undefined && !preflightResult.ok;
   const canApply = hasSuggestedPatch && !preflightBlocked;
   const patchFieldNames = Object.keys(response?.suggestedPatch ?? {}).sort();
+  const suggestionItems = buildSuggestionItems(response?.suggestedPatch, renderContext.answers);
+  const aiJudgement = getAiJudgement(response?.output);
 
   return (
-    <section data-node-id={node.id}>
-      <h3>{node.title}</h3>
-      {node.description !== undefined ? <p>{node.description}</p> : null}
-      <button
-        disabled={renderContext.readonly || loading || renderContext.onLLMAssist === undefined}
-        type="button"
-        onClick={() => {
-          void runLLMAssist(
-            node,
-            renderContext,
-            setLoading,
-            setResponse,
-            setError,
-            setPreflightResult,
-            notifiedOutcomesRef.current,
-          );
-        }}
-      >
-        {loading ? "生成中" : "AI 辅助"}
-      </button>
-      {error !== undefined ? <div role="alert">{error}</div> : null}
-      {response !== undefined ? <pre>{formatValue(response.output)}</pre> : null}
+    <section className="ai-quality-panel" data-node-id={node.id}>
+      <div className="ai-quality-panel__header">
+        <div>
+          <span className="ai-quality-panel__eyebrow">AI Assist</span>
+          <h3>AI 质量检查建议</h3>
+          {node.description !== undefined ? <p>{node.description}</p> : null}
+        </div>
+        <button
+          className="ai-quality-panel__trigger"
+          disabled={renderContext.readonly || loading || renderContext.onLLMAssist === undefined}
+          type="button"
+          onClick={() => {
+            void runLLMAssist(
+              node,
+              renderContext,
+              setLoading,
+              setResponse,
+              setError,
+              setPreflightResult,
+              notifiedOutcomesRef.current,
+            );
+          }}
+        >
+          {loading ? "检查中..." : "检查质量"}
+        </button>
+      </div>
+      {error !== undefined ? <div className="ai-quality-panel__error" role="alert">{error}</div> : null}
+      {response !== undefined ? (
+        <div className="ai-quality-panel__body">
+          <section className="ai-quality-panel__judgement" aria-label="AI 判断">
+            <span>AI 判断</span>
+            <p>{aiJudgement}</p>
+          </section>
+          {suggestionItems.length > 0 ? (
+            <section className="ai-quality-panel__suggestions" aria-label="建议修改">
+              <h4>建议修改</h4>
+              <ul>
+                {suggestionItems.map((item) => (
+                  <li key={item.fieldName}>
+                    <div className="ai-quality-panel__field">
+                      <strong>{item.label}</strong>
+                      <small>{item.fieldName}</small>
+                    </div>
+                    <div className="ai-quality-panel__diff">
+                      <span>{item.currentValue}</span>
+                      <em aria-hidden="true">→</em>
+                      <span>{item.suggestedValue}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : (
+            <div className="ai-quality-panel__notice">
+              AI 建议仅供参考，请根据判断手动补充相关说明后继续标注。
+            </div>
+          )}
+        </div>
+      ) : null}
       {response !== undefined && preflightResult !== undefined ? (
         <PreflightStatusBlock result={preflightResult} patchFieldNames={patchFieldNames} />
       ) : null}
       {hasSuggestedPatch ? (
         <button
+          className="ai-quality-panel__apply"
           disabled={!canApply}
           type="button"
           onClick={() => {
@@ -95,24 +135,17 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
             setPreflightResult(undefined);
           }}
         >
-          确认应用建议
+          一键采纳
         </button>
       ) : null}
       {response !== undefined ? (
         <button
+          className="ai-quality-panel__feedback"
+          disabled
+          title="反馈功能暂未接入，请先手动调整本题答案。"
           type="button"
-          onClick={() => {
-            notifyAssistOutcome(renderContext, notifiedOutcomesRef.current, {
-              callId: response.callId,
-              nodeId: node.id,
-              action: "DISMISSED",
-            });
-            setResponse(undefined);
-            setError(undefined);
-            setPreflightResult(undefined);
-          }}
         >
-          忽略建议
+          反馈问题
         </button>
       ) : null}
     </section>
@@ -134,14 +167,14 @@ function PreflightStatusBlock({
 
   const fieldSummary =
     patchFieldNames.length > 0 ? (
-      <div>将更新字段：{patchFieldNames.join("、")}</div>
+      <div className="ai-quality-preflight__meta">涉及 {patchFieldNames.length} 处建议修改</div>
     ) : null;
 
   if (status === "SAFE") {
     return (
-      <div data-preflight-status="SAFE" role="status">
-        <div>✅ 预检通过</div>
-        <div>本次建议不会新增必填缺失、非法字段或隐藏清空风险。</div>
+      <div className="ai-quality-preflight ai-quality-preflight--safe" data-preflight-status="SAFE" role="status">
+        <strong>可以一键采纳</strong>
+        <p>这条建议可以直接应用，你也可以继续手动调整。</p>
         {fieldSummary}
       </div>
     );
@@ -149,25 +182,18 @@ function PreflightStatusBlock({
 
   if (status === "WARNING") {
     return (
-      <div data-preflight-status="WARNING" role="status">
-        <div>⚠️ 预检发现影响</div>
-        <div>本次建议可以应用，但会影响部分字段。</div>
+      <div className="ai-quality-preflight ai-quality-preflight--warning" data-preflight-status="WARNING" role="status">
+        <strong>建议采纳前再确认</strong>
+        <p>这条建议会影响部分已填写内容，请确认无误后再一键采纳。</p>
         {fieldSummary}
-        {result.warnings.length > 0 ? (
-          <ul>
-            {result.warnings.map((w, i) => (
-              <li key={i}>{w.message}</li>
-            ))}
-          </ul>
-        ) : null}
         {result.clearedFieldNames.length > 0 ? (
-          <div>将被清空：{result.clearedFieldNames.join("、")}</div>
+          <div className="ai-quality-preflight__meta">部分内容可能需要重新确认</div>
         ) : null}
         {result.hiddenFieldNames.length > 0 ? (
-          <div>将被隐藏：{result.hiddenFieldNames.join("、")}</div>
+          <div className="ai-quality-preflight__meta">部分输入项会暂时不显示</div>
         ) : null}
         {result.disabledFieldNames.length > 0 ? (
-          <div>将被禁用：{result.disabledFieldNames.join("、")}</div>
+          <div className="ai-quality-preflight__meta">部分输入项会暂时不可编辑</div>
         ) : null}
       </div>
     );
@@ -175,19 +201,12 @@ function PreflightStatusBlock({
 
   // BLOCKED
   return (
-    <div data-preflight-status="BLOCKED" role="alert">
-      <div>⛔ 预检阻断</div>
-      <div>本次建议会新增无法满足的表单规则，因此不能直接应用。</div>
+    <div className="ai-quality-preflight ai-quality-preflight--blocked" data-preflight-status="BLOCKED" role="alert">
+      <strong>AI 建议还需要补充信息</strong>
+      <p>该建议还不能直接采纳，请根据建议手动补充相关说明后继续标注。</p>
       {fieldSummary}
-      {result.errors.length > 0 ? (
-        <ul>
-          {result.errors.map((e, i) => (
-            <li key={i}>{e.message}</li>
-          ))}
-        </ul>
-      ) : null}
       {result.requiredMissingFieldNames.length > 0 ? (
-        <div>必填字段缺失：{result.requiredMissingFieldNames.join("、")}</div>
+        <div className="ai-quality-preflight__meta">建议先补充必要说明，再提交本题。</div>
       ) : null}
     </div>
   );
@@ -267,11 +286,53 @@ function requireUserConfirm(node: LLMAssistNode): boolean {
   return (node.outputBindings ?? []).every((binding) => binding.requireUserConfirm === true);
 }
 
-function formatValue(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return "";
+function getAiJudgement(output: unknown): string {
+  if (typeof output === "string" && output.trim().length > 0) return output.trim();
+  if (isRecord(output)) {
+    const summary = output["summary"];
+    if (typeof summary === "string" && summary.trim().length > 0) return summary.trim();
+    const message = output["message"];
+    if (typeof message === "string" && message.trim().length > 0) return message.trim();
   }
+  return "这条内容建议进一步核对来源依据，并补充必要说明。";
+}
+
+function buildSuggestionItems(
+  patch: AnswerPayload | undefined,
+  answers: AnswerPayload,
+): Array<{ fieldName: string; label: string; currentValue: string; suggestedValue: string }> {
+  if (patch === undefined) return [];
+  return Object.entries(patch)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([fieldName, value]) => ({
+      fieldName,
+      label: fieldLabel(fieldName),
+      currentValue: formatAnswerValue(answers[fieldName]),
+      suggestedValue: formatAnswerValue(value),
+    }));
+}
+
+function fieldLabel(fieldName: string): string {
+  const labels: Record<string, string> = {
+    qualityScore: "质量评分",
+    rewriteSuggestion: "修改建议",
+    factCheckNote: "事实核查说明",
+  };
+  return labels[fieldName] ?? fieldName;
+}
+
+function formatAnswerValue(value: unknown): string {
+  if (value === undefined || value === null || value === "") return "（空）";
+  if (Array.isArray(value)) return value.length > 0 ? value.map((item) => formatPrimitiveValue(item)).join("、") : "（空）";
+  if (typeof value === "object") return "已填写";
+  return formatPrimitiveValue(value);
+}
+
+function formatPrimitiveValue(value: unknown): string {
+  if (typeof value === "boolean") return value ? "是" : "否";
+  return String(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

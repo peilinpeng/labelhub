@@ -1,8 +1,7 @@
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
-import { getDemoWorkflowState } from "../../mocks/demo-workflow-store";
-import { tasksMock } from "../../mocks/data/tasks.mock";
-import { findLocalTaskById } from "../../mocks/local-task-store";
+import { fetchTask } from "../../api/owner";
 import { Badge, Card } from "../../ui/primitives";
 import { MarkdownPreview, docToMarkdown } from "../../ui/markdown";
 import type { Task } from "@labelhub/contracts";
@@ -38,29 +37,54 @@ function taskDescription(task: Task): string {
   return description;
 }
 
+function formatDate(value?: string | null): string {
+  return value ? new Date(value).toLocaleDateString() : "无截止时间";
+}
+
 export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPageProps) {
   const { taskId } = useParams<{ taskId: string }>();
-  const task = findLocalTaskById(taskId) ?? tasksMock.find((item) => item.id === taskId);
-  const demoState = getDemoWorkflowState();
+  const [task, setTask] = useState<Task | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!task) {
-    return <Card className="state-panel danger-text">任务不存在：{taskId}</Card>;
+  useEffect(() => {
+    void (async () => {
+      if (!taskId) return;
+      try {
+        setLoading(true);
+        setError(null);
+        setTask(await fetchTask(taskId));
+      } catch (cause) {
+        setTask(null);
+        setError(cause instanceof Error ? cause.message : "任务详情接口暂不可用。");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [taskId]);
+
+  if (loading) {
+    return <Card className="state-panel">加载任务详情中...</Card>;
   }
 
-  const submittedCount = task.id === "task_news_quality" && demoState.assignmentStatus === "SUBMITTED" ? 1 : 0;
-  const approvedCount = task.id === "task_news_quality" && demoState.submissionStatus === "ACCEPTED" ? 1 : 0;
+  if (!task) {
+    return <Card className="state-panel danger-text">任务详情加载失败：{error ?? taskId}</Card>;
+  }
+
+  const activeVersionLabel = task.activeSchemaVersionId ?? "尚未绑定版本";
 
   return (
-    <div className="page-stack">
+    <div className="page-stack owner-task-board-page">
       <div className="page-header owner-task-detail-header">
         <div>
           <Badge tone={statusTone(task.status)}>{statusLabel(task.status)}</Badge>
           <h2 className="page-title">{task.title}</h2>
           <p className="page-subtitle">{taskDescription(task)}</p>
           <div className="meta-line">
-            <span>创建 {new Date(task.createdAt).toLocaleDateString()}</span>
-            <span>{task.deadlineAt ? `截止 ${new Date(task.deadlineAt).toLocaleDateString()}` : "无截止时间"}</span>
+            <span>创建 {formatDate(task.createdAt)}</span>
+            <span>截止 {formatDate(task.deadlineAt)}</span>
             <span>{strategyLabel(task.distributionStrategy)}</span>
+            <span>当前模板 {activeVersionLabel}</span>
           </div>
         </div>
         <div className="page-actions">
@@ -79,9 +103,41 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
         </div>
       </div>
 
-      <div className="owner-task-detail-grid">
+      <section className="owner-task-board-grid" aria-label="任务看板">
+        <Card className="owner-board-card owner-board-card--primary">
+          <span>提交进度</span>
+          <strong>-</strong>
+          <p>等待后端返回真实提交统计</p>
+          <div className="soft-progress soft-progress--wide">
+            <span className="soft-progress__bar" style={{ width: "0%" }} />
+          </div>
+        </Card>
+        <Card className="owner-board-card">
+          <span>可导出结果</span>
+          <strong>-</strong>
+          <p>审核通过后进入导出池</p>
+        </Card>
+        <Card className="owner-board-card">
+          <span>剩余配额</span>
+          <strong>-</strong>
+          <p>按 {strategyLabel(task.distributionStrategy)} 分发</p>
+        </Card>
+        <Card className="owner-board-card">
+          <span>人均上限</span>
+          <strong>{task.quota.perLabeler ?? "-"}</strong>
+          <p>{task.rewardRule ? `${task.rewardRule.amount} ${task.rewardRule.currency ?? "CNY"} / 条` : "未配置奖励"}</p>
+        </Card>
+      </section>
+
+      <div className="owner-task-management-grid">
         <Card className="soft-panel owner-task-detail-main">
-          <h3 className="soft-panel__title">任务信息</h3>
+          <div className="owner-section-heading">
+            <div>
+              <h3>详细任务看板</h3>
+              <p>面向任务所有者的概览，不跳转到标注员工作台。</p>
+            </div>
+            <Badge tone={statusTone(task.status)}>{statusLabel(task.status)}</Badge>
+          </div>
           <div className="owner-detail-form">
             <label>
               <span>任务名称</span>
@@ -124,47 +180,85 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
             <label>
               <span>标签</span>
               <div className="owner-tag-row">
-                {(task.tags?.length ? task.tags : ["文本标注"]).map((tag) => (
+                {task.tags?.length ? task.tags.map((tag) => (
                   <Badge tone="primary" key={tag}>{tag}</Badge>
-                ))}
+                )) : <span className="page-subtitle">未设置标签</span>}
               </div>
             </label>
           </div>
         </Card>
 
-        <Card className="soft-panel owner-task-detail-side">
-          <h3 className="soft-panel__title">交付概览</h3>
-          <div className="owner-detail-metrics">
-            <div>
-              <span>已提交</span>
-              <strong>{submittedCount}</strong>
+        <aside className="owner-task-side-stack">
+          <Card className="soft-panel owner-management-card">
+            <div className="owner-section-heading">
+              <div>
+                <h3>标注任务管理</h3>
+                <p>跟踪领取、提交、打回与通过情况。</p>
+              </div>
             </div>
-            <div>
-              <span>可导出</span>
-              <strong>{approvedCount}</strong>
+            <div className="owner-status-list">
+              <div><span>进行中</span><strong>-</strong></div>
+              <div><span>已提交</span><strong>-</strong></div>
+              <div><span>已通过</span><strong>-</strong></div>
+              <div><span>已打回</span><strong>-</strong></div>
             </div>
-            <div>
-              <span>奖励规则</span>
-              <strong>
-                {task.rewardRule
-                  ? `${task.rewardRule.amount} ${task.rewardRule.currency ?? "CNY"} / 条`
-                  : "0.30 CNY / 条"}
-              </strong>
+            <div className="owner-task-actions-grid">
+              <Link to={`/owner/tasks/${task.id}/dataset`} className="lh-button">
+                管理数据集
+              </Link>
+              <Link to={`/owner/tasks/${task.id}/export`} className="lh-button">
+                查看交付
+              </Link>
             </div>
-            <div>
-              <span>模板</span>
-              <strong>{task.title} 模板</strong>
+          </Card>
+
+          <Card className="soft-panel owner-labeler-progress-card">
+            <div className="owner-section-heading">
+              <div>
+                <h3>标注员进展</h3>
+                <p>按人员查看完成量、通过量、打回量和当前题目。</p>
+              </div>
             </div>
-          </div>
-          <div className="owner-detail-actions">
-            <Link to={`/owner/tasks/${task.id}/designer`} className="lh-button lh-button--primary">
-              配置模板
-            </Link>
-            <Link to={`/owner/tasks/${task.id}/export`} className="lh-button">
-              导出数据
-            </Link>
-          </div>
-        </Card>
+            <div className="owner-labeler-progress-list">
+              <div className="empty-state">暂无真实标注员进展数据</div>
+            </div>
+          </Card>
+
+          <Card className="soft-panel owner-version-card">
+            <div className="owner-section-heading">
+              <div>
+                <h3>发布后版本管理</h3>
+                <p>发布版本、当前绑定版本和后续升级入口。</p>
+              </div>
+              <Badge tone="primary">{activeVersionLabel}</Badge>
+            </div>
+            <div className="owner-version-timeline">
+              <div className="owner-version-item owner-version-item--active">
+                <strong>当前生产版本</strong>
+                <span>{activeVersionLabel}</span>
+                <p>标注员领取任务时使用此版本渲染表单。</p>
+              </div>
+              <div className="owner-version-item">
+                <strong>草稿版本</strong>
+                <span>{task.status === "PUBLISHED" ? "可继续编辑并发布新版本" : "发布后生成 v1"}</span>
+                <p>保存并发布会触发 Schema 版本治理预检。</p>
+              </div>
+              <div className="owner-version-item">
+                <strong>兼容性与迁移</strong>
+                <span>发布前检查</span>
+                <p>字段变更、弃用和人工映射由发布预检统一处理。</p>
+              </div>
+            </div>
+            <div className="owner-detail-actions">
+              <Link to={`/owner/tasks/${task.id}/designer`} className="lh-button lh-button--primary">
+                管理模板版本
+              </Link>
+              <Link to={`/owner/tasks/${task.id}/export`} className="lh-button">
+                导出数据
+              </Link>
+            </div>
+          </Card>
+        </aside>
       </div>
     </div>
   );

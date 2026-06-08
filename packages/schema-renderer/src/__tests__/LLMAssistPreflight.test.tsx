@@ -183,7 +183,7 @@ function renderWithSchema(schema: LabelHubSchema, options: RenderSchemaOptions =
 
 async function clickAiButton(): Promise<void> {
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
   });
 }
 
@@ -247,13 +247,13 @@ describe("LLMAssistRenderer preflight UI", () => {
     await clickAiButton();
 
     await waitFor(() => expect(screen.getByText("AI 输出")).toBeTruthy());
-    // 空 patch → 跳过 preflight（无 block）且不渲染可点的"确认应用建议"按钮
+    // 空 patch → 跳过 preflight（无 block）且不渲染可点的"一键采纳"按钮
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByRole("button", { name: "确认应用建议" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "一键采纳" })).toBeNull();
   });
 
-  test("SAFE 状态显示'预检通过'", async () => {
+  test("SAFE 状态显示可直接采纳的人话提示", async () => {
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
       suggestedPatch: { fieldA: "建议值" },
@@ -264,15 +264,14 @@ describe("LLMAssistRenderer preflight UI", () => {
     await clickAiButton();
 
     await waitFor(() => {
-      expect(screen.getByText(/预检通过/)).toBeTruthy();
+      expect(screen.getByText(/可以一键采纳/)).toBeTruthy();
     });
     expect(screen.getByRole("status")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
-    // 新文案：说明预检含义
-    expect(screen.getByText(/不会新增必填缺失/)).toBeTruthy();
+    expect(screen.getByText(/可以直接应用/)).toBeTruthy();
   });
 
-  test("SAFE 状态显示'将更新字段'", async () => {
+  test("SAFE 状态显示建议修改数量", async () => {
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
       suggestedPatch: { fieldA: "建议值" },
@@ -282,14 +281,13 @@ describe("LLMAssistRenderer preflight UI", () => {
     renderWithSchema(makeSimpleSchema(), { onLLMAssist });
     await clickAiButton();
 
-    await waitFor(() => screen.queryByText(/预检通过/) !== null);
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
 
-    // 字段摘要：只展示字段名，不展示值
-    expect(screen.getByText(/将更新字段/)).toBeTruthy();
+    expect(screen.getByText(/涉及 1 处建议修改/)).toBeTruthy();
     expect(screen.getByText(/fieldA/)).toBeTruthy();
   });
 
-  test("SAFE 状态不展示完整 patch value", async () => {
+  test("SAFE 状态以字段级 diff 展示建议值，不展示 raw patch", async () => {
     const secretValue = "SECRET_PATCH_VALUE_12345";
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出摘要",
@@ -300,14 +298,15 @@ describe("LLMAssistRenderer preflight UI", () => {
     renderWithSchema(makeSimpleSchema(), { onLLMAssist });
     await clickAiButton();
 
-    await waitFor(() => screen.queryByText(/预检通过/) !== null);
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
 
-    // preflight block 区域不应暴露 patch 的具体值
     const statusBlock = screen.getByRole("status");
     expect(statusBlock.textContent).not.toContain(secretValue);
+    expect(screen.getByText(secretValue)).toBeTruthy();
+    expect(document.body.textContent).not.toContain(`{"fieldA":"${secretValue}"}`);
   });
 
-  test("WARNING 状态显示'预检发现影响'", async () => {
+  test("WARNING 状态显示采纳前确认提示", async () => {
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
       suggestedPatch: { trigger: "high" },
@@ -324,12 +323,12 @@ describe("LLMAssistRenderer preflight UI", () => {
       expect(screen.getByRole("status")).toBeTruthy();
     });
     const statusBlock = screen.getByRole("status");
-    expect(statusBlock.textContent).toMatch(/预检发现影响/);
+    expect(statusBlock.textContent).toMatch(/建议采纳前再确认/);
     expect(statusBlock.getAttribute("data-preflight-status")).toBe("WARNING");
-    expect(statusBlock.textContent).toMatch(/将更新字段/);
+    expect(statusBlock.textContent).toMatch(/涉及 1 处建议修改/);
   });
 
-  test("BLOCKED 状态显示'预检阻断'", async () => {
+  test("BLOCKED 状态显示需要补充信息的人话提示", async () => {
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
       suggestedPatch: { notExistField: "x" },
@@ -345,11 +344,11 @@ describe("LLMAssistRenderer preflight UI", () => {
 
     const blockedEl = document.querySelector("[data-preflight-status='BLOCKED']");
     expect(blockedEl).not.toBeNull();
-    expect(blockedEl?.textContent).toMatch(/预检阻断/);
-    expect(blockedEl?.textContent).toMatch(/⛔/);
+    expect(blockedEl?.textContent).toMatch(/AI 建议还需要补充信息/);
+    expect(blockedEl?.textContent).toMatch(/不能直接采纳/);
   });
 
-  test("BLOCKED 状态显示'将更新字段'", async () => {
+  test("BLOCKED 状态不展示工程字段错误", async () => {
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
       suggestedPatch: { notExistField: "x" },
@@ -362,8 +361,8 @@ describe("LLMAssistRenderer preflight UI", () => {
     await waitFor(() => document.querySelector("[data-preflight-status='BLOCKED']") !== null);
 
     const blockedEl = document.querySelector("[data-preflight-status='BLOCKED']") as Element;
-    expect(blockedEl.textContent).toMatch(/将更新字段/);
-    expect(blockedEl.textContent).toMatch(/notExistField/);
+    expect(blockedEl.textContent).toMatch(/涉及 1 处建议修改/);
+    expect(blockedEl.textContent).not.toMatch(/notExistField/);
   });
 
   test("BLOCKED 时确认按钮禁用", async () => {
@@ -380,7 +379,7 @@ describe("LLMAssistRenderer preflight UI", () => {
       return document.querySelector("[data-preflight-status='BLOCKED']") !== null;
     });
 
-    const confirmBtn = screen.getByRole("button", { name: "确认应用建议" }) as HTMLButtonElement;
+    const confirmBtn = screen.getByRole("button", { name: "一键采纳" }) as HTMLButtonElement;
     expect(confirmBtn.disabled).toBe(true);
   });
 
@@ -401,7 +400,7 @@ describe("LLMAssistRenderer preflight UI", () => {
       return document.querySelector("[data-preflight-status='WARNING']") !== null;
     });
 
-    const confirmBtn = screen.getByRole("button", { name: "确认应用建议" }) as HTMLButtonElement;
+    const confirmBtn = screen.getByRole("button", { name: "一键采纳" }) as HTMLButtonElement;
     expect(confirmBtn.disabled).toBe(false);
   });
 
@@ -415,9 +414,9 @@ describe("LLMAssistRenderer preflight UI", () => {
     renderWithSchema(makeSimpleSchema(), { onLLMAssist });
     await clickAiButton();
 
-    await waitFor(() => screen.queryByText(/预检通过/) !== null);
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
 
-    const confirmBtn = screen.getByRole("button", { name: "确认应用建议" }) as HTMLButtonElement;
+    const confirmBtn = screen.getByRole("button", { name: "一键采纳" }) as HTMLButtonElement;
     expect(confirmBtn.disabled).toBe(false);
   });
 
@@ -436,7 +435,7 @@ describe("LLMAssistRenderer preflight UI", () => {
       return document.querySelector("[data-preflight-status='BLOCKED']") !== null;
     });
 
-    const confirmBtn = screen.getByRole("button", { name: "确认应用建议" }) as HTMLButtonElement;
+    const confirmBtn = screen.getByRole("button", { name: "一键采纳" }) as HTMLButtonElement;
     expect(confirmBtn.disabled).toBe(true);
 
     // disabled 按钮点击不会触发 handler
@@ -467,7 +466,7 @@ describe("LLMAssistRenderer preflight UI", () => {
     await waitFor(() => document.querySelector("[data-preflight-status='WARNING']") !== null);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+      fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
     });
 
     const acceptedCalls = onAssistOutcome.mock.calls.filter(
@@ -488,10 +487,10 @@ describe("LLMAssistRenderer preflight UI", () => {
     renderWithSchema(makeSimpleSchema(), { onLLMAssist, onAssistOutcome });
     await clickAiButton();
 
-    await waitFor(() => screen.queryByText(/预检通过/) !== null);
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+      fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
     });
 
     const acceptedCalls = onAssistOutcome.mock.calls.filter(
@@ -500,7 +499,7 @@ describe("LLMAssistRenderer preflight UI", () => {
     expect(acceptedCalls).toHaveLength(1);
   });
 
-  test("DISMISSED 不受 preflight 影响（BLOCKED 时仍可忽略）", async () => {
+  test("BLOCKED 时反馈问题为 disabled 弱操作", async () => {
     const onAssistOutcome = vi.fn();
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
@@ -513,35 +512,33 @@ describe("LLMAssistRenderer preflight UI", () => {
 
     await waitFor(() => document.querySelector("[data-preflight-status='BLOCKED']") !== null);
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "忽略建议" }));
-    });
-
-    const dismissedCalls = onAssistOutcome.mock.calls.filter(
-      (call) => (call[0] as { action: string }).action === "DISMISSED",
-    );
-    expect(dismissedCalls).toHaveLength(1);
+    const feedbackButton = screen.getByRole("button", { name: "反馈问题" }) as HTMLButtonElement;
+    expect(feedbackButton.disabled).toBe(true);
+    expect(feedbackButton.title).toMatch(/暂未接入/);
+    expect(onAssistOutcome.mock.calls.some((call) => call[0].action === "DISMISSED")).toBe(false);
   });
 
-  test("点击忽略后清空 preflightResult（status block 消失）", async () => {
+  test("重新检查质量时会清空旧 preflightResult", async () => {
+    let callCount = 0;
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
       suggestedPatch: { fieldA: "v" },
       callId: "llm_dismiss_clear",
     } as LLMRuntimeResponse);
+    onLLMAssist.mockImplementation(async () => {
+      callCount++;
+      return callCount === 1
+        ? { output: "第一次", suggestedPatch: { nonExistent: "x" }, callId: "llm_old_blocked" }
+        : { output: "第二次", suggestedPatch: { fieldA: "v" }, callId: "llm_new_safe" };
+    });
 
     renderWithSchema(makeSimpleSchema(), { onLLMAssist });
     await clickAiButton();
 
-    await waitFor(() => screen.queryByText(/预检通过/) !== null);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "忽略建议" }));
-    });
-
-    // 忽略后 response 和 preflightResult 都清空
-    expect(screen.queryByText(/预检通过/)).toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
+    await waitFor(() => document.querySelector("[data-preflight-status='BLOCKED']") !== null);
+    await clickAiButton();
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
+    expect(document.querySelector("[data-preflight-status='BLOCKED']")).toBeNull();
   });
 
   test("重新点击 AI 辅助时旧 preflightResult 不残留", async () => {
@@ -560,21 +557,16 @@ describe("LLMAssistRenderer preflight UI", () => {
     await clickAiButton();
     await waitFor(() => document.querySelector("[data-preflight-status='BLOCKED']") !== null);
 
-    // 忽略
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "忽略建议" }));
-    });
-
     // 第二次：SAFE（旧 BLOCKED 状态不应残留）
     await clickAiButton();
-    await waitFor(() => screen.queryByText(/预检通过/) !== null);
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
 
     expect(document.querySelector("[data-preflight-status='BLOCKED']")).toBeNull();
-    expect(screen.getByText(/预检通过/)).toBeTruthy();
+    expect(screen.getByText(/可以一键采纳/)).toBeTruthy();
   });
 
   test("不在 DOM 中展示完整 answers / raw output", async () => {
-    const sensitiveValue = "__SENSITIVE_ANSWERS_SHOULD_NOT_APPEAR__";
+    const sensitiveValue = "__UNRELATED_ANSWER_SHOULD_NOT_APPEAR__";
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 建议摘要",
       suggestedPatch: { fieldA: "v" },
@@ -582,12 +574,12 @@ describe("LLMAssistRenderer preflight UI", () => {
     } as LLMRuntimeResponse);
 
     renderWithSchema(makeSimpleSchema(), {
-      answers: { fieldA: sensitiveValue },
+      answers: { unrelatedField: sensitiveValue },
       onLLMAssist,
     });
     await clickAiButton();
 
-    await waitFor(() => screen.queryByText(/预检通过/) !== null);
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
 
     // 完整 answers 对象不应出现在渲染输出中
     expect(document.body.textContent).not.toContain(sensitiveValue);

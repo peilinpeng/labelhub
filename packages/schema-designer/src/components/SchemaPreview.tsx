@@ -21,7 +21,7 @@ export function SchemaPreview({
   );
 
   return (
-    <section aria-label="Schema 预览" className="schema-designer-panel schema-designer-preview">
+    <section aria-label="表单预览" className="schema-designer-panel schema-designer-preview">
       <div className="schema-designer-panel__header">
         <div>
           <h2>实时预览</h2>

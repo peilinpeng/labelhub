@@ -120,12 +120,12 @@ describe("SchemaRenderer", () => {
 
     renderRenderer({ onAnswersChange, onLLMAssist });
 
-    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
 
     await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
     expect(onAnswersChange).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+    fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
 
     expect(onAnswersChange).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -143,7 +143,7 @@ describe("SchemaRenderer", () => {
 
     renderRenderer({ onAssistOutcome, onLLMAssist });
 
-    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
 
     await waitFor(() =>
       expect(onAssistOutcome).toHaveBeenCalledWith(
@@ -156,7 +156,7 @@ describe("SchemaRenderer", () => {
     );
   });
 
-  test("LLMAssist 确认应用建议后触发 ACCEPTED outcome", async () => {
+  test("LLMAssist 一键采纳后触发 ACCEPTED outcome", async () => {
     const onAnswersChange = vi.fn();
     const onAssistOutcome = vi.fn();
     const onLLMAssist = vi.fn().mockResolvedValue({
@@ -169,9 +169,9 @@ describe("SchemaRenderer", () => {
 
     renderRenderer({ onAnswersChange, onAssistOutcome, onLLMAssist });
 
-    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
     await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+    fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
 
     const acceptedOutcome = onAssistOutcome.mock.calls
       .map((call) => call[0])
@@ -191,7 +191,7 @@ describe("SchemaRenderer", () => {
     expect(Object.keys(acceptedOutcome ?? {}).includes("suggestedPatch")).toBe(false);
   });
 
-  test("LLMAssist 忽略建议后触发 DISMISSED outcome 且不应用 patch", async () => {
+  test("LLMAssist 反馈问题是弱操作，不应用 patch", async () => {
     const onAnswersChange = vi.fn();
     const onAssistOutcome = vi.fn();
     const onLLMAssist = vi.fn().mockResolvedValue({
@@ -204,18 +204,14 @@ describe("SchemaRenderer", () => {
 
     renderRenderer({ onAnswersChange, onAssistOutcome, onLLMAssist });
 
-    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
     await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "忽略建议" }));
+    const feedbackButton = screen.getByRole("button", { name: "反馈问题" }) as HTMLButtonElement;
 
-    expect(screen.queryByText("AI 建议摘要")).toBeNull();
+    expect(feedbackButton.disabled).toBe(true);
+    expect(screen.queryByText("AI 建议摘要")).toBeTruthy();
     expect(onAnswersChange).not.toHaveBeenCalled();
-    expect(onAssistOutcome).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "DISMISSED",
-        callId: "llm_dismissed_test",
-      }),
-    );
+    expect(onAssistOutcome.mock.calls.some((call) => call[0].action === "DISMISSED")).toBe(false);
   });
 
   test("LLMAssist 同一 callId 不重复触发同一 outcome", async () => {
@@ -227,9 +223,9 @@ describe("SchemaRenderer", () => {
 
     renderRenderer({ onAssistOutcome, onLLMAssist });
 
-    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
     await waitFor(() => expect(onLLMAssist).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
     await waitFor(() => expect(onLLMAssist).toHaveBeenCalledTimes(2));
 
     const shownOutcomes = onAssistOutcome.mock.calls
@@ -255,9 +251,9 @@ describe("SchemaRenderer", () => {
 
     renderRenderer({ onAnswersChange, onAssistOutcome, onLLMAssist });
 
-    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
     await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+    fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
 
     expect(onAnswersChange).toHaveBeenCalledWith(
       expect.objectContaining({

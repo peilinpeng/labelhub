@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { SchemaDesigner, validateDesignerSchema } from "@labelhub/schema-designer";
 import {
   checkBackwardCompatibility,
@@ -27,8 +27,6 @@ import type {
 import { RoutePath, Role } from "../../app/routes";
 import { queryAuditEvents } from "../../api/audit";
 import { fetchSchemaDraft, fetchSchemaVersion, fetchServerRegistry, fetchTask, publishSchema, publishTask, saveSchemaDraft } from "../../api/owner";
-import { tasksMock } from "../../mocks/data/tasks.mock";
-import { findLocalTaskById } from "../../mocks/local-task-store";
 import { Badge, Button, Card } from "../../ui/primitives";
 import {
   appendPublishPreviewAuditEvents,
@@ -89,6 +87,19 @@ interface PublishPreviewState {
   oldSchemaStatusMessage?: string;
 }
 
+interface CustomSchemaPreset {
+  id: string;
+  title: string;
+  description: string;
+  fields: string;
+  schema: LabelHubSchema;
+  createdAt: string;
+}
+
+type SchemaPresetOption =
+  | ((typeof schemaPresetSummaries)[number] & { source: "built-in" })
+  | (CustomSchemaPreset & { source: "custom" });
+
 const quickMaterials: QuickMaterial[] = [
   { type: "input.text", label: "单行输入", description: "基础短文本采集", icon: "Aa" },
   { type: "input.textarea", label: "多行文本", description: "长文本答案", icon: "Tx" },
@@ -127,24 +138,15 @@ const validationTypeLabels: Record<VisualValidationType, string> = {
   regex: "正则表达式",
 };
 
-function taskDescription(task: Task): string {
-  const description = task.description?.trim();
-  if (!description || description.startsWith("task_") || description.includes("Owner:")) {
-    return "配置当前任务的字段结构、填写说明、校验规则与辅助能力。";
-  }
-  return description;
-}
-
 function schemaRevisionLabel(schema: LabelHubSchema): string {
   return `r${schema.schemaDraftRevision ?? schema.schemaVersionNo ?? 1}`;
 }
 
 export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const { taskId } = useParams<{ taskId: string }>();
-  const navigate = useNavigate();
   const [serverRegistry, setServerRegistry] = useState<ServerComponentRegistryItem[]>(localServerComponentRegistry);
   const [schema, setSchema] = useState<LabelHubSchema>(() => createFallbackSchema(taskId));
-  const [task, setTask] = useState<Task | undefined>(() => findLocalTaskById(taskId) ?? tasksMock.find((item) => item.id === taskId));
+  const [task, setTask] = useState<Task | undefined>();
   const [, setValidation] = useState<SchemaValidationResult | undefined>();
   const [statusMessage, setStatusMessage] = useState("正在加载模板编辑器");
   const [loading, setLoading] = useState(true);
@@ -159,10 +161,12 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [conditionRules, setConditionRules] = useState<ConditionRuleDraft[]>([]);
   const [validationRules, setValidationRules] = useState<ValidationRuleDraft[]>([]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [selectedMaterialLabel, setSelectedMaterialLabel] = useState<string | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEventRecord[]>([]);
   const [auditEventsLoading, setAuditEventsLoading] = useState(false);
   const [auditEventsError, setAuditEventsError] = useState<string | null>(null);
+  const [customPresets, setCustomPresets] = useState<CustomSchemaPreset[]>(() => readCustomSchemaPresets());
+  const [presetTitleInput, setPresetTitleInput] = useState("");
+  const [presetDescriptionInput, setPresetDescriptionInput] = useState("");
 
   const loadAuditEvents = useCallback(async (): Promise<void> => {
     const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
@@ -203,18 +207,20 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         const resolvedTask =
           taskResult.status === "fulfilled"
             ? taskResult.value
-            : findLocalTaskById(currentTaskId) ?? tasksMock.find((item) => item.id === currentTaskId);
+            : undefined;
         setTask(resolvedTask);
 
         if (draftResult.status === "fulfilled") {
           setSchema(ensureNewsQualityPreviewFields(draftResult.value));
           setActivePresetId(presetIdForSchema(draftResult.value));
           setStatusMessage("已加载模板草稿");
-        } else {
+        } else if (resolvedTask !== undefined) {
           const fallbackSchema = createFallbackSchema(currentTaskId, resolvedTask?.title);
           setSchema(fallbackSchema);
           setActivePresetId(presetIdForSchema(fallbackSchema));
-          setStatusMessage("已加载本地模板");
+          setStatusMessage("未读取到模板草稿，已创建空白编辑起点");
+        } else {
+          setStatusMessage("任务或模板草稿加载失败，请检查后端服务。");
         }
       } catch (error) {
         if (!cancelled) {
@@ -235,6 +241,11 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   }, [loadAuditEvents]);
 
   useEffect(() => {
+    setPresetTitleInput(schema.root.title || schema.meta.name || "未命名预设模板");
+    setPresetDescriptionInput(schema.meta.description || "");
+  }, [schema.schemaId]);
+
+  useEffect(() => {
     if (!previewExpanded) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -247,20 +258,17 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewExpanded]);
 
-  useEffect(() => {
-    if (!selectedMaterialLabel) return;
-
-    const timer = window.setTimeout(() => {
-      replaceInspectorSubtitle(selectedMaterialLabel);
-    }, 0);
-
-    return () => window.clearTimeout(timer);
-  }, [schema, selectedMaterialLabel]);
-
   const sampleContext = useMemo(() => createSampleContext(schema, task, role), [role, schema, task]);
   const fieldNodes = useMemo(() => collectFieldNodes(schema), [schema]);
   const templateTitle = schema.meta.name;
   const registrySourceLabel = serverRegistry === localServerComponentRegistry ? "本地组件库" : "服务端组件库";
+  const presetOptions = useMemo<SchemaPresetOption[]>(
+    () => [
+      ...schemaPresetSummaries.map((preset) => ({ ...preset, source: "built-in" as const })),
+      ...customPresets.map((preset) => ({ ...preset, source: "custom" as const })),
+    ],
+    [customPresets],
+  );
 
   const handleSaveDraft = async (): Promise<void> => {
     const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
@@ -379,13 +387,8 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     if (!(target instanceof HTMLElement)) return;
 
     const nodeCard = target.closest(".schema-node-card");
-    const materialLabel = nodeCard ? getMaterialLabelFromNodeCard(nodeCard) : null;
     const directControl = target.closest("button, a, input, textarea, select, label");
     if (directControl) {
-      if (directControl.textContent?.trim().includes("选择") && materialLabel) {
-        setSelectedMaterialLabel(materialLabel);
-        window.setTimeout(() => replaceInspectorSubtitle(materialLabel), 0);
-      }
       return;
     }
 
@@ -394,21 +397,80 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     const selectButton = Array.from(nodeCard.querySelectorAll("button")).find((button) =>
       button.textContent?.trim().includes("选择"),
     );
-    if (materialLabel) {
-      setSelectedMaterialLabel(materialLabel);
-      window.setTimeout(() => replaceInspectorSubtitle(materialLabel), 0);
-    }
     selectButton?.click();
   };
 
-  const handleLoadPreset = (preset: (typeof schemaPresetSummaries)[number]) => {
+  const handleLoadPreset = (preset: SchemaPresetOption) => {
     const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
     const taskTitle = task?.title ?? "当前任务";
     setActivePresetId(preset.id);
-    setSchema(ensureNewsQualityPreviewFields(createSchemaFromPreset(preset.id, currentTaskId, taskTitle)));
+    if (preset.source === "custom") {
+      setSchema(rebindPresetSchema(preset.schema, currentTaskId, taskTitle));
+    } else {
+      setSchema(ensureNewsQualityPreviewFields(createSchemaFromPreset(preset.id, currentTaskId, taskTitle)));
+    }
     setValidation(undefined);
     setStatusMessage(`已加载「${preset.title}」预设模板`);
     setPublishNotice(`已将「${preset.title}」加载到当前任务「${taskTitle}」下，可继续在画布中调整字段。`);
+  };
+
+  const handleCreateBlankPresetTemplate = () => {
+    const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
+    const blankSchema = createBlankSchema(currentTaskId);
+    setSchema(blankSchema);
+    setValidation(undefined);
+    setActivePresetId(`custom_draft_${Date.now()}`);
+    setPresetTitleInput("未命名预设模板");
+    setPresetDescriptionInput("空白模板。");
+    setStatusMessage("已创建空白预设模板起点");
+    setPublishNotice("已创建空白模板。请先填写预设名称和说明，再配置画布。");
+  };
+
+  const handlePresetTitleChange = (title: string) => {
+    setPresetTitleInput(title);
+    const resolvedTitle = title.trim() || "未命名预设模板";
+    setSchema((current) => ({
+      ...current,
+      meta: {
+        ...current.meta,
+        name: resolvedTitle,
+        updatedAt: new Date().toISOString(),
+      },
+      root: {
+        ...current.root,
+        title: resolvedTitle,
+      },
+    }));
+  };
+
+  const handlePresetDescriptionChange = (description: string) => {
+    setPresetDescriptionInput(description);
+    setSchema((current) => ({
+      ...current,
+      meta: {
+        ...current.meta,
+        description,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  };
+
+  const handleSaveAsPreset = () => {
+    const title = presetTitleInput.trim() || schema.root.title || schema.meta.name || "未命名预设模板";
+    const description = presetDescriptionInput.trim() || schema.meta.description || "由当前模板另存的预设。";
+    const savedPreset: CustomSchemaPreset = {
+      id: `custom_preset_${Date.now()}`,
+      title,
+      description,
+      fields: summarizeSchemaFields(schema),
+      schema,
+      createdAt: new Date().toISOString(),
+    };
+    const nextPresets = [savedPreset, ...customPresets];
+    setCustomPresets(nextPresets);
+    writeCustomSchemaPresets(nextPresets);
+    setActivePresetId(savedPreset.id);
+    setPublishNotice(`已将「${title}」另存为预设模板，可在常用预设模板中直接加载。`);
   };
 
   const handleCanvasDragOver = (event: DragEvent<HTMLDivElement>) => {
@@ -444,7 +506,12 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   }
 
   if (!task) {
-    return <Card className="state-panel danger-text">任务不存在：{taskId}</Card>;
+    const isLocalTask = taskId?.startsWith("task_local_") === true;
+    return (
+      <Card className="state-panel danger-text">
+        {isLocalTask ? "本地临时任务不支持发布，请启动后端 API 后重新创建任务。" : `任务不存在：${taskId}`}
+      </Card>
+    );
   }
 
   return (
@@ -459,16 +526,16 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             <strong>{task.title}</strong>
           </div>
           <h2>
-            模板搭建器 <span>(Designer)</span>
+            模板搭建
           </h2>
-          <p>Schema 与渲染解耦：左侧组件库，中间画布，右侧属性与预览。</p>
+          <p>{task.title}</p>
         </div>
         <div className="schema-builder-toolbar__actions">
-          <Button type="button" onClick={() => navigate("/labeler/workspace/asn_1001")}>
+          <Button type="button" onClick={() => setPreviewExpanded(true)}>
             预览
           </Button>
           <Button type="button" onClick={exportSchemaJson}>
-            导出 Schema JSON
+            导出 JSON
           </Button>
           <Button type="button" tone="primary" disabled={saving || publishPreviewPreparing} onClick={() => void handlePublish()}>
             {publishPreviewPreparing ? "检查中..." : `保存并发布版本 ${schemaRevisionLabel(schema)}`}
@@ -496,12 +563,19 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         <div className="schema-preset-heading">
           <div>
             <h3>常用预设模板</h3>
-            <p>选择一个起点加载到当前任务，任务归属不变，后续仍可在 Schema 画布中继续编辑。</p>
           </div>
-          <Badge tone="primary">可直接加载</Badge>
         </div>
         <div className="schema-preset-grid schema-preset-grid--compact">
-          {schemaPresetSummaries.map((preset) => (
+          <button
+            className="schema-preset-card schema-preset-card--create"
+            type="button"
+            onClick={handleCreateBlankPresetTemplate}
+          >
+            <b className="schema-preset-plus" aria-hidden="true" />
+            <strong>新建预设</strong>
+            <em>空白模板</em>
+          </button>
+          {presetOptions.map((preset) => (
             <button
               className={["schema-preset-card", activePresetId === preset.id ? "schema-preset-card--active" : ""]
                 .filter(Boolean)
@@ -510,12 +584,33 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
               type="button"
               onClick={() => handleLoadPreset(preset)}
             >
-              <span>{activePresetId === preset.id ? "当前模板" : "预设模板"}</span>
+              <span>{activePresetId === preset.id ? "当前模板" : preset.source === "custom" ? "自定义预设" : "预设模板"}</span>
               <strong>{preset.title}</strong>
-              <small>{preset.description}</small>
               <em>{preset.fields}</em>
             </button>
           ))}
+        </div>
+      </Card>
+
+      <Card className="schema-config-card schema-config-card--wide schema-save-preset-card">
+        <div className="schema-config-heading">
+          <div>
+            <h3>当前模板</h3>
+            <p>{schema.root.children.length} 个节点 · {fieldNodes.length} 个字段</p>
+          </div>
+          <Button type="button" onClick={handleSaveAsPreset}>
+            另存为预设
+          </Button>
+        </div>
+        <div className="schema-save-preset-form">
+          <label>
+            预设名称
+            <input value={presetTitleInput} onChange={(event) => handlePresetTitleChange(event.target.value)} />
+          </label>
+          <label>
+            说明
+            <textarea value={presetDescriptionInput} onChange={(event) => handlePresetDescriptionChange(event.target.value)} />
+          </label>
         </div>
       </Card>
 
@@ -682,14 +777,15 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             />
           </details>
         </Card>
+
       </section>
 
       <Card className="schema-designer-shell schema-designer-shell--builder">
         <div className="schema-canvas-header schema-canvas-header--compact">
           <div>
-            <Badge tone="primary">Task {task.id}</Badge>
+            <Badge tone="primary">任务 {task.id}</Badge>
             <h3>{templateTitle}</h3>
-            <p>{taskDescription(task)}</p>
+            <p>{schema.meta.description || "暂无说明"}</p>
           </div>
           <div className="schema-canvas-header__actions">
             <Button type="button" disabled={saving} onClick={() => void handleSaveDraft()}>
@@ -895,28 +991,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function getMaterialLabelFromNodeCard(nodeCard: Element): string | null {
-  const text = nodeCard.textContent ?? "";
-  const material = quickMaterials.find((item) => text.includes(item.type));
-  return material?.label ?? null;
-}
-
-function replaceInspectorSubtitle(materialLabel: string): void {
-  const subtitle = document.querySelector<HTMLParagraphElement>(
-    ".schema-builder-page .schema-designer-layout__inspector .schema-designer-panel__header p",
-  );
-  if (subtitle) {
-    subtitle.textContent = materialLabel;
-  }
-
-  const badge = document.querySelector<HTMLSpanElement>(
-    ".schema-builder-page .schema-designer-layout__inspector .schema-designer-panel__header > span",
-  );
-  if (badge && badge.textContent?.trim() === "SHOW_ITEM") {
-    badge.textContent = materialLabel;
-  }
-}
-
 function createConditionRule(fields: FieldNode[]): ConditionRuleDraft {
   const firstField = fields[0]?.name ?? "";
   const secondField = fields[1]?.name ?? firstField;
@@ -1010,6 +1084,75 @@ function createRewriteSuggestionNode(): SchemaNode {
   } as FieldNode;
 }
 
+const CUSTOM_SCHEMA_PRESETS_KEY = "labelhub.owner.schema-presets.v1";
+
+function readCustomSchemaPresets(): CustomSchemaPreset[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_SCHEMA_PRESETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as CustomSchemaPreset[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCustomSchemaPresets(presets: CustomSchemaPreset[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(CUSTOM_SCHEMA_PRESETS_KEY, JSON.stringify(presets.slice(0, 12)));
+}
+
+function createBlankSchema(taskId: ID): LabelHubSchema {
+  const now = new Date().toISOString();
+  return {
+    contractVersion: "1.1",
+    schemaId: `schema_${taskId}_blank_${Date.now()}` as ID,
+    schemaDraftRevision: 1,
+    status: "DRAFT",
+    meta: {
+      name: "未命名预设模板",
+      description: "空白模板。",
+      taskId,
+      authorId: "usr_owner" as ID,
+      createdAt: now,
+      updatedAt: now,
+    },
+    root: {
+      id: "root",
+      kind: "CONTAINER",
+      type: "container.section",
+      title: "未命名预设模板",
+      children: [],
+    },
+  };
+}
+
+function rebindPresetSchema(schema: LabelHubSchema, taskId: ID, taskTitle: string): LabelHubSchema {
+  const now = new Date().toISOString();
+  return {
+    ...schema,
+    schemaId: `schema_${taskId}_${Date.now()}` as ID,
+    schemaDraftRevision: 1,
+    status: "DRAFT",
+    meta: {
+      ...schema.meta,
+      name: schema.meta.name || `${taskTitle}模板`,
+      description: schema.meta.description || `${taskTitle} - 自定义预设模板`,
+      taskId,
+      updatedAt: now,
+    },
+  };
+}
+
+function summarizeSchemaFields(schema: LabelHubSchema): string {
+  const titles = collectFieldNodes(schema)
+    .map((field) => field.title || field.name)
+    .filter(Boolean)
+    .slice(0, 4);
+  return titles.length > 0 ? titles.join(" / ") : "空白模板";
+}
+
 function createFallbackSchema(taskId: string | undefined, taskTitle?: string): LabelHubSchema {
   const resolvedTaskId = resolveTaskId(taskId, "task_news_quality" as ID);
   const presetId = presetIdForTask(resolvedTaskId);
@@ -1044,11 +1187,7 @@ function createSampleContext(schema: LabelHubSchema, task: Task | undefined, rol
     },
     item: {
       id: "item_owner_preview",
-      sourcePayload: {
-        title: "示例新闻标题",
-        body: "这是一段用于模板预览的新闻正文，Owner 可以用它检查 ShowItem、字段输入和 AI Assist 的展示效果。",
-        source: "Mock Preview",
-      },
+      sourcePayload: {},
     },
     answers: {},
     system: {

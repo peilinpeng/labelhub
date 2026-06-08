@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { createExportJob, getExportArtifactRecords, listExportJobs } from "../../api/owner";
+import { createExportJob, fetchTask, getExportArtifactRecords, listExportJobs } from "../../api/owner";
 import { RoutePath, Role } from "../../app/routes";
-import { getDemoWorkflowState } from "../../mocks/demo-workflow-store";
-import { submissionsMock } from "../../mocks/data/submissions.mock";
-import { tasksMock } from "../../mocks/data/tasks.mock";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
-import type { ExportArtifactSummary, ExportRecord, ID } from "@labelhub/contracts";
+import type { ExportArtifactSummary, ExportRecord, Task } from "@labelhub/contracts";
 import { appendExportGeneratedAuditSafely } from "./export-audit-events";
 
 interface OwnerExportPageProps {
@@ -71,19 +68,16 @@ const exportFormats: Array<{
 
 const defaultFields: ExportField[] = [
   { id: "item_id", label: "数据 ID", source: "item.id", alias: "item_id", enabled: true },
-  { id: "source_title", label: "新闻标题", source: "sourcePayload.title", alias: "title", enabled: true },
-  { id: "quality_rating", label: "质量判断", source: "answers.qualityRating", alias: "quality_rating", enabled: true },
-  { id: "summary", label: "新闻摘要", source: "answers.summary", alias: "summary", enabled: true },
-  { id: "rewrite_suggestion", label: "修改建议", source: "answers.rewriteSuggestion", alias: "rewrite_suggestion", enabled: true },
+  { id: "source_payload", label: "原始数据", source: "item.sourcePayload", alias: "source_payload", enabled: true },
+  { id: "answers", label: "标注答案", source: "submission.answers", alias: "answers", enabled: true },
+  { id: "review_status", label: "审核状态", source: "submission.status", alias: "review_status", enabled: true },
 ];
 
 export default function OwnerExportPage({ role }: OwnerExportPageProps) {
   const { taskId } = useParams<{ taskId: string }>();
-  const task = tasksMock.find((item) => item.id === taskId);
-  const demoState = getDemoWorkflowState();
-  const approvedCount =
-    submissionsMock.filter((submission) => submission.taskId === taskId && submission.status === "ACCEPTED").length +
-    (taskId === "task_news_quality" && demoState.submissionStatus === "ACCEPTED" ? 1 : 0);
+  const [task, setTask] = useState<Task | null>(null);
+  const [loadingTask, setLoadingTask] = useState(true);
+  const [taskError, setTaskError] = useState<string | null>(null);
 
   const [format, setFormat] = useState<ExportFormat>("JSONL");
   const [includeAudit, setIncludeAudit] = useState(true);
@@ -93,27 +87,38 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
   const [passportPreviews, setPassportPreviews] = useState<Record<string, PassportPreviewState>>({});
-  const [jobs, setJobs] = useState<ExportJob[]>([
-    {
-      id: "exp_demo_001",
-      format: "JSONL",
-      status: "DONE",
-      progress: 100,
-      createdAt: "2026-06-03 10:24",
-      fileName: "news_quality_approved.jsonl",
-      recordCount: Math.max(approvedCount, 289),
-    },
-  ]);
+  const [jobs, setJobs] = useState<ExportJob[]>([]);
 
   const enabledFields = useMemo(() => fields.filter((field) => field.enabled), [fields]);
+
+  useEffect(() => {
+    if (!taskId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        setLoadingTask(true);
+        setTaskError(null);
+        const data = await fetchTask(taskId);
+        if (!cancelled) setTask(data);
+      } catch (error) {
+        if (!cancelled) {
+          setTask(null);
+          setTaskError(error instanceof Error ? error.message : "任务详情接口暂不可用。");
+        }
+      } finally {
+        if (!cancelled) setLoadingTask(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId]);
 
   const refreshBackendExportJobs = async () => {
     if (!taskId) return;
     try {
       const backendJobs = await listExportJobs(taskId);
-      if (backendJobs.length > 0) {
-        setJobs(backendJobs.map((job) => mapBackendExportJob(job as BackendExportJob, taskId)));
-      }
+      setJobs(backendJobs.map((job) => mapBackendExportJob(job as BackendExportJob, taskId)));
     } catch (error) {
       console.warn("导出历史刷新失败：", error);
     }
@@ -125,11 +130,12 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
     void (async () => {
       try {
         const backendJobs = await listExportJobs(taskId);
-        if (!cancelled && backendJobs.length > 0) {
+        if (!cancelled) {
           setJobs(backendJobs.map((job) => mapBackendExportJob(job as BackendExportJob, taskId)));
         }
       } catch (error) {
-        console.warn("Export history unavailable, using local history fallback:", error);
+        console.warn("导出历史加载失败：", error);
+        if (!cancelled) setJobs([]);
       }
     })();
     return () => {
@@ -142,26 +148,14 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
   };
 
   const confirmExport = async () => {
-    const jobId = `exp_${Date.now()}`;
-    const createdAt = new Date().toLocaleString("zh-CN", { hour12: false });
-    const fileName = `${taskId ?? "task"}_${statusFilter.toLowerCase()}.${format.toLowerCase() === "excel" ? "xlsx" : format.toLowerCase()}`;
-    const nextJob: ExportJob = {
-      id: jobId,
-      format,
-      status: "QUEUED",
-      progress: 12,
-      createdAt,
-      fileName,
-      recordCount: approvedCount,
-    };
-
     setExporting(true);
     setExportNotice("导出任务已创建，正在异步处理。");
-    setJobs((current) => [nextJob, ...current]);
 
     try {
-      const fallbackSchemaVersionId: ID = `sv_${taskId ?? "task"}_draft`;
-      const schemaVersionId = task?.activeSchemaVersionId ?? fallbackSchemaVersionId;
+      if (!task?.activeSchemaVersionId) {
+        throw new Error("当前任务尚未绑定已发布模板版本，不能导出。");
+      }
+      const schemaVersionId = task.activeSchemaVersionId;
       const response = await createExportJob(taskId ?? "", {
         mapping: {
           schemaVersionId,
@@ -192,29 +186,18 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
         statusFilter,
         stage: "JOB_CREATED",
       });
-      setJobs((current) => current.map((job) => (job.id === jobId ? backendJob : job)));
+      setJobs((current) => [backendJob, ...current]);
       window.setTimeout(() => void refreshBackendExportJobs(), 1100);
       window.setTimeout(() => void refreshBackendExportJobs(), 1600);
       setExporting(false);
       setExportNotice("导出任务已提交，进度可在下载历史中查看。");
       return;
     } catch (error) {
-      console.warn("Backend export unavailable, using local async export fallback:", error);
-    }
-
-    window.setTimeout(() => {
-      setJobs((current) =>
-        current.map((job) => (job.id === jobId ? { ...job, status: "PROCESSING", progress: 58 } : job)),
-      );
-    }, 350);
-
-    window.setTimeout(() => {
-      setJobs((current) =>
-        current.map((job) => (job.id === jobId ? { ...job, status: "DONE", progress: 100 } : job)),
-      );
+      console.warn("导出任务创建失败：", error);
       setExporting(false);
-      setExportNotice("导出完成，可在下载历史中获取文件。");
-    }, 900);
+      setExportNotice(error instanceof Error ? `导出失败：${error.message}` : "导出失败，请稍后重试。");
+      return;
+    }
   };
 
   const handleExport = () => {
@@ -226,14 +209,7 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
   };
 
   const handleDownload = (job: ExportJob) => {
-    const payload = buildDownloadPayload(job, enabledFields, includeAudit, taskId ?? "");
-    const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = job.fileName;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    setExportNotice(`导出任务 ${job.id} 已完成，请使用后端返回的真实下载地址或制品接口下载。`);
   };
 
   const handleLoadPassportPreview = async (job: ExportJob) => {
@@ -283,8 +259,12 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
     }
   };
 
+  if (loadingTask) {
+    return <Card className="state-panel">加载导出任务中...</Card>;
+  }
+
   if (!task) {
-    return <Card className="state-panel danger-text">任务不存在：{taskId}</Card>;
+    return <Card className="state-panel danger-text">任务详情加载失败：{taskError ?? taskId}</Card>;
   }
 
   return (
@@ -308,7 +288,7 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
           </div>
           <div className="owner-export-task__metrics">
             <span>已审核通过</span>
-            <strong>{approvedCount}</strong>
+            <strong>-</strong>
           </div>
         </div>
 
@@ -439,6 +419,7 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
               ) : null}
             </div>
           ))}
+          {jobs.length === 0 ? <div className="empty-state">暂无真实导出历史</div> : null}
         </div>
       </Card>
 
@@ -579,38 +560,22 @@ function reviewStatusLabel(status: string): string {
 }
 
 function buildPreview(format: ExportFormat, statusFilter: string, includeAudit: boolean, fields: ExportField[], taskId: string) {
-  const record = Object.fromEntries(fields.map((field) => [field.alias || field.id, sampleValueFor(field.id)]));
   const payload = {
     taskId,
     format,
     filter: statusFilter,
     includeAudit,
     fields: fields.map((field) => ({ source: field.source, exportAs: field.alias })),
-    records: [record],
+    records: "由后端导出任务生成",
   };
 
   if (format === "CSV") {
-    return `${fields.map((field) => field.alias).join(",")}\n${fields.map((field) => sampleValueFor(field.id)).join(",")}`;
+    return fields.map((field) => field.alias).join(",");
   }
 
   if (format === "JSONL") {
-    return JSON.stringify({ taskId, ...record, audit: includeAudit ? "included" : "excluded" });
+    return JSON.stringify({ taskId, format, filter: statusFilter, includeAudit, fields: fields.map((field) => field.alias) });
   }
 
   return JSON.stringify(payload, null, 2);
-}
-
-function buildDownloadPayload(job: ExportJob, fields: ExportField[], includeAudit: boolean, taskId: string) {
-  return buildPreview(job.format, "ACCEPTED", includeAudit, fields, taskId);
-}
-
-function sampleValueFor(fieldId: string) {
-  const values: Record<string, string> = {
-    item_id: "item_001",
-    source_title: "示例新闻标题",
-    quality_rating: "pass",
-    summary: "新闻摘要示例",
-    rewrite_suggestion: "修改建议示例",
-  };
-  return values[fieldId] ?? "示例值";
 }

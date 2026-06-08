@@ -29,4 +29,10 @@ async function bootstrap() {
     </React.StrictMode>
   );
 }
-bootstrap();
+bootstrap().catch((error) => {
+  console.error("应用启动失败：", error);
+  const root = document.getElementById("root");
+  if (root) {
+    root.innerHTML = `<main class="state-panel" style="margin:24px;">应用启动失败，请刷新页面或检查本地服务。</main>`;
+  }
+});
