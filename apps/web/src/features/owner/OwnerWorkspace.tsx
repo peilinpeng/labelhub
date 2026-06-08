@@ -85,6 +85,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
+  const [strategy, setStrategy] = useState("ALL");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,9 +125,10 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
         const searchable = `${task.title} ${taskDescription(task)}`.toLowerCase();
         const matchesQuery = searchable.includes(query.toLowerCase());
         const matchesStatus = status === "ALL" || task.status === status;
-        return matchesQuery && matchesStatus;
+        const matchesStrategy = strategy === "ALL" || task.distributionStrategy.type === strategy;
+        return matchesQuery && matchesStatus && matchesStrategy;
       }),
-    [query, status, tasks],
+    [query, status, strategy, tasks],
   );
 
   const selectedTask = selectedTaskId
@@ -183,7 +185,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
               <option value="PAUSED">已暂停</option>
               <option value="ENDED">已结束</option>
             </Select>
-            <Select defaultValue="ALL">
+            <Select value={strategy} onChange={(event) => setStrategy(event.target.value)}>
               <option value="ALL">分发策略：全部</option>
               <option value="FIRST_COME_FIRST_SERVED">先到先得</option>
               <option value="ASSIGNMENT">指派</option>

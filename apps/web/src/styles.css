@@ -601,6 +601,87 @@ a {
   background: rgba(16, 185, 129, 0.06);
 }
 
+.schema-builder-notice--success {
+  border-color: rgba(16, 185, 129, 0.22);
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.schema-builder-notice--danger {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: rgba(254, 242, 242, 0.92);
+}
+
+.schema-builder-notice--info {
+  border-color: rgba(79, 70, 229, 0.22);
+  background: rgba(79, 70, 229, 0.06);
+}
+
+.schema-builder-intro {
+  margin-top: 6px;
+  max-width: 720px;
+  color: var(--lh-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.schema-builder-status-hint {
+  margin: -4px 2px 0;
+  color: var(--lh-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.owner-schema-issue-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.owner-schema-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--lh-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.owner-schema-issue p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.owner-schema-issue-tag {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.owner-schema-issue--error {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: rgba(254, 242, 242, 0.7);
+}
+
+.owner-schema-issue--error .owner-schema-issue-tag {
+  background: rgba(239, 68, 68, 0.16);
+  color: #b91c1c;
+}
+
+.owner-schema-issue--warning {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(255, 251, 235, 0.8);
+}
+
+.owner-schema-issue--warning .owner-schema-issue-tag {
+  background: rgba(245, 158, 11, 0.18);
+  color: #b45309;
+}
+
 .schema-preset-panel--compact {
   gap: 10px;
   padding: 12px;

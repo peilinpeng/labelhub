@@ -20,6 +20,7 @@ import type {
   ManualMappingSlot,
   NodeType,
   SchemaNode,
+  SchemaValidationError,
   SchemaValidationResult,
   ServerComponentRegistryItem,
   Task,
@@ -51,6 +52,8 @@ interface QuickMaterial {
   description: string;
   icon: string;
 }
+
+type NoticeTone = "success" | "danger" | "info";
 
 type ConditionOperator = "eq" | "ne" | "contains" | "empty" | "notEmpty";
 type ConditionAction = "show" | "hide" | "disable";
@@ -152,6 +155,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishNotice, setPublishNotice] = useState<string | null>(null);
+  const [publishNoticeTone, setPublishNoticeTone] = useState<NoticeTone>("info");
   const [previewExpanded, setPreviewExpanded] = useState(false);
   const [publishPreviewOpen, setPublishPreviewOpen] = useState(false);
   const [publishPreview, setPublishPreview] = useState<PublishPreviewState | undefined>();
@@ -270,6 +274,45 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     [customPresets],
   );
 
+  // 模板状态人话化：草稿 / 已发布 / 有未发布修改。仅依据真实 schema.status 与
+  // task.activeSchemaVersionId 推导，数据不足时退回「本地编辑草稿」，不伪造已发布。
+  const templateStatus = useMemo<{ label: string; tone: "success" | "warning" | "primary"; hint: string }>(() => {
+    if (schema.status === "PUBLISHED") {
+      return { label: "已发布", tone: "success", hint: `当前版本 ${schemaRevisionLabel(schema)}，可用于任务分发与标注。` };
+    }
+    if (task?.activeSchemaVersionId !== undefined) {
+      return { label: "有未发布修改", tone: "warning", hint: "已存在发布版本，当前为草稿修改，发布后才会对标注员生效。" };
+    }
+    return { label: "草稿", tone: "primary", hint: "当前模板状态来自本地编辑草稿，保存草稿不等于发布。" };
+  }, [schema, task]);
+
+  // 发布前的本地自检结果人话化：只展示可读 message（必要时带字段标题），不暴露 code / path / 原始对象。
+  const validationSummary = useMemo<{ tone: "success" | "warning" | "danger"; badge: string; errors: string[]; warnings: string[] }>(() => {
+    let result: SchemaValidationResult;
+    try {
+      result = validateDesignerSchema(schema);
+    } catch {
+      return { tone: "warning", badge: "暂时无法自检", errors: [], warnings: ["模板自检暂时不可用，可继续在画布中调整。"] };
+    }
+    const titleByNodeId = new Map(fieldNodes.map((field) => [field.id, field.title || field.name]));
+    const toText = (issue: SchemaValidationError): string => {
+      const fieldTitle = issue.nodeId !== undefined ? titleByNodeId.get(issue.nodeId) : undefined;
+      return fieldTitle ? `「${fieldTitle}」${issue.message}` : issue.message;
+    };
+    const errors = result.errors.map(toText);
+    const warnings = result.warnings.map(toText);
+    if (!result.valid) {
+      return { tone: "danger", badge: "暂不可发布", errors, warnings };
+    }
+    return { tone: warnings.length > 0 ? "warning" : "success", badge: warnings.length > 0 ? "可发布 · 有提醒" : "可以发布", errors, warnings };
+  }, [schema, fieldNodes]);
+
+  // 统一的页面提示出口：区分成功 / 失败 / 中性，避免失败提示仍显示成功样式。
+  const showNotice = (message: string | null, tone: NoticeTone = "info"): void => {
+    setPublishNotice(message);
+    if (message !== null) setPublishNoticeTone(tone);
+  };
+
   const handleSaveDraft = async (): Promise<void> => {
     const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
     try {
@@ -281,10 +324,10 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       setSchema(response.schema);
       setValidation(response.validation);
       setStatusMessage(`草稿已保存，版本 ${response.schemaDraftRevision}`);
-      setPublishNotice("模板草稿已保存。");
+      showNotice("模板草稿已保存。", "success");
     } catch {
-      setStatusMessage("后端暂不可用，当前模板保留在页面中。");
-      setPublishNotice("后端暂不可用，当前修改已保留在本页，可继续预览和发布演示。");
+      setStatusMessage("草稿保存失败，当前修改仍保留在本页。");
+      showNotice("草稿保存失败，请稍后重试。当前修改仍保留在本页，可重试保存。", "danger");
     } finally {
       setSaving(false);
     }
@@ -299,7 +342,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     anchor.download = fileName;
     anchor.click();
     URL.revokeObjectURL(url);
-    setPublishNotice("Schema JSON 已导出。");
+    showNotice("Schema JSON 已导出。", "success");
   };
 
   const confirmPublish = async (preview: PublishPreviewState | undefined): Promise<void> => {
@@ -307,7 +350,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     let failureStage: OwnerPublishFailureStage = "SAVE_DRAFT";
     try {
       setSaving(true);
-      setPublishNotice(null);
+      showNotice(null);
       if (preview !== undefined) {
         await appendPublishRequestedAuditEvent(createOwnerPublishAuditPreview(schema, task, preview));
       }
@@ -334,7 +377,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         schemaVersionNo: readPublishedSchemaVersionNo(published.schemaVersion, draftResponse.schema.schemaVersionNo),
       });
       await loadAuditEvents();
-      setPublishNotice("发布成功，任务已进入任务市场，审计日志已刷新。");
+      showNotice("发布成功，任务已进入任务市场，审计日志已刷新。", "success");
     } catch (error) {
       await appendSchemaPublishFailedAuditEvent({
         schema,
@@ -345,7 +388,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       await loadAuditEvents();
       const message = error instanceof Error ? error.message : "发布失败，请稍后重试。";
       setStatusMessage("发布失败，请检查后端服务或当前 schema 状态。");
-      setPublishNotice(`发布失败：${message}`);
+      showNotice(`发布失败：${message}`, "danger");
     } finally {
       setSaving(false);
     }
@@ -354,7 +397,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const handlePublish = async (): Promise<void> => {
     try {
       setPublishPreviewPreparing(true);
-      setPublishNotice(null);
+      showNotice(null);
       const preview = await buildPublishPreview({
         schema,
         task,
@@ -365,7 +408,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       setPublishPreviewOpen(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "生成发布前检查失败。";
-      setPublishNotice(`发布前检查失败：${message}`);
+      showNotice(`发布前检查失败：${message}`, "danger");
     } finally {
       setPublishPreviewPreparing(false);
     }
@@ -411,7 +454,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     }
     setValidation(undefined);
     setStatusMessage(`已加载「${preset.title}」预设模板`);
-    setPublishNotice(`已将「${preset.title}」加载到当前任务「${taskTitle}」下，可继续在画布中调整字段。`);
+    showNotice(`已将「${preset.title}」加载到当前任务「${taskTitle}」下，可继续在画布中调整字段。`, "info");
   };
 
   const handleCreateBlankPresetTemplate = () => {
@@ -423,7 +466,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     setPresetTitleInput("未命名预设模板");
     setPresetDescriptionInput("空白模板。");
     setStatusMessage("已创建空白预设模板起点");
-    setPublishNotice("已创建空白模板。请先填写预设名称和说明，再配置画布。");
+    showNotice("已创建空白模板。请先填写预设名称和说明，再配置画布。", "info");
   };
 
   const handlePresetTitleChange = (title: string) => {
@@ -470,7 +513,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     setCustomPresets(nextPresets);
     writeCustomSchemaPresets(nextPresets);
     setActivePresetId(savedPreset.id);
-    setPublishNotice(`已将「${title}」另存为预设模板，可在常用预设模板中直接加载。`);
+    showNotice(`已将「${title}」另存为预设模板，可在常用预设模板中直接加载。`, "success");
   };
 
   const handleCanvasDragOver = (event: DragEvent<HTMLDivElement>) => {
@@ -529,6 +572,9 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             模板搭建
           </h2>
           <p>{task.title}</p>
+          <p className="schema-builder-intro">
+            这里配置标注任务模板，决定标注员作答时看到哪些字段与校验。保存草稿不等于发布；发布后该版本才能用于任务创建、分发与标注。
+          </p>
         </div>
         <div className="schema-builder-toolbar__actions">
           <Button type="button" onClick={() => setPreviewExpanded(true)}>
@@ -544,6 +590,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       </Card>
 
       <div className="schema-builder-statusbar">
+        <Badge tone={templateStatus.tone}>模板状态：{templateStatus.label}</Badge>
         <Badge tone="primary">当前版本 {schemaRevisionLabel(schema)}</Badge>
         <Badge tone="default">绑定任务 {task.id}</Badge>
         <Badge tone="success">
@@ -551,10 +598,13 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         </Badge>
         <span>{statusMessage}</span>
       </div>
+      <p className="schema-builder-status-hint">{templateStatus.hint}</p>
 
       {publishNotice ? (
-        <Card className="labeler-return-card schema-builder-notice">
-          <Badge tone="success">已更新</Badge>
+        <Card className={`labeler-return-card schema-builder-notice schema-builder-notice--${publishNoticeTone}`}>
+          <Badge tone={publishNoticeTone === "danger" ? "danger" : publishNoticeTone === "success" ? "success" : "primary"}>
+            {publishNoticeTone === "danger" ? "操作失败" : publishNoticeTone === "success" ? "已更新" : "提示"}
+          </Badge>
           <p>{publishNotice}</p>
         </Card>
       ) : null}
@@ -766,6 +816,34 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             <div><strong>{conditionRules.length}</strong><span>条件规则</span></div>
             <div><strong>{validationRules.length}</strong><span>校验规则</span></div>
           </div>
+        </Card>
+
+        <Card className="schema-config-card owner-schema-validation">
+          <div className="schema-config-heading">
+            <div>
+              <h3>校验结果</h3>
+              <p>发布前的模板自检：标题、选项、字段配置是否完整。</p>
+            </div>
+            <Badge tone={validationSummary.tone}>{validationSummary.badge}</Badge>
+          </div>
+          {validationSummary.errors.length === 0 && validationSummary.warnings.length === 0 ? (
+            <p className="schema-config-empty">未发现模板配置问题，可进入发布前检查。</p>
+          ) : (
+            <div className="owner-schema-issue-list">
+              {validationSummary.errors.map((issue, index) => (
+                <div className="owner-schema-issue owner-schema-issue--error" key={`error-${index}`}>
+                  <span className="owner-schema-issue-tag">必须修复</span>
+                  <p>{issue}</p>
+                </div>
+              ))}
+              {validationSummary.warnings.map((issue, index) => (
+                <div className="owner-schema-issue owner-schema-issue--warning" key={`warning-${index}`}>
+                  <span className="owner-schema-issue-tag">建议检查</span>
+                  <p>{issue}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         <Card className="schema-config-card schema-config-card--wide">
