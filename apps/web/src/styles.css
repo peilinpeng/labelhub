@@ -4992,6 +4992,64 @@ a {
   color: #047857;
 }
 
+.labeler-runner-fail {
+  padding: 10px 14px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.labeler-runner-alert {
+  display: grid;
+  gap: 8px;
+}
+
+.labeler-runner-alert-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.labeler-runner-alert-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.18);
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.labeler-runner-alert-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.labeler-runner-alert-fields {
+  display: grid;
+  gap: 4px;
+}
+
+.labeler-runner-alert-fields > span {
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.labeler-runner-alert-fields ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-weight: 700;
+}
+
 .labeler-runner-source {
   display: grid;
   gap: 8px;

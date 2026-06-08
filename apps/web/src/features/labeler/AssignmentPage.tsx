@@ -91,7 +91,10 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [submitNotice, setSubmitNotice] = useState<string | null>(null);
+  const [submitFailed, setSubmitFailed] = useState(false);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [pendingSubmitAnswers, setPendingSubmitAnswers] = useState<AnswerPayload | null>(null);
   const [taskItems, setTaskItems] = useState<DatasetItem[]>([]);
@@ -159,11 +162,13 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       void (async () => {
         try {
           setSaving(true);
+          setSaveFailed(false);
           await saveDraft(assignmentId, { answers, clientRevision: 0 });
           savedSnapshotRef.current = snapshot;
           setLastSavedAt(new Date().toISOString());
         } catch (e) {
           console.error("Auto-save draft failed:", e);
+          setSaveFailed(true);
         } finally {
           setSaving(false);
         }
@@ -227,15 +232,35 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     }));
   }, [context, answers, fieldTitleMap]);
 
+  // 打回提示：把上一轮审核打回的意见拆成「整体说明」与「需要修改的字段」，
+  // 只展示人话内容（审核意见 + 字段标题），不暴露任何审计 / 原始 payload。
+  const returnNotice = useMemo(() => {
+    const review = context?.lastReturnReason;
+    if (!review) return null;
+    const generalMessages: string[] = [];
+    const fieldComments: Array<{ title: string; message: string }> = [];
+    for (const comment of review.comments ?? []) {
+      const message = comment.message?.trim() ?? "";
+      if (comment.fieldName) {
+        fieldComments.push({ title: fieldTitleMap.get(comment.fieldName) ?? comment.fieldName, message });
+      } else if (message !== "") {
+        generalMessages.push(message);
+      }
+    }
+    return { generalMessages, fieldComments };
+  }, [context, fieldTitleMap]);
+
   const handleSaveDraft = async () => {
     if (!assignmentId) return;
     try {
       setSaving(true);
+      setSaveFailed(false);
       await saveDraft(assignmentId, { answers, clientRevision: 0 });
       savedSnapshotRef.current = JSON.stringify(answers);
       setLastSavedAt(new Date().toISOString());
     } catch (e) {
       console.error("Failed to save draft:", e);
+      setSaveFailed(true);
     } finally {
       setSaving(false);
     }
@@ -255,12 +280,18 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     const preflight = runSchemaPreflight({ schema: context.schema, currentAnswers: submitAnswers, patch: [] });
     if (preflight.requiredMissingFieldNames.length > 0) return;
     try {
+      setSubmitting(true);
+      setSubmitFailed(false);
       await submitAssignment(assignmentId, { answers: submitAnswers, clientRevision: 0 });
     } catch (error) {
       console.warn("提交标注失败：", error);
-      setSubmitNotice(error instanceof Error ? `提交失败：${error.message}` : "提交失败，请稍后重试。");
+      setSubmitFailed(true);
+      setSubmitNotice("提交失败，请稍后重试。");
       return;
+    } finally {
+      setSubmitting(false);
     }
+    setSubmitFailed(false);
     telemetry.appendSubmissionSummary(submitAnswers);
     const currentItemId = context.item.id;
     const nextAnswersByItem = { ...answersByItemId, [currentItemId]: submitAnswers };
@@ -438,6 +469,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     setAnswers(nextAnswersByItem[item.id] ?? {});
     setErrors([]);
     setSubmitNotice(null);
+    setSubmitFailed(false);
   };
   const itemStatusLabel = (status: LabelerNavigationStatus) =>
     status === "Submitted" ? "已提交" : status === "Returned" ? "已打回" : status === "Current" ? "进行中" : status === "Draft" ? "草稿" : "待标";
@@ -471,12 +503,14 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           <span>标注员工作台 / 任务市场 · {context.task.title} / 第 {currentItemNumber} / {totalItems} 题</span>
         </div>
         <div className="labeler-runner-user">
-          <Badge tone={saving ? "warning" : lastSavedAt ? "success" : "default"}>
+          <Badge tone={saving ? "warning" : saveFailed ? "danger" : lastSavedAt ? "success" : "default"}>
             {saving
               ? "保存中..."
-              : lastSavedAt
-                ? `草稿已自动保存 ${formatClock(lastSavedAt)}`
-                : "草稿未保存"}
+              : saveFailed
+                ? "保存失败，请稍后重试"
+                : lastSavedAt
+                  ? `草稿已自动保存 ${formatClock(lastSavedAt)}`
+                  : "草稿未保存"}
           </Badge>
           <span className="labeler-runner-avatar">标</span>
           <span>标注员</span>
@@ -509,6 +543,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
               </button>
             ))}
             {totalItems > itemNav.length ? <p className="labeler-runner-more">还有 {totalItems - itemNav.length} 题</p> : null}
+            {totalItems === 1 ? <p className="labeler-runner-more">当前任务仅包含 1 条可标注数据</p> : null}
           </div>
         </aside>
 
@@ -519,21 +554,48 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
               <p>模板 r{context.schema.schemaVersionNo ?? "-"} · 题目 ID {context.item.id}</p>
             </div>
             <div className="labeler-runner-head-actions">
-              <Button>跳过</Button>
-              <Button>报告题目</Button>
+              <Button disabled title="跳过功能暂未接入，可使用下方「下一题」切换题目">跳过</Button>
+              <Button disabled title="题目反馈功能暂未接入">报告题目</Button>
             </div>
           </section>
 
           <div className="labeler-runner-scroll">
-            {context.lastReturnReason ? (
-              <div className="labeler-runner-alert">
-                <strong>上一轮被打回：</strong>
-                {context.lastReturnReason.comments?.[0]?.message ?? "请根据审核意见修订后重新提交。"}
+            {returnNotice ? (
+              <div className="labeler-runner-alert" role="status">
+                <div className="labeler-runner-alert-head">
+                  <span className="labeler-runner-alert-tag">已打回 · 待修改</span>
+                  <strong>请根据审核意见修订后重新提交</strong>
+                </div>
+                {returnNotice.generalMessages.length > 0 ? (
+                  <ul className="labeler-runner-alert-list">
+                    {returnNotice.generalMessages.map((message, index) => (
+                      <li key={index}>{message}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {returnNotice.fieldComments.length > 0 ? (
+                  <div className="labeler-runner-alert-fields">
+                    <span>需要修改的字段</span>
+                    <ul>
+                      {returnNotice.fieldComments.map((field, index) => (
+                        <li key={index}>
+                          <strong>{field.title}</strong>
+                          {field.message !== "" ? `：${field.message}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
             {submitNotice ? (
-              <div className="labeler-runner-success">{submitNotice}</div>
+              <div
+                className={submitFailed ? "labeler-runner-fail" : "labeler-runner-success"}
+                role={submitFailed ? "alert" : "status"}
+              >
+                {submitNotice}
+              </div>
             ) : null}
 
             {hasGenericSource ? (
@@ -575,10 +637,18 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
           <footer className="labeler-runner-actions">
             <div>
-              <Button disabled={!previousItem} onClick={() => previousItem && switchToItem(previousItem)}>
+              <Button
+                disabled={!previousItem}
+                title={!previousItem ? "已经是第一题" : undefined}
+                onClick={() => previousItem && switchToItem(previousItem)}
+              >
                 ← 上一题
               </Button>
-              <Button disabled={!nextItem} onClick={() => nextItem && switchToItem(nextItem)}>
+              <Button
+                disabled={!nextItem}
+                title={!nextItem ? (totalItems === 1 ? "当前任务仅包含 1 条可标注数据" : "已经是最后一题") : undefined}
+                onClick={() => nextItem && switchToItem(nextItem)}
+              >
                 下一题 →
               </Button>
             </div>
@@ -589,11 +659,16 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                   请补充必填字段：{missingRequiredFields.map((f) => f.title).join("、")}
                 </span>
               ) : null}
-              <Button onClick={handleSaveDraft} disabled={saving}>
+              <Button onClick={handleSaveDraft} disabled={saving || submitting}>
                 {saving ? "保存中..." : "保存草稿"}
               </Button>
-              <Button tone="primary" disabled={missingRequiredFields.length > 0} onClick={() => requestSubmit()}>
-                提交本题 →
+              <Button
+                tone="primary"
+                disabled={missingRequiredFields.length > 0 || submitting}
+                title={missingRequiredFields.length > 0 ? "请先补全必填字段再提交" : undefined}
+                onClick={() => requestSubmit()}
+              >
+                {submitting ? "提交中..." : "提交本题 →"}
               </Button>
             </div>
           </footer>
