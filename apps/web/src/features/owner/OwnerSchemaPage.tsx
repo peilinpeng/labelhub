@@ -37,7 +37,6 @@ import {
   type OwnerPublishAuditPreview,
   type OwnerPublishFailureStage,
 } from "./audit-events";
-import { AuditTimelinePanel } from "./AuditTimelinePanel";
 import { localServerComponentRegistry } from "./localComponentRegistry";
 import { PublishPreviewDialog } from "./PublishPreviewDialog";
 import { createSchemaFromPreset, schemaPresetSummaries } from "./schemaPresetLibrary";
@@ -265,7 +264,6 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const sampleContext = useMemo(() => createSampleContext(schema, task, role), [role, schema, task]);
   const fieldNodes = useMemo(() => collectFieldNodes(schema), [schema]);
   const templateTitle = schema.meta.name;
-  const registrySourceLabel = serverRegistry === localServerComponentRegistry ? "本地组件库" : "服务端组件库";
   const presetOptions = useMemo<SchemaPresetOption[]>(
     () => [
       ...schemaPresetSummaries.map((preset) => ({ ...preset, source: "built-in" as const })),
@@ -584,18 +582,16 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             导出 JSON
           </Button>
           <Button type="button" tone="primary" disabled={saving || publishPreviewPreparing} onClick={() => void handlePublish()}>
-            {publishPreviewPreparing ? "检查中..." : `保存并发布版本 ${schemaRevisionLabel(schema)}`}
+            {publishPreviewPreparing ? "检查中..." : "保存并发布模板"}
           </Button>
         </div>
       </Card>
 
       <div className="schema-builder-statusbar">
         <Badge tone={templateStatus.tone}>模板状态：{templateStatus.label}</Badge>
-        <Badge tone="primary">当前版本 {schemaRevisionLabel(schema)}</Badge>
-        <Badge tone="default">绑定任务 {task.id}</Badge>
-        <Badge tone="success">
-          {registrySourceLabel} {serverRegistry.length} 项
-        </Badge>
+        <Badge tone="primary">当前模板版本：第 {schema.schemaDraftRevision ?? schema.schemaVersionNo ?? 1} 版</Badge>
+        <Badge tone="default">绑定任务：{task.title || "当前任务"}</Badge>
+        <Badge tone="success">可用字段组件：{serverRegistry.length} 类</Badge>
         <span>{statusMessage}</span>
       </div>
       <p className="schema-builder-status-hint">{templateStatus.hint}</p>
@@ -903,12 +899,21 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         </div>
       </Card>
 
-      <AuditTimelinePanel
-        events={auditEvents}
-        error={auditEventsError}
-        loading={auditEventsLoading}
-        onRefresh={() => void loadAuditEvents()}
-      />
+      <Card className="schema-audit-entry">
+        <div>
+          <strong>发布与审计记录</strong>
+          <p>
+            {auditEventsError
+              ? "审计记录加载失败，完整记录可在质量中心查看。"
+              : auditEventsLoading
+                ? "正在同步审计记录..."
+                : `本任务已有 ${auditEvents.length} 条审计记录。发布与审计记录可在质量中心查看。`}
+          </p>
+        </div>
+        <Link to="/owner/quality" className="lh-button">
+          查看质量中心 →
+        </Link>
+      </Card>
 
       {publishPreview ? (
         <PublishPreviewDialog

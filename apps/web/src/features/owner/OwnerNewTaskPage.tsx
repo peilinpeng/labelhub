@@ -6,7 +6,7 @@ import { createTask } from "../../api/owner";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Input, Select, Textarea } from "../../ui/primitives";
-import { MarkdownEditor, markdownToDoc } from "../../ui/markdown";
+import { markdownToDoc } from "../../ui/markdown";
 
 interface OwnerNewTaskPageProps {
   role: Role;
@@ -28,6 +28,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeTone, setNoticeTone] = useState<"success" | "danger">("danger");
 
   const getAssigneeIds = (): ID[] =>
     assigneeIdsInput
@@ -52,7 +53,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
     return true;
   };
 
-  const publishTask = async () => {
+  const createDraftTask = async () => {
     if (!validateForm()) {
       return;
     }
@@ -77,21 +78,31 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
             ? { type: "SINGLE_REVIEW" }
             : { type: "DOUBLE_REVIEW", requireFinalReview: true },
       });
+      // 不在本页发布任务，只创建草稿；必须用 createTask 真实返回的 id 跳转，
+      // 缺少 id 时不跳转到 undefined 路径、不回 home，停留当前页并提示。
+      if (!task.id) {
+        setNoticeTone("danger");
+        setNotice("任务已创建但缺少任务 ID，无法进入模板搭建，请刷新任务列表后重试。");
+        return;
+      }
+      setNoticeTone("success");
+      setNotice("任务草稿已创建，正在打开模板搭建。");
       navigate(`/owner/tasks/${task.id}/designer`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "任务创建失败，请检查后端服务。";
+      setNoticeTone("danger");
       setNotice(`任务创建失败：${message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const requestPublish = () => {
+  const requestCreateDraft = () => {
     if (!validateForm()) {
       return;
     }
     if (shouldSuppressConfirm(CONFIRM_KEYS.publish)) {
-      void publishTask();
+      void createDraftTask();
       return;
     }
     setPublishConfirmOpen(true);
@@ -102,7 +113,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
       <div className="page-header">
         <div>
           <h2 className="page-title">新建任务</h2>
-          <p className="page-subtitle">当前角色：{role}。填写任务基础信息，发布后进入模板配置。</p>
+          <p className="page-subtitle">当前角色：{role}。填写任务基础信息。点击后会先创建任务草稿，然后进入模板搭建；模板发布后任务才能进入分发与标注。</p>
         </div>
         <Link to={RoutePath.OWNER_TASKS} className="lh-button">
           返回任务列表
@@ -118,7 +129,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
 
       {notice ? (
         <Card className="labeler-return-card">
-          <Badge tone="danger">创建失败</Badge>
+          <Badge tone={noticeTone}>{noticeTone === "success" ? "已创建" : "创建失败"}</Badge>
           <p>{notice}</p>
         </Card>
       ) : null}
@@ -137,10 +148,15 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
               placeholder="一句话简介，显示在任务列表"
             />
           </label>
-          <div className="field-label">
-            标注说明（富文本 / Markdown，标注员作答时可见）
-            <MarkdownEditor value={instruction} onChange={setInstruction} />
-          </div>
+          <label className="field-label">
+            标注员说明（支持 Markdown）
+            <Textarea
+              value={instruction}
+              onChange={(event) => setInstruction(event.target.value)}
+              placeholder="例如：评级标准、样例、注意事项"
+            />
+            <small className="field-hint">这段说明会展示给标注员，用于解释标注标准、样例和注意事项。</small>
+          </label>
           <label className="field-label">
             配额总数 *
             <Input
@@ -186,8 +202,8 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
             <Button type="button" onClick={() => navigate(RoutePath.OWNER_TASKS)}>
               取消
             </Button>
-            <Button type="button" tone="primary" onClick={requestPublish} disabled={loading}>
-              {loading ? "发布中..." : "发布任务"}
+            <Button type="button" tone="primary" onClick={requestCreateDraft} disabled={loading}>
+              {loading ? "创建中..." : "下一步：配置模板"}
             </Button>
           </div>
         </div>
@@ -195,18 +211,18 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
 
       <ConfirmDialog
         open={publishConfirmOpen}
-        title="确认发布任务？"
-        description="发布后，标注员将可以在任务市场领取该任务。"
-        confirmText="发布任务"
+        title="确认创建任务草稿？"
+        description="将创建任务草稿并进入模板搭建。模板发布后，任务才能进入分发与标注流程。"
+        confirmText="创建草稿"
         cancelText="取消"
-        suppressLabel="本次会话不再提醒发布确认"
+        suppressLabel="本次会话不再提醒创建确认"
         onCancel={() => setPublishConfirmOpen(false)}
         onConfirm={(suppress) => {
           if (suppress) {
             suppressConfirmForSession(CONFIRM_KEYS.publish);
           }
           setPublishConfirmOpen(false);
-          void publishTask();
+          void createDraftTask();
         }}
       />
     </div>

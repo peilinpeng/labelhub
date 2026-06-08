@@ -631,6 +631,38 @@ a {
   line-height: 1.6;
 }
 
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--lh-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.schema-audit-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.schema-audit-entry strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--lh-text);
+}
+
+.schema-audit-entry p {
+  margin: 0;
+  max-width: 620px;
+  color: var(--lh-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .owner-schema-issue-list {
   display: grid;
   gap: 8px;
@@ -2968,6 +3000,67 @@ a {
 
 .owner-summary-item--warning strong {
   color: #b45309;
+}
+
+.owner-draft-card {
+  display: grid;
+  gap: 12px;
+}
+
+.owner-draft-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.owner-draft-head h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.owner-draft-head p {
+  margin: 0;
+  max-width: 620px;
+  color: var(--lh-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.owner-draft-list {
+  display: grid;
+  gap: 10px;
+}
+
+.owner-draft-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--lh-border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.owner-draft-item__info {
+  display: grid;
+  gap: 8px;
+}
+
+.owner-draft-item__info strong {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--lh-text);
+}
+
+.owner-draft-item__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .owner-management-layout {

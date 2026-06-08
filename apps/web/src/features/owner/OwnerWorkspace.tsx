@@ -136,7 +136,8 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
     : null;
 
   const publishedCount = tasks.filter((task) => task.status === "PUBLISHED").length;
-  const draftCount = tasks.filter((task) => task.status === "DRAFT").length;
+  const draftTasks = tasks.filter((task) => task.status === "DRAFT");
+  const draftCount = draftTasks.length;
   const totalQuota = tasks.reduce((sum, task) => sum + task.quota.total, 0);
 
   if (loading) {
@@ -173,6 +174,38 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
           <strong>{tasks.length}</strong>
         </div>
       </div>
+
+      <Card className="soft-panel owner-draft-card">
+        <div className="owner-draft-head">
+          <div>
+            <h3>任务草稿 · 待配置模板</h3>
+            <p>创建任务后在这里继续配置模板；模板发布后任务才能进入分发与标注。</p>
+          </div>
+          <Badge tone="warning">{draftCount} 个草稿</Badge>
+        </div>
+        {draftTasks.length === 0 ? (
+          <div className="empty-state">暂无任务草稿。新建任务后，可在这里继续配置模板。</div>
+        ) : (
+          <div className="owner-draft-list">
+            {draftTasks.map((task) => (
+              <div className="owner-draft-item" key={task.id}>
+                <div className="owner-draft-item__info">
+                  <strong>{task.title}</strong>
+                  <div className="owner-draft-item__tags">
+                    <Badge tone={statusTone(task.status)}>{statusLabel(task.status)}</Badge>
+                    <Badge tone={task.activeSchemaVersionId ? "success" : "warning"}>
+                      {task.activeSchemaVersionId ? "已发布模板" : "未发布模板"}
+                    </Badge>
+                  </div>
+                </div>
+                <Link className="lh-button lh-button--primary" to={`/owner/tasks/${task.id}/designer`}>
+                  继续配置模板
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       <div className="owner-management-layout">
         <Card className="soft-panel owner-table-card">
