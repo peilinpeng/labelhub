@@ -2370,30 +2370,31 @@ a {
   font-size: 12px;
 }
 
-.lh-ai-panel {
+.owner-ai-page .lh-ai-panel {
   display: grid;
   gap: 14px;
   padding: 18px;
-  border: 1px solid rgba(124, 58, 237, 0.18);
+  border: 1px solid var(--lh-border);
   border-radius: 18px;
-  background: linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(124, 58, 237, 0.08));
+  background: var(--lh-surface);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
 }
 
-.lh-ai-panel__header {
+.owner-ai-page .lh-ai-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.lh-ai-panel__title {
+.owner-ai-page .lh-ai-panel__title {
   margin: 0;
-  color: var(--lh-primary);
+  color: var(--lh-text);
   font-size: 15px;
   font-weight: 900;
 }
 
-.lh-ai-panel__body {
+.owner-ai-page .lh-ai-panel__body {
   margin: 0;
   color: var(--lh-text);
   line-height: 1.6;
@@ -7251,9 +7252,9 @@ a {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid rgba(124, 58, 237, 0.16);
+  border: 1px solid var(--lh-border);
   border-radius: 12px;
-  background: rgba(124, 58, 237, 0.04);
+  background: var(--lh-surface-soft);
 }
 
 .owner-ai-section-title {
@@ -7277,6 +7278,102 @@ a {
   color: #334155;
   font-size: 13px;
   font-weight: 850;
+}
+
+/* ── Owner AI 预审页（Corporate Trust 降噪，全部限定在 .owner-ai-page 作用域内）── */
+
+.owner-ai-page .lh-button--primary {
+  background: #2563eb;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.owner-ai-page .lh-button--primary:hover {
+  background: #1d4ed8;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.16);
+}
+
+.owner-ai-page .lh-badge--primary {
+  border-color: rgba(37, 99, 235, 0.22);
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+}
+
+.owner-ai-page input[type="range"] {
+  accent-color: #2563eb;
+}
+
+/* 异步预审流程步骤条：标注员提交 → 异步队列 → AI 评分 → 人工复核 → 入库/打回 */
+.owner-ai-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--lh-border);
+  border-radius: 12px;
+  background: var(--lh-surface-soft);
+}
+
+.owner-ai-flow span {
+  padding: 4px 10px;
+  border: 1px solid var(--lh-border-strong);
+  border-radius: 999px;
+  background: var(--lh-surface);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.owner-ai-flow span + span::before {
+  content: "→";
+  margin-right: 6px;
+  color: var(--lh-muted);
+  font-weight: 600;
+}
+
+/* 阈值策略行 / AI 产出说明行：安静的键值列表 */
+.owner-ai-policy-list,
+.owner-ai-output-list {
+  display: grid;
+  border: 1px solid var(--lh-border);
+  border-radius: 12px;
+  background: var(--lh-surface);
+  overflow: hidden;
+}
+
+.owner-ai-policy-list > div,
+.owner-ai-output-list > div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.owner-ai-policy-list > div + div,
+.owner-ai-output-list > div + div {
+  border-top: 1px solid var(--lh-border);
+}
+
+.owner-ai-policy-list > div > span,
+.owner-ai-output-list > div > span {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.owner-ai-policy-list > div > strong,
+.owner-ai-output-list > div > strong {
+  color: var(--lh-text);
+  font-weight: 800;
+}
+
+/* 失败兜底行用低饱和琥珀左缘提示，保留风险区分但不大面积跳色 */
+.owner-ai-policy-list > div:last-child {
+  border-left: 3px solid rgba(217, 119, 6, 0.55);
+  background: rgba(245, 158, 11, 0.05);
 }
 
 .review-ai-page,

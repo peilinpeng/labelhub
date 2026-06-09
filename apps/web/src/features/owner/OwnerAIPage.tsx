@@ -144,7 +144,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
 
   return (
-    <div className="page-stack">
+    <div className="page-stack owner-ai-page">
       <div className="page-header">
         <div>
           <h2 className="page-title">AI 预审设置</h2>
@@ -250,7 +250,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
             <section className="owner-ai-dimensions" aria-label="维度评分">
               <div className="owner-ai-section-title">
                 <strong>维度评分</strong>
-                <span>function_calling 输出必须返回每个维度的 score 和 reason</span>
+                <span>AI 会逐维度给出评分和理由，各维度权重之和建议为 1</span>
               </div>
               {dimensions.map((dimension, index) => (
                 <label className="owner-ai-dimension-row" key={dimension.key}>
@@ -290,17 +290,14 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
           </div>
         </Card>
 
-        <AIReviewPanel title="规则预览" badge={<Badge tone="primary">AI Agent · function_calling</Badge>}>
+        <AIReviewPanel title="规则预览" badge={<Badge tone="primary">AI 自动预审</Badge>}>
           <div className="form-stack">
-            <p>提交后系统创建 AIReviewJob，异步队列执行结构化预审。模型输出只写审核结论和评分，不直接改标注答案；重试耗尽或分数处于中间区间时转人工兜底。</p>
-            <div className="inset-well">
-              <pre className="source-json">{`结构化输出：
-  decision: PASS | RETURN | NEED_HUMAN_REVIEW
-  totalScore: number
-  dimensionScores: [{ key, score, reason }]
-  fieldIssues: [{ fieldName, severity, message }]
-  summary: string
-  confidence: number`}</pre>
+            <p>保存后，标注员每次提交都会进入异步预审队列，由 AI 按下方维度逐项评分。AI 只产出审核结论和评分，不会改写标注答案；重试耗尽或分数处于中间区间时，自动转人工审核兜底。</p>
+            <div className="owner-ai-output-list" aria-label="AI 预审产出内容">
+              <div><span>审核结论</span><strong>自动通过 / 自动打回 / 转人工复核</strong></div>
+              <div><span>评分明细</span><strong>总分与各维度评分、评分理由</strong></div>
+              <div><span>字段提示</span><strong>指出存在问题的字段与改进建议</strong></div>
+              <div><span>审核摘要</span><strong>一句话结论与置信度</strong></div>
             </div>
             <div className="owner-ai-policy-list">
               <div><span>自动通过</span><strong>总分 ≥ {threshold}</strong></div>
