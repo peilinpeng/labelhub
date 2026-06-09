@@ -77,6 +77,57 @@ import {
 
 const idempotencyRecords = new Map<string, IdempotencyRecord>();
 
+// AI 预审配置（review-config）会话内存 store：按 taskId 持久化创建/更新，
+// 缺省返回一份可演示的预审规则，避免 OwnerAIPage 拉取时落空触发 401。
+const reviewConfigStore = new Map<string, Record<string, unknown>>();
+
+function defaultReviewConfig(taskId: string): Record<string, unknown> {
+  return {
+    id: `rc_${taskId}`,
+    taskId,
+    enabled: true,
+    modelPolicyId: "doubao-pro-32k",
+    promptTemplate:
+      "你是 LabelHub 的 AI 预审 Agent。请基于题目内容、标注答案和当前 schema 输出结构化审核结果，" +
+      "使用 function_calling 返回 decision、totalScore、dimensionScores、fieldIssues、summary、confidence。",
+    dimensions: [
+      { key: "factuality", label: "事实完整性", description: "事实表述是否完整、可核查", weight: 0.3, scoreRange: [0, 1] },
+      { key: "category", label: "类别准确性", description: "类别选择是否符合内容", weight: 0.25, scoreRange: [0, 1] },
+      { key: "evidence", label: "证据充分性", description: "是否提供来源、证据或复核说明", weight: 0.25, scoreRange: [0, 1] },
+      { key: "format", label: "格式合规", description: "答案格式和必填项是否合规", weight: 0.2, scoreRange: [0, 1] },
+    ],
+    thresholds: { passScore: 0.8, returnScore: 0.45 },
+    conclusionMapping: {
+      passWhen: "totalScore >= 0.8",
+      returnWhen: "totalScore < 0.45",
+      humanReviewOtherwise: true,
+    },
+    maxRetries: 3,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function readReviewConfig(taskId: string): Record<string, unknown> {
+  if (!reviewConfigStore.has(taskId)) {
+    reviewConfigStore.set(taskId, defaultReviewConfig(taskId));
+  }
+  return reviewConfigStore.get(taskId)!;
+}
+
+function writeReviewConfig(taskId: string, payload: Record<string, unknown>): Record<string, unknown> {
+  const existing = reviewConfigStore.get(taskId) ?? defaultReviewConfig(taskId);
+  const merged = {
+    ...existing,
+    ...payload,
+    id: (existing.id as string | undefined) ?? `rc_${taskId}`,
+    taskId,
+    updatedAt: new Date().toISOString(),
+  };
+  reviewConfigStore.set(taskId, merged);
+  return merged;
+}
+
 export const handlers = [
   http.post("/api/v1/auth/login", async ({ request }) => {
     const body = await readJson<{ email?: unknown; password?: unknown }>(request);
@@ -139,6 +190,23 @@ export const handlers = [
     const taskId = getParam(params as MockParams, "taskId");
     const body = await readJson<GenerateSchemaRequest>(request);
     return withIdempotency(request, body, () => ({ body: generateSchema(taskId, body.taskDescription) }));
+  }),
+
+  http.get("/api/v1/tasks/:taskId/review-config", ({ params }) => {
+    const taskId = getParam(params as MockParams, "taskId");
+    return okJson({ reviewConfig: readReviewConfig(taskId) });
+  }),
+
+  http.post("/api/v1/tasks/:taskId/review-config", async ({ request, params }) => {
+    const taskId = getParam(params as MockParams, "taskId");
+    const body = await readJson<Record<string, unknown>>(request);
+    return okJson({ reviewConfig: writeReviewConfig(taskId, body) });
+  }),
+
+  http.put("/api/v1/tasks/:taskId/review-config", async ({ request, params }) => {
+    const taskId = getParam(params as MockParams, "taskId");
+    const body = await readJson<Record<string, unknown>>(request);
+    return okJson({ reviewConfig: writeReviewConfig(taskId, body) });
   }),
 
   http.post("/api/v1/tasks/:taskId/schema/publish", async ({ request, params }) => {

@@ -117,17 +117,10 @@ async function handleResponse<T>(response: Response): Promise<T> {
     try { data = JSON.parse(text); } catch { throw new Error("API returned invalid JSON"); }
   }
   if (!response.ok) {
-    // token 失效/未授权：清除本地会话并跳回登录页，而不是让上层静默回退 mock 假数据。
-    // 注意：仅 401（后端在线但鉴权失败）触发；后端不可达是 fetch reject，不会进到这里，
-    // 因此纯离线/无后端的开发兜底不受影响。
-    if (response.status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("labelhub_token");
-      localStorage.removeItem("labelhub_role");
-      localStorage.removeItem("labelhub_actor");
-      if (window.location.pathname !== "/") {
-        window.location.href = "/";
-      }
-    }
+    // 单个接口的 401 不再清会话并强制跳回登录页：那会让某个端点的鉴权/路由问题
+    // （而非整体会话失效）把用户从当前页弹回首页（见 OwnerAIPage 拉取 review-config）。
+    // 这里只把 401 当普通错误抛出，由各调用方就地做软提示（OwnerAIPage 等已有 catch 处理）；
+    // 真正的会话失效会导致所有请求 401，登录态在下次角色校验时自然回到登录流程。
     const error = data as ApiError | null;
     throw new Error(error?.message ?? `Request failed: ${response.status} ${response.statusText}`);
   }
