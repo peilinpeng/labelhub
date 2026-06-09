@@ -3,6 +3,7 @@ export enum RoutePath {
   
   OWNER_TASKS = "/owner/tasks",
   OWNER_TASKS_NEW = "/owner/tasks/new",
+  OWNER_AI_CONFIG = "/owner/ai-config",
   OWNER_TASK_DETAIL = "/owner/tasks/:taskId",
   OWNER_TASKS_DATASET = "/owner/tasks/:taskId/dataset",
   OWNER_TASKS_DESIGNER = "/owner/tasks/:taskId/designer",
@@ -30,6 +31,7 @@ export const roleRoutes: Record<Role, RouteConfig[]> = {
   OWNER: [
     { path: RoutePath.OWNER_TASKS, role: "OWNER", label: "任务列表" },
     { path: RoutePath.OWNER_TASKS_NEW, role: "OWNER", label: "新建任务" },
+    { path: RoutePath.OWNER_AI_CONFIG, role: "OWNER", label: "AI预审设置" },
     { path: RoutePath.OWNER_TASK_DETAIL, role: "OWNER", label: "任务详情" },
     { path: RoutePath.OWNER_TASKS_DATASET, role: "OWNER", label: "数据集" },
     { path: RoutePath.OWNER_TASKS_DESIGNER, role: "OWNER", label: "模板设计" },

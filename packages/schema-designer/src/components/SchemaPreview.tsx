@@ -29,8 +29,8 @@ export function SchemaPreview({
         </div>
       </div>
       {schema.root.children.length === 0 ? <p className="schema-designer-empty">暂无节点可预览</p> : null}
-      {!validationResult.valid ? <p className="schema-designer-warning">当前 schema 存在 validation error，预览仅供参考。</p> : null}
-      {previewBlocked ? <p className="schema-designer-warning">当前 schema 暂不可预览，请先修复关键错误。</p> : null}
+      {!validationResult.valid ? <p className="schema-designer-warning">当前模板仍有未完成配置，预览仅供参考。</p> : null}
+      {previewBlocked ? <p className="schema-designer-warning">当前模板暂不可预览，请先修复关键配置。</p> : null}
       {schema.root.children.length > 0 && !previewBlocked ? (
         <div className="schema-designer-preview__surface labeler-schema-renderer-surface">
           <SchemaRenderer

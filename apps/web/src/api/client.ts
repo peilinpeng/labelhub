@@ -27,8 +27,12 @@ export async function loginWithCredentials(role: string, email: string, password
     };
     const token = data.token ?? data.accessToken;
     if (!token) throw new Error("Login succeeded but no token was returned.");
+    const authenticatedRole = data.actor?.role ?? data.user?.role;
+    if (authenticatedRole && authenticatedRole !== role) {
+      throw new Error("该账号角色与所选工作台不一致，请选择正确的账号入口。");
+    }
     localStorage.setItem("labelhub_token", token);
-    localStorage.setItem("labelhub_role", data.actor?.role ?? data.user?.role ?? role);
+    localStorage.setItem("labelhub_role", authenticatedRole ?? role);
     if (data.actor) localStorage.setItem("labelhub_actor", JSON.stringify(data.actor));
   } else {
     let message = `登录失败 (${res.status})`;

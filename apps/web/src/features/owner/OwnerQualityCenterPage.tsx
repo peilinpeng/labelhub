@@ -137,7 +137,7 @@ function QualityEventBoard({
   emptyText: string;
   error: string | null;
   variant?: "default" | "ai" | "patch";
-  secondary?: { to: string; label: string };
+  secondary?: { to?: string; label: string; disabledHint?: string };
   taskTitleOf: (taskId: string) => string | undefined;
 }) {
   return (
@@ -149,10 +149,14 @@ function QualityEventBoard({
         </div>
         <div className="quality-board__head-aside">
           <Badge tone={events.length > 0 ? "primary" : "default"}>最近 {events.length} 条</Badge>
-          {secondary ? (
+          {secondary?.to ? (
             <Link className="quality-board__link" to={secondary.to}>
               {secondary.label} →
             </Link>
+          ) : secondary ? (
+            <span className="quality-board__link quality-board__link--disabled" title={secondary.disabledHint}>
+              {secondary.label}
+            </span>
           ) : null}
         </div>
       </div>
@@ -264,7 +268,7 @@ function OwnerQualityCenterContent() {
     };
   }, []);
 
-  const resolvedTaskId = tasks[0]?.id ?? "task_news_quality";
+  const resolvedTaskId = tasks[0]?.id;
 
   const taskTitleOf = useMemo(() => {
     const byId = new Map<string, string>(tasks.map((task) => [String(task.id), task.title]));
@@ -317,7 +321,9 @@ function OwnerQualityCenterContent() {
             variant="ai"
             error={eventsError}
             emptyText="暂无 AI 质量线索。AI 预审产出或审核员处理 AI 建议后，这里会显示相关记录。"
-            secondary={{ to: `/owner/tasks/${resolvedTaskId}/ai-config`, label: "配置 AI 预审规则" }}
+            secondary={resolvedTaskId
+              ? { to: `/owner/tasks/${resolvedTaskId}/ai-config`, label: "配置 AI 预审规则" }
+              : { label: "配置 AI 预审规则", disabledHint: "请先创建任务后再配置 AI 预审规则。" }}
             taskTitleOf={taskTitleOf}
           />
         ),
@@ -364,7 +370,9 @@ function OwnerQualityCenterContent() {
             events={exportEvents.slice(0, 8)}
             error={eventsError}
             emptyText="暂无导出质量记录。生成导出任务后，这里会显示导出与质量护照线索。"
-            secondary={{ to: `/owner/tasks/${resolvedTaskId}/export`, label: "查看导出中心" }}
+            secondary={resolvedTaskId
+              ? { to: `/owner/tasks/${resolvedTaskId}/export`, label: "查看导出中心" }
+              : { label: "查看导出中心", disabledHint: "请先创建任务后再查看导出中心。" }}
             taskTitleOf={taskTitleOf}
           />
         ),

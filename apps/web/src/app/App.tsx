@@ -45,9 +45,7 @@ const shellCopy: Record<Role, { title: string; subtitle: string; navItems: Shell
     navItems: [
       { label: "任务管理", path: RoutePath.OWNER_TASKS, end: true },
       { label: "新建任务", path: RoutePath.OWNER_TASKS_NEW },
-      { label: "模板搭建", path: "/owner/tasks/task_news_quality/designer" },
-      { label: "AI 预审规则", path: "/owner/tasks/task_news_quality/ai-config" },
-      { label: "导出中心", path: "/owner/tasks/task_news_quality/export" },
+      { label: "AI 预审规则", path: RoutePath.OWNER_AI_CONFIG },
       { label: "质量中心", path: "/owner/quality" },
     ],
   },
@@ -244,6 +242,7 @@ function AppRoutes({ role }: { role: Role }) {
     <Routes>
       <Route path={RoutePath.OWNER_TASKS} element={<OwnerWorkspace role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_NEW} element={<OwnerNewTaskPage role={role} />} />
+      <Route path={RoutePath.OWNER_AI_CONFIG} element={<OwnerAIPage role={role} />} />
       <Route path={RoutePath.OWNER_TASK_DETAIL} element={<OwnerTaskDetailPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_DATASET} element={<OwnerDatasetPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_DESIGNER} element={<OwnerSchemaPage role={role} />} />
@@ -275,25 +274,38 @@ function AppRoutes({ role }: { role: Role }) {
 function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [role, setRole] = useState<Role | null>(() => inferRoleFromPath(location.pathname));
+  const [role, setRole] = useState<Role | null>(() => {
+    const token = localStorage.getItem("labelhub_token");
+    const storedRole = localStorage.getItem("labelhub_role") as Role | null;
+    return token && storedRole ? storedRole : null;
+  });
 
   const handleRoleSelect = async (nextRole: Role, email: string, password: string): Promise<void> => {
-    try {
-      await loginWithCredentials(nextRole, email, password);
-    } catch (error) {
-      console.warn("Login API unavailable, entering workspace with local session.", error);
-      localStorage.setItem("labelhub_role", nextRole);
-    }
+    await loginWithCredentials(nextRole, email, password);
     setRole(nextRole);
     navigate(roleHome[nextRole]);
   };
 
   useEffect(() => {
     const routeRole = inferRoleFromPath(location.pathname);
-    if (routeRole && routeRole !== role) {
-      setRole(routeRole);
+    const token = localStorage.getItem("labelhub_token");
+    const storedRole = localStorage.getItem("labelhub_role") as Role | null;
+
+    if (routeRole && (!token || !storedRole)) {
+      setRole(null);
+      navigate(RoutePath.HOME, { replace: true });
+      return;
     }
-  }, [location.pathname, role]);
+
+    if (routeRole && storedRole && routeRole !== storedRole) {
+      navigate(roleHome[storedRole], { replace: true });
+      return;
+    }
+
+    if (routeRole && storedRole && storedRole !== role) {
+      setRole(storedRole);
+    }
+  }, [location.pathname, navigate, role]);
 
   if (location.pathname === RoutePath.HOME) {
     return (
@@ -322,6 +334,7 @@ function App() {
       onSwitchRole={() => {
         localStorage.removeItem("labelhub_token");
         localStorage.removeItem("labelhub_role");
+        localStorage.removeItem("labelhub_actor");
         setRole(null);
         navigate(RoutePath.HOME);
       }}

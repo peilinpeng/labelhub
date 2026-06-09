@@ -10,13 +10,24 @@ export interface FieldPropertyPanelProps {
 
 export function FieldPropertyPanel({ node, readonly, onPatch }: FieldPropertyPanelProps) {
   const placeholder = "placeholder" in node ? node.placeholder ?? "" : "";
+  const nameMissing = node.name.trim().length === 0;
 
   return (
     <section>
       <h3>字段属性</h3>
       <label>
-        保存字段
-        <input disabled={readonly} value={node.name} onChange={(event) => onPatch({ name: event.target.value } as Partial<SchemaNode>)} />
+        <span>字段名称 <b className="schema-property-required">*</b></span>
+        <input
+          aria-invalid={nameMissing}
+          disabled={readonly}
+          value={node.name}
+          onChange={(event) => onPatch({ name: event.target.value } as Partial<SchemaNode>)}
+        />
+        {nameMissing ? <small className="schema-property-error">字段名称用于保存标注结果，不能为空。</small> : null}
+      </label>
+      <label>
+        <span>字段类型 <b className="schema-property-required">*</b></span>
+        <input disabled readOnly value={fieldTypeLabel(node.type)} />
       </label>
       <label>
         <input
@@ -66,4 +77,20 @@ export function FieldPropertyPanel({ node, readonly, onPatch }: FieldPropertyPan
       </label>
     </section>
   );
+}
+
+function fieldTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    "input.text": "单行文本",
+    "input.textarea": "多行文本",
+    "input.richtext": "富文本",
+    "choice.radio": "单选",
+    "choice.checkbox": "多选",
+    "choice.select": "下拉选择",
+    "choice.tags": "标签",
+    "upload.file": "文件上传",
+    "upload.image": "图片上传",
+    "data.json": "JSON 数据",
+  };
+  return labels[type] ?? type;
 }

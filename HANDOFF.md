@@ -11,6 +11,77 @@
 
 ---
 
+## 2026-06-09 最新状态（优先于下方旧记录）
+
+- 当前分支：`fix/joint-test-web-shell`
+- 当前基线：`origin/integration/joint-test @ 8881866`
+- 工作区：dirty，未 commit / 未 push。
+- 本轮累计修改前端入口、Owner AI 预审配置页与 Owner 模板搭建页：
+  - `apps/web/src/app/App.tsx`
+  - `apps/web/src/app/routes.tsx`
+  - `apps/web/src/features/owner/OwnerAIPage.tsx`
+  - `apps/web/src/features/owner/OwnerSchemaPage.tsx`
+  - `apps/web/src/styles.css`
+- 修复内容：
+  - 移除侧栏中写死的 `task_news_quality` 任务链接。
+  - 增加通用 `/owner/ai-config` 入口，页面从真实任务列表选择任务。
+  - AI 预审配置的读取、创建、更新均使用当前选中的真实任务 ID。
+  - 兼容旧 seed 中的 `autoPass` / `autoReturn` 阈值结构。
+  - 无任务、无配置和接口失败均显示明确状态，不再闪回首页。
+  - 登录失败不再创建本地角色会话；错误密码停留在登录弹窗并显示后端错误。
+  - 无 token 的角色深链路会返回登录页，账号角色与所选入口不一致时拒绝进入。
+  - Owner 模板搭建页顶部说明压缩为一句；画布节点改为左侧名称与保存字段、右侧类型 badge。
+  - 实时预览改为顶部按钮触发的 SchemaRenderer 弹层，默认不再占据右侧底部。
+  - Schema 发布请求改为携带保存接口返回的真实 `schemaDraftRevision`；本地自检失败时不发请求，422、服务不可用和任务发布前置条件均转换为人话提示。
+  - 模板已发布但任务发布被数据集 / AI 预审前置条件阻断时，模板搭建页提示卡直接显示“去导入数据集”或“去配置 AI 预审”入口。
+  - 质量中心改为桌面四列 KPI 和等高 2×2 看板；AI 配置跳转使用通用入口，无任务时导出入口显示禁用提示。
+- 本地真实服务：
+  - Web：`http://localhost:5180/`
+  - API：`http://127.0.0.1:3000/`
+  - API health 已返回 200。
+  - 本地 SQLite：`.storage/labelhub-local.db`
+- 真实接口链已验证通过：
+  - 登录
+  - 创建任务
+  - 保存 Schema 草稿
+  - 上传并导入数据集
+  - 创建并读取 ReviewConfig
+  - 发布 Schema
+  - 发布任务，最终状态 `PUBLISHED`
+  - 验证产生的 3 条乱码测试任务及其关联数据已从本地数据库清理。
+- 浏览器验证：
+  - `owner@labelhub.test` / `Seed@1234` 可登录。
+  - `/owner/tasks` 能显示真实任务。
+  - `/owner/ai-config` 能显示真实任务下拉及已保存 AI 配置。
+- 验证结果：
+  - `npm.cmd --prefix apps/web run build` 通过。
+  - `npm.cmd --prefix apps/web run typecheck` 通过。
+  - `npm.cmd --prefix packages/schema-designer run typecheck` 通过。
+  - `npm.cmd --prefix packages/schema-renderer run typecheck` 通过。
+  - `git diff --check` 通过，仅有 CRLF warning。
+  - 本次追加验证：`npm.cmd --prefix apps/web run typecheck` 通过；`npm.cmd --prefix apps/web run build` 在沙箱内被 esbuild 上层目录读取权限阻断，提权重跑后通过；`git diff --check` 通过，仅有 CRLF warning。
+- Owner 模板搭建页本轮补充：
+  - 顶部统一为“返回任务 / 保存草稿 / 实时预览 / 导出 JSON / 保存并发布模板”，移除画布区重复按钮。
+  - 发布前增加可定位的配置问题列表；空模板、未命名模板、字段名、选项、组件名称等问题会在请求后端前阻断。
+  - 画布节点显示错误 badge，点击错误列表可定位节点；属性面板对组件名称、字段名称、字段类型、选项增加必填和错误提示。
+  - 加载内置或自定义预设时保留当前草稿 `schemaId` 与 `schemaDraftRevision`，避免 revision 重置为 1 导致 409。
+  - 模板检查与发布前校验统一使用 Owner 发布校验结果；成功文案改为“当前模板已通过发布前检查”，不再只检查局部结构。
+  - 画布节点统一显示完整组件类型名称，节点标题与保存字段居左，类型 badge 固定在右上角。
+  - “发布与审计记录”改为独立白色卡片和事件列表，长 ID / 错误说明限制在卡片内换行或截断。
+  - 修复 schema draft GET/PUT 响应中真实 `schemaDraftRevision` 未合并的问题；此前页面读取嵌套旧 revision，导致保存发布稳定返回 409。
+  - 内置“新闻质量标注”已在浏览器验证通过统一发布前检查。
+  - 真实 API 验证：保存草稿成功并升至 revision 3；Schema 发布接口返回 201，生成 `sv_7be367b80b7744588a379c090fc16a7f`。随后任务发布接口返回 422，明确原因为“发布前必须导入数据集（至少 1 条可领取题目）”，属于真实业务前置条件，不是模板 payload 错误。
+  - 针对此 422 前置条件，模板搭建页现在会在提示卡上直接提供 `/owner/tasks/:taskId/dataset` 入口；数据集 / AI 预审前置条件判断优先于通用 422 模板参数错误判断。
+  - Owner 模板搭建页移动端适配已补齐：
+    - 移除窄屏下各主区块的 `min-width: 760px` 和页面横向滚动。
+    - 768px 以下顶部操作改为两列，主发布按钮独占整行；预设模板改单列。
+    - SchemaDesigner 在手机端按“模板画布 → 组件物料 → 属性”纵向排列，节点操作按钮可换行。
+    - 当前模板、错误提示、审计事件和长 ID 均限制在视口内自动换行。
+    - 浏览器实测 375×812、390×844、414×896、768×1024，页面 `scrollWidth` 均未超过视口，未发现越界元素。
+- 已知边界：
+  - 当前没有 Redis / Worker，真实异步 AIReviewJob 执行仍不可用；同步 API、配置读取和任务发布不受影响。
+  - 未修改 `apps/api/`、contracts 或 schema runtime 核心逻辑。
+
 ## 0. 统一编号对照表
 
 | 统一编号 | 内容 | 状态 |

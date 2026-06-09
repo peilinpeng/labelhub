@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import type { Task } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
+import { listTasks } from "../../api/owner";
 import {
   createReviewConfig,
   getReviewConfig,
@@ -15,7 +17,11 @@ interface OwnerAIPageProps {
 
 export default function OwnerAIPage({ role }: OwnerAIPageProps) {
   void role;
-  const { taskId } = useParams<{ taskId: string }>();
+  const navigate = useNavigate();
+  const { taskId: routeTaskId } = useParams<{ taskId: string }>();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState(routeTaskId ?? "");
+  const [taskListLoading, setTaskListLoading] = useState(true);
   const [enabled, setEnabled] = useState(true);
   const [model, setModel] = useState("doubao-pro-32k");
   const [threshold, setThreshold] = useState(0.8);
@@ -31,24 +37,67 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      if (!taskId) return;
+      try {
+        setTaskListLoading(true);
+        const availableTasks = await listTasks();
+        if (cancelled) return;
+        setTasks(availableTasks);
+        setSelectedTaskId((current) => (routeTaskId ?? current) || availableTasks[0]?.id || "");
+      } catch (error) {
+        if (!cancelled) {
+          setTasks([]);
+          setOwnerNotice(error instanceof Error ? `任务列表加载失败：${error.message}` : "任务列表加载失败。");
+        }
+      } finally {
+        if (!cancelled) setTaskListLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [routeTaskId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!selectedTaskId) {
+        setLoading(false);
+        return;
+      }
       try {
         setLoading(true);
-        const config = await getReviewConfig(taskId);
+        setConfigId(null);
+        setEnabled(true);
+        setModel("doubao-pro-32k");
+        setThreshold(0.8);
+        setReturnThreshold(0.45);
+        setMaxRetries(3);
+        setPromptTemplate(defaultPromptTemplate);
+        setDimensions(defaultDimensions);
+        const config = await getReviewConfig(selectedTaskId);
         if (cancelled) return;
+        const thresholds = config.thresholds as ReviewConfigPayload["thresholds"] & {
+          autoPass?: number;
+          autoReturn?: number;
+        };
         setConfigId(config.id);
         setEnabled(config.enabled);
         setModel(config.modelPolicyId);
         setPromptTemplate(config.promptTemplate);
         setDimensions(normalizeDimensions(config.dimensions));
-        setThreshold(Number(config.thresholds.passScore ?? 0.8));
-        setReturnThreshold(Number(config.thresholds.returnScore ?? 0.45));
+        setThreshold(Number(thresholds.passScore ?? thresholds.autoPass ?? 0.8));
+        setReturnThreshold(Number(thresholds.returnScore ?? thresholds.autoReturn ?? 0.45));
         setMaxRetries(config.maxRetries);
         setOwnerNotice(null);
       } catch (error) {
         if (!cancelled) {
           setConfigId(null);
-          setOwnerNotice(error instanceof Error ? `尚未读取到已保存配置：${error.message}` : "尚未读取到已保存配置。");
+          const message = error instanceof Error ? error.message : "";
+          setOwnerNotice(
+            message.includes("404") || message.includes("尚未配置")
+              ? "该任务尚未配置 AI 预审，可填写下方规则后保存。"
+              : `AI 预审配置读取失败：${message || "请稍后重试。"}`,
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -57,7 +106,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [taskId]);
+  }, [selectedTaskId]);
 
   const payload = useMemo<ReviewConfigPayload>(() => ({
     enabled,
@@ -77,12 +126,12 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
   }), [dimensions, enabled, maxRetries, model, promptTemplate, returnThreshold, threshold]);
 
   const saveSettings = async () => {
-    if (!taskId) return;
+    if (!selectedTaskId) return;
     try {
       setSaving(true);
       const saved = configId
-        ? await updateReviewConfig(taskId, payload)
-        : await createReviewConfig(taskId, payload);
+        ? await updateReviewConfig(selectedTaskId, payload)
+        : await createReviewConfig(selectedTaskId, payload);
       setConfigId(saved.id);
       setOwnerNotice("AI 预审配置已保存。标注员提交后会进入异步预审队列，预审结果再流转给审核员。");
     } catch (error) {
@@ -91,6 +140,8 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
       setSaving(false);
     }
   };
+
+  const selectedTask = tasks.find((task) => task.id === selectedTaskId);
 
   return (
     <div className="page-stack">
@@ -104,16 +155,43 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
         </Link>
       </div>
 
+      <Card className="soft-panel">
+        <label className="field-label">
+          配置任务
+          <Select
+            value={selectedTaskId}
+            disabled={taskListLoading || tasks.length === 0}
+            onChange={(event) => {
+              const nextTaskId = event.target.value;
+              setSelectedTaskId(nextTaskId);
+              navigate(`/owner/tasks/${nextTaskId}/ai-config`);
+            }}
+          >
+            {tasks.length === 0 ? <option value="">暂无可配置任务</option> : null}
+            {tasks.map((task) => (
+              <option key={task.id} value={task.id}>{task.title}</option>
+            ))}
+          </Select>
+        </label>
+        {!taskListLoading && tasks.length === 0 ? (
+          <p className="page-subtitle">请先创建任务草稿，再为该任务配置 AI 预审规则。</p>
+        ) : null}
+      </Card>
+
       <div className="split-layout">
         <Card className="soft-panel owner-ai-settings-card">
           <div className="form-stack">
             <div className="page-actions">
               <Badge tone={enabled ? "success" : "warning"}>{enabled ? "已开启" : "未开启"}</Badge>
-              <Badge tone="primary">任务 {taskId}</Badge>
+              <Badge tone="primary">{selectedTask?.title ?? "未选择任务"}</Badge>
               <Badge tone={configId ? "success" : "warning"}>{configId ? "已保存配置" : "待创建配置"}</Badge>
             </div>
             {loading ? <p className="page-subtitle">正在读取任务 AI 预审配置...</p> : null}
-            <Button tone={enabled ? "success" : "primary"} onClick={() => setEnabled((value) => !value)}>
+            <Button
+              tone={enabled ? "success" : "primary"}
+              disabled={!selectedTaskId}
+              onClick={() => setEnabled((value) => !value)}
+            >
               {enabled ? "关闭 AI 预审" : "开启 AI 预审"}
             </Button>
             <label className="field-label">
@@ -201,10 +279,14 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
               <span>审核员复核 / 终审</span>
               <span>通过入库 / 打回修改</span>
             </div>
-            <Button tone="primary" onClick={() => void saveSettings()} disabled={saving || loading}>
+            <Button tone="primary" onClick={() => void saveSettings()} disabled={saving || loading || !selectedTaskId}>
               {saving ? "保存中..." : "保存配置"}
             </Button>
-            {ownerNotice ? <Badge tone={ownerNotice.startsWith("保存失败") ? "danger" : "success"}>{ownerNotice}</Badge> : null}
+            {ownerNotice ? (
+              <Badge tone={ownerNotice.includes("失败") ? "danger" : ownerNotice.includes("尚未配置") ? "warning" : "success"}>
+                {ownerNotice}
+              </Badge>
+            ) : null}
           </div>
         </Card>
 
@@ -248,6 +330,7 @@ const defaultPromptTemplate = `你是 LabelHub 的 AI 预审 Agent。
 function normalizeDimensions(value: ReviewConfigPayload["dimensions"]): ReviewConfigPayload["dimensions"] {
   return value.length > 0 ? value.map((item) => ({
     ...item,
+    description: item.description ?? "",
     scoreRange: item.scoreRange ?? [0, 1],
   })) : defaultDimensions;
 }
