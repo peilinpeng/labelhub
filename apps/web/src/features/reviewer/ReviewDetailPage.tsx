@@ -5,7 +5,7 @@ import { queryAuditEvents } from "../../api/audit";
 import { claimReview, decideReview, getReviewDetail } from "../../api/reviewer";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
-import { Badge, Button, Card, Textarea } from "../../ui/primitives";
+import { Badge, Button, Card, Input, Select, Textarea } from "../../ui/primitives";
 import type { AuditEventRecord, ReviewDecisionRequest, ReviewDetailResponse, ReviewPatch } from "@labelhub/contracts";
 import { AiAssistPanel } from "./AiAssistPanel";
 import {
@@ -57,10 +57,11 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const [deciding, setDeciding] = useState(false);
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<ReviewDecision | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>(submissionId ? [submissionId] : []);
+  const selectedIds = submissionId ? [submissionId] : [];
   const [aiReviewFeedback, setAiReviewFeedback] = useState<AiReviewFeedback>("NOT_USED");
-  const [correctedAnswersText, setCorrectedAnswersText] = useState("");
-  const [correctedAnswersParseError, setCorrectedAnswersParseError] = useState<string | null>(null);
+  // 字段级修订：维护一个修订后的答案对象（按字段编辑），提交时与原答案做 shallow diff 生成 patches。
+  const [correctedAnswers, setCorrectedAnswers] = useState<Record<string, unknown>>({});
+  const [queueOpen, setQueueOpen] = useState(false);
   const [auditEvents, setAuditEvents] = useState<AuditEventRecord[]>([]);
   const [auditEventsError, setAuditEventsError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -99,8 +100,9 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
 
   useEffect(() => {
     if (detail) {
-      setCorrectedAnswersText(JSON.stringify(detail.submission.answers ?? {}, null, 2));
-      setCorrectedAnswersParseError(null);
+      // 深拷贝当前提交答案作为修订初值，避免直接改动原对象。
+      const source = detail.submission.answers ?? {};
+      setCorrectedAnswers(JSON.parse(JSON.stringify(source)) as Record<string, unknown>);
     }
   }, [detail]);
 
@@ -137,35 +139,17 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         : [],
     [aiResult],
   );
-  const previewPatches = useMemo<ReviewPatch[]>(() => {
-    try {
-      const parsed = JSON.parse(correctedAnswersText) as unknown;
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return [];
-      return computeReviewPatches(answers, parsed as Record<string, unknown>);
-    } catch {
-      return [];
-    }
-  }, [answers, correctedAnswersText]);
+  const previewPatches = useMemo<ReviewPatch[]>(
+    () => computeReviewPatches(answers, correctedAnswers),
+    [answers, correctedAnswers],
+  );
 
   const handleDecision = async (decision: ReviewDecision) => {
     if (!submissionId || !detail) return;
 
-    // 解析修正答案并计算 patches
-    let patches: ReturnType<typeof computeReviewPatches> = [];
-    let parsedCorrectedAnswers: Record<string, unknown> = {};
-    try {
-      const parsed: unknown = JSON.parse(correctedAnswersText);
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        setCorrectedAnswersParseError("修正答案必须是 JSON 对象，无法提交。");
-        return;
-      }
-      parsedCorrectedAnswers = parsed as Record<string, unknown>;
-      patches = computeReviewPatches(answers, parsedCorrectedAnswers);
-      setCorrectedAnswersParseError(null);
-    } catch {
-      setCorrectedAnswersParseError("修正答案 JSON 格式不正确，无法提交。");
-      return;
-    }
+    // 字段级修订直接对比原答案与修订对象生成 patches（无需解析 JSON 文本）。
+    const parsedCorrectedAnswers: Record<string, unknown> = correctedAnswers;
+    const patches = computeReviewPatches(answers, parsedCorrectedAnswers);
 
     try {
       setDeciding(true);
@@ -280,45 +264,39 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
 
   return (
     <div className="review-human-page">
-      <Card className="review-human-list">
-        <div className="review-human-tabs">
-          <button className="review-human-tab review-human-tab--active" type="button">当前详情</button>
-        </div>
-        <div className="review-human-batch">
-          <label>
-            <input
-              type="checkbox"
-              checked={selectedIds.length > 0}
-              onChange={(event) => setSelectedIds(event.target.checked ? [detail.submission.id] : [])}
-            />
-            已选 {selectedIds.length} 条
-          </label>
-          <button type="button" disabled title="批量操作请在审核队列页选择已领取项后执行">批量通过</button>
-          <button type="button" disabled title="批量操作请在审核队列页选择已领取项后执行">批量打回</button>
-        </div>
-        <div className="review-human-queue">
-          {queueItems.map((item) => (
-            <Link
-              className={item.id === detail.submission.id ? "review-human-queue-item review-human-queue-item--active" : "review-human-queue-item"}
-              key={item.id}
-              to={`/reviewer/items/${item.id}`}
-              title={`提交 ${item.id}`}
-            >
-              <span>
-                <input checked={item.id === detail.submission.id} readOnly type="checkbox" />
-                {item.taskTitle}
-              </span>
-              <strong>{item.title}</strong>
-              <small>
-                <Badge tone="warning">{item.recommendation}</Badge>
-              </small>
-            </Link>
-          ))}
-          {queueItems.length === 0 ? <div className="empty-state">暂无队列摘要</div> : null}
-        </div>
-      </Card>
-
       <main className="review-human-main">
+        <Card className="review-human-queue-bar">
+          <button
+            type="button"
+            className="review-human-queue-bar__toggle"
+            aria-expanded={queueOpen}
+            onClick={() => setQueueOpen((open) => !open)}
+          >
+            <span className="review-human-queue-bar__title">审核队列</span>
+            <span className="review-human-queue-bar__meta">已选 {selectedIds.length} 条 · 共 {queueItems.length} 条</span>
+            <span className="review-human-queue-bar__chevron">{queueOpen ? "收起 ▲" : "展开 ▼"}</span>
+          </button>
+          {queueOpen ? (
+            <div className="review-human-queue">
+              {queueItems.map((item) => (
+                <Link
+                  className={item.id === detail.submission.id ? "review-human-queue-item review-human-queue-item--active" : "review-human-queue-item"}
+                  key={item.id}
+                  to={`/reviewer/items/${item.id}`}
+                  title={`提交 ${item.id}`}
+                >
+                  <span>{item.taskTitle}</span>
+                  <strong>{item.title}</strong>
+                  <small>
+                    <Badge tone="warning">{item.recommendation}</Badge>
+                  </small>
+                </Link>
+              ))}
+              {queueItems.length === 0 ? <div className="empty-state">暂无队列摘要</div> : null}
+            </div>
+          ) : null}
+        </Card>
+
         <Card className="review-human-title-card">
           <section className="review-human-heading">
             <div className="review-human-heading__title" title={`提交 ${detail.submission.id} · 题目 ${detail.item.id}`}>
@@ -429,37 +407,17 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         />
 
         <Card className="review-human-corrected-answers">
-          <h3>审核修正答案</h3>
+          <h3>字段级修订</h3>
           <p className="review-human-corrected-answers__desc">
-            审核员可以在这里修改标注答案；系统会在提交审核时生成字段级修订记录。
+            审核员可以按字段修改提交内容，系统会在通过时生成字段级修订记录。
           </p>
-          <label className="review-human-corrected-answers__label">
-            <span>修正后的答案（JSON 格式）</span>
-            <Textarea
-              className="review-human-corrected-answers__textarea"
-              rows={8}
-              value={correctedAnswersText}
-              onChange={(event) => {
-                const text = event.target.value;
-                setCorrectedAnswersText(text);
-                try {
-                  const parsed: unknown = JSON.parse(text);
-                  setCorrectedAnswersParseError(
-                    typeof parsed !== "object" || parsed === null || Array.isArray(parsed)
-                      ? "必须是 JSON 对象"
-                      : null,
-                  );
-                } catch {
-                  setCorrectedAnswersParseError("JSON 格式不正确");
-                }
-              }}
-            />
-          </label>
-          {correctedAnswersParseError !== null && (
-            <p className="danger-text review-human-corrected-answers__error">{correctedAnswersParseError}</p>
-          )}
+          <FieldCorrectionPanel
+            original={answers}
+            corrected={correctedAnswers}
+            onChange={setCorrectedAnswers}
+          />
           <div className="review-human-diff-preview">
-            <strong>本轮 diff 预览（{previewPatches.length}）</strong>
+            <strong>本轮修订（{previewPatches.length}）</strong>
             {previewPatches.length > 0 ? (
               <ul>
                 {previewPatches.map((patch) => (
@@ -471,6 +429,10 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               </ul>
             ) : <p>当前未产生字段修订。</p>}
           </div>
+          <details className="review-human-advanced">
+            <summary>高级：查看原始结构</summary>
+            <pre className="review-human-advanced__json">{JSON.stringify(correctedAnswers, null, 2)}</pre>
+          </details>
         </Card>
 
         <Card className="review-human-decision-card">
@@ -492,22 +454,22 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               </button>
             ))}
           </div>
-
-          <div className="review-human-decisions">
-            <Button tone="danger" onClick={() => requestDecision("RETURN")} disabled={deciding}>
-              打回修改
-              <span>返回标注员 · 第 3 轮</span>
-            </Button>
-            <Button disabled={deciding} onClick={() => requestDecision("PASS")}>
-              保存修订并通过
-              <span>生成 diff 后入库</span>
-            </Button>
-            <Button tone="success" onClick={() => requestDecision("PASS")} disabled={deciding}>
-              通过入库
-              <span>进入可导出数据</span>
-            </Button>
-          </div>
         </Card>
+
+        <div className="review-human-actionbar">
+          <Button tone="danger" onClick={() => requestDecision("RETURN")} disabled={deciding}>
+            打回修改
+            <span>返回标注员重新提交</span>
+          </Button>
+          <Button disabled={deciding} onClick={() => requestDecision("PASS")}>
+            保存修订并通过
+            <span>生成修订后入库</span>
+          </Button>
+          <Button tone="success" onClick={() => requestDecision("PASS")} disabled={deciding}>
+            通过入库
+            <span>进入可导出数据</span>
+          </Button>
+        </div>
       </main>
 
       <aside className="review-human-aside">
@@ -566,4 +528,118 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
       />
     </div>
   );
+}
+
+// 字段类型判定：决定行内编辑器形态。复杂对象/嵌套数组只读，避免在审核界面塞大 JSON。
+type FieldKind = "boolean" | "number" | "string" | "array" | "complex";
+
+function classifyField(value: unknown): FieldKind {
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "number") return "number";
+  if (typeof value === "string") return "string";
+  if (Array.isArray(value)) {
+    return value.every((item) => typeof item === "string" || typeof item === "number") ? "array" : "complex";
+  }
+  return "complex";
+}
+
+// 字段级修订面板：逐字段展示「当前值」并提供与原类型一致的修订输入，
+// 写回 correctedAnswers 后由 computeReviewPatches 生成 patches，不暴露 raw JSON、不改 API。
+function FieldCorrectionPanel({
+  original,
+  corrected,
+  onChange,
+}: {
+  original: Record<string, unknown>;
+  corrected: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+}) {
+  const keys = Object.keys(original);
+  if (keys.length === 0) {
+    return <div className="empty-state">本次提交暂无可修订字段。</div>;
+  }
+  const setField = (key: string, value: unknown) => onChange({ ...corrected, [key]: value });
+
+  return (
+    <div className="review-correction">
+      {keys.map((key) => {
+        const kind = classifyField(original[key]);
+        const current = original[key];
+        const value = corrected[key];
+        const changed = JSON.stringify(current) !== JSON.stringify(value);
+        return (
+          <div
+            className={changed ? "review-correction__row review-correction__row--changed" : "review-correction__row"}
+            key={key}
+          >
+            <div className="review-correction__field">{key}</div>
+            <div className="review-correction__current">
+              <span className="review-correction__tag">当前值</span>
+              <span className="review-correction__value">{valueText(current)}</span>
+            </div>
+            <div className="review-correction__edit">
+              <span className="review-correction__tag">修订值</span>
+              <FieldEditor kind={kind} value={value} onChange={(next) => setField(key, next)} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FieldEditor({
+  kind,
+  value,
+  onChange,
+}: {
+  kind: FieldKind;
+  value: unknown;
+  onChange: (next: unknown) => void;
+}) {
+  if (kind === "boolean") {
+    return (
+      <Select value={value === true ? "true" : "false"} onChange={(event) => onChange(event.target.value === "true")}>
+        <option value="true">是</option>
+        <option value="false">否</option>
+      </Select>
+    );
+  }
+  if (kind === "number") {
+    return (
+      <Input
+        type="number"
+        value={value === undefined || value === null ? "" : String(value)}
+        onChange={(event) => {
+          const text = event.target.value;
+          onChange(text === "" ? "" : Number(text));
+        }}
+      />
+    );
+  }
+  if (kind === "array") {
+    const arr = Array.isArray(value) ? value : [];
+    const numeric = arr.length > 0 && arr.every((item) => typeof item === "number");
+    return (
+      <Textarea
+        rows={Math.min(4, Math.max(2, arr.length))}
+        value={arr.map((item) => String(item)).join("\n")}
+        onChange={(event) => {
+          const items = event.target.value
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0);
+          onChange(numeric ? items.map((item) => Number(item)) : items);
+        }}
+      />
+    );
+  }
+  if (kind === "complex") {
+    return <div className="review-correction__readonly">复杂结构，请用下方「高级」查看，暂不支持行内编辑。</div>;
+  }
+  const text = value === undefined || value === null ? "" : String(value);
+  if (text.length > 60) {
+    return <Textarea rows={3} value={text} onChange={(event) => onChange(event.target.value)} />;
+  }
+  return <Input value={text} onChange={(event) => onChange(event.target.value)} />;
 }

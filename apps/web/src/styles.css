@@ -7525,30 +7525,28 @@ a {
 }
 
 .review-human-page {
-  /* 响应式三列：两侧带上下限、中栏可收缩到 0，避免 1280×800 下横向溢出 */
-  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr) minmax(220px, 280px);
+  /* 两栏：主审核区优先获得宽度，右侧审计/统计栏次之。
+     审核队列折叠进主区顶部，不再单独占一列，避免主内容被压成窄条。 */
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
   align-items: start;
-  gap: 14px;
+  gap: 16px;
 }
 
-.review-human-list,
 .review-human-main,
 .review-human-aside {
   max-height: calc(100vh - 104px);
   overflow: auto;
 }
 
-/* 笔记本中等宽度（13/14 寸常见为 1280–1440，且左侧导航占约 300px，
-   内容区实宽常不足 1000px）：右侧审计栏下沉为整行，主审核列不再被压成窄条；
-   各列恢复自然高度，由页面整体滚动，避免三栏各自滚动的割裂感。 */
-@media (max-width: 1440px) {
+/* 笔记本/窄屏（13/14 寸去掉左侧导航后内容区常不足 1000px）：
+   右侧审计栏下沉为整行，主审核区占满整宽；列恢复自然高度，由页面整体滚动。 */
+@media (max-width: 1280px) {
   .review-human-page {
-    grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
   .review-human-aside {
     grid-column: 1 / -1;
   }
-  .review-human-list,
   .review-human-main,
   .review-human-aside {
     max-height: none;
@@ -7647,6 +7645,195 @@ a {
   white-space: nowrap;
 }
 
+/* 审核队列折叠条：默认一行（标题 + 计数 + 展开/收起），点击展开队列列表 */
+.review-human-queue-bar {
+  padding: 12px 16px;
+}
+
+.review-human-queue-bar__toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--lh-text);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: left;
+}
+
+.review-human-queue-bar__title {
+  flex: 0 0 auto;
+}
+
+.review-human-queue-bar__meta {
+  flex: 1 1 auto;
+  color: var(--lh-muted);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.review-human-queue-bar__chevron {
+  flex: 0 0 auto;
+  color: var(--lh-primary);
+  font-weight: 800;
+}
+
+.review-human-queue-bar .review-human-queue {
+  margin: 12px -16px -12px;
+  border-top: 1px solid var(--lh-border);
+}
+
+/* 字段级修订面板：字段名 / 当前值 / 修订值，清晰行结构，长文本安全换行 */
+.review-correction {
+  display: grid;
+  gap: 10px;
+}
+
+.review-correction__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 200px) minmax(0, 1fr);
+  grid-template-areas:
+    "field current"
+    "field edit";
+  gap: 6px 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--lh-border);
+  border-radius: 14px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.review-correction__row--changed {
+  border-color: rgba(37, 99, 235, 0.4);
+  background: #eff6ff;
+}
+
+.review-correction__field {
+  grid-area: field;
+  align-self: start;
+  font-size: 13px;
+  font-weight: 800;
+  color: #1e293b;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.review-correction__current {
+  grid-area: current;
+}
+
+.review-correction__edit {
+  grid-area: edit;
+}
+
+.review-correction__current,
+.review-correction__edit {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.review-correction__tag {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--lh-muted);
+}
+
+.review-correction__value {
+  font-size: 13px;
+  color: #475569;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.review-correction__readonly {
+  padding: 8px 10px;
+  border: 1px dashed var(--lh-border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  color: var(--lh-muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.review-correction__edit input,
+.review-correction__edit select,
+.review-correction__edit textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .review-correction__row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "field"
+      "current"
+      "edit";
+  }
+}
+
+/* 高级：原始结构（默认收起，raw JSON 不再作为主流程） */
+.review-human-advanced {
+  padding: 8px 12px;
+  border: 1px solid var(--lh-border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.review-human-advanced > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--lh-muted);
+}
+
+.review-human-advanced__json {
+  margin: 10px 0 0;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 底部固定操作栏：打回 / 保存修订并通过 / 通过入库 */
+.review-human-actionbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--lh-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.06);
+  box-sizing: border-box;
+}
+
+.review-human-actionbar .lh-button {
+  flex: 1 1 180px;
+  display: grid;
+  gap: 4px;
+  min-height: 56px;
+  justify-items: center;
+}
+
+.review-human-actionbar .lh-button span {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
 .review-human-main {
   display: grid;
   align-content: start;
@@ -7665,6 +7852,17 @@ a {
 
 .review-human-title-card {
   padding: 16px;
+}
+
+/* 审核详情各卡片统一内边距，避免标题 / 内容贴着卡片边框 */
+.review-human-compare-card,
+.review-human-ai,
+.review-human-corrected-answers,
+.review-human-decision-card,
+.review-human-metrics,
+.review-human-timeline {
+  padding: 16px 18px;
+  box-sizing: border-box;
 }
 
 .review-human-compare-card dl {
