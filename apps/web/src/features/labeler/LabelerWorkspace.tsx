@@ -123,5 +123,6 @@ function distributionLabel(type: Task["distributionStrategy"]["type"]): string {
 
 function isPlaceholderTask(task: Task): boolean {
   const text = `${task.id} ${task.title} ${task.description ?? ""}`;
-  return /task_news_quality|task_product_title|新闻质量标注|商品标题清洗|商品标题清洗 v3|\bDemo\s*[A-Z]\b|Breaking Change|Deprecated|安全发布|破坏性模板调整|发布前检查会阻断|字段进入废弃流程/i.test(text);
+  // 仅隐藏自动化测试 / 压测产生的脏任务；真实任务与演示任务（含举办方数据集）正常展示。
+  return /E2E测试|端到端测试|并发测试|压力测试|压测|烟雾测试|冒烟测试|smoke[\s_-]*test/i.test(text);
 }
