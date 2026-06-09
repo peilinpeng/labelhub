@@ -7714,6 +7714,129 @@ a {
   white-space: pre-wrap;
 }
 
+/* ---- Reviewer AI Assist 一键采纳面板 ---- */
+.review-ai-assist {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.review-ai-assist__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-ai-assist__eyebrow {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lh-primary);
+}
+
+.review-ai-assist__head h3 {
+  margin: 4px 0 2px;
+  font-size: 16px;
+}
+
+.review-ai-assist__head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.review-ai-assist__error {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.review-ai-assist__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.review-ai-assist__item {
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 12px;
+  padding: 14px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-ai-assist__item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.review-ai-assist__tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.review-ai-assist__summary {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.review-ai-assist__diff {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-ai-assist__diff-row {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr) auto minmax(0, 1.4fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.review-ai-assist__diff-row strong {
+  color: #1e293b;
+}
+
+.review-ai-assist__next {
+  color: #047857;
+  font-weight: 700;
+}
+
+.review-ai-assist__notice {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.review-ai-assist__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.review-ai-assist__resolved {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 700;
+}
+
 .review-human-corrected-answers h3 {
   margin-bottom: 6px;
   font-size: 14px;

@@ -7,6 +7,7 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import type { AuditEventRecord, ReviewDecisionRequest, ReviewDetailResponse, ReviewPatch } from "@labelhub/contracts";
+import { AiAssistPanel } from "./AiAssistPanel";
 import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-display";
 import { computeReviewPatches } from "./reviewer-diff";
 import {
@@ -56,6 +57,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const [correctedAnswersParseError, setCorrectedAnswersParseError] = useState<string | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEventRecord[]>([]);
   const [auditEventsError, setAuditEventsError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const startedAuditSubmissionIdsRef = useRef<Set<string>>(new Set());
   const reviewOpenedAtMsRef = useRef(Date.now());
 
@@ -75,7 +77,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         setLoading(false);
       }
     })();
-  }, [submissionId]);
+  }, [submissionId, refreshTick]);
 
   useEffect(() => {
     setAiReviewFeedback("NOT_USED");
@@ -116,7 +118,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [submissionId]);
+  }, [submissionId, refreshTick]);
 
   const aiResult = detail?.aiResult?.aiResult;
   const aiTrace = (detail as ReviewDetailWithTrace | null)?.aiTrace;
@@ -413,6 +415,11 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
             </fieldset>
           ) : null}
         </Card>
+
+        <AiAssistPanel
+          submissionId={detail.submission.id}
+          onActionApplied={() => setRefreshTick((tick) => tick + 1)}
+        />
 
         <Card className="review-human-corrected-answers">
           <h3>审核修正答案</h3>

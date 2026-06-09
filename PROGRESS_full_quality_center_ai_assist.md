@@ -6,7 +6,23 @@
 ---
 
 ## 当前阶段
-阶段 4（Mock）已完成，准备进入阶段 5（前端 Reviewer AI Assist）。
+阶段 5（前端 Reviewer AI Assist）已完成，准备进入阶段 6（Full Quality Center）。
+
+### 阶段 5 已完成
+- 新增 `apps/web/src/api/ai-assist.ts`：`listAiAssistSuggestions` / `submitAiAssistAction`。
+- 新增 `apps/web/src/features/reviewer/AiAssistPanel.tsx`：
+  - 加载建议、展示 severity/confidence/摘要/字段级 diff/状态。
+  - 按钮文案严格对齐：「一键采纳」「编辑后采纳」「忽略建议」；状态 chip「已采纳/已忽略/编辑后采纳/应用失败/待处理」。
+  - 真实调用后端接口；成功后建议状态更新、按钮区切换为「已处理」文案；`status !== PENDING` 时不可再操作（杜绝重复采纳）。
+  - 失败统一显示「操作失败，请稍后重试」。
+  - 「编辑后采纳」：内联 textarea 编辑各字段 → 确认采纳走 `edit_accept`（无补丁时禁用）。
+  - 不展示原始 event code / payload / raw JSON。
+- `ReviewDetailPage.tsx`：挂载面板，`onActionApplied` 通过 `refreshTick` 重新拉取审核详情 + 审计时间线（采纳后答案/审计实时刷新）。
+- `styles.css`：新增 `.review-ai-assist*` 样式。
+
+### 阶段 5 测试结果
+- `cd apps/web && npm run typecheck`：通过。
+- `cd apps/web && npm run build`：成功（仅既有 vendor circular chunk 警告，非错误）。
 
 ### 阶段 4 已完成
 - `apps/web/src/mocks/data/reviews.mock.ts`：为 4 条 AI 预审结果的 fieldIssues 补 `suggestion`（复用 contracts 既有可选字段），使派生建议带真实结构化补丁，便于演示一键采纳真正改写答案。
