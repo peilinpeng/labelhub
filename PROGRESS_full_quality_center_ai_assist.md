@@ -6,7 +6,25 @@
 ---
 
 ## 当前阶段
-阶段 6（Full Quality Center）已完成，准备进入阶段 7（全量验证收口）。
+阶段 7（全量验证收口）已完成。全部 7 阶段闭环完成。
+
+### 阶段 7 已完成（全量验证）
+- 根 `npm run typecheck`：全部 6 包通过。
+- 测试：contracts 84 / schema-core 142 / schema-compiler 31 / schema-renderer 67 / workflow-core 29 全部通过；schema-designer 5 failed（基线既有，与本次无关）。
+- `apps/web`：typecheck + build 成功。
+- 后端 `pytest -m "not integration"`：165 passed。
+- `git diff --check`：无空白错误。
+- **浏览器端到端冒烟（MSW，端口 5180）**：
+  1. 审核员登录 → `/reviewer/items/sub_1003`，AI Assist 面板渲染 2 条待处理建议（severity/置信度/字段级 diff/按钮）。
+  2. 点击「一键采纳」→ 该建议变「已采纳」、按钮区变「已处理：已采纳」、待处理计数 2→1，无法重复采纳。
+  3. `GET /api/v1/audit-events?submissionId=sub_1003` 实时返回 `AI_ASSIST_ACCEPTED` + `AI_ASSIST_PATCH_APPLIED`（actor=REVIEWER，人话 summary）。
+  4. 任务负责人登录 → `/owner/quality`，质量中心总览 10 项真实统计（待人工审核=4 来自队列、AI 建议采纳=1 来自审计事件），6 大看板齐全；AI 看板行展示「AI 建议已采纳 | 已采纳 | 标注员 · 时间 | 任务 …」，无原始 event code / payload / raw JSON 泄漏。
+  5. 控制台无 error。
+
+### 已知/遗留
+- `schema-designer` 5 个测试在 base 分支即失败（上游既有，不在本实验目标，未改）。
+- 后端 `test_concurrency.py`（`@pytest.mark.integration`）需运行中的后端 + 真实 MySQL，本机无 → 环境依赖，非本次引入。
+- 本机 `apps/api/.venv311`（uv 建的 3.11 环境，已 gitignore）仅用于本地跑测试，不提交。
 
 ### 阶段 6 已完成
 - 重写 `apps/web/src/features/owner/OwnerQualityCenterPage.tsx` 为页内看板（非跳转入口）：
