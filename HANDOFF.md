@@ -11,6 +11,17 @@
 
 ---
 
+## 2026-06-09 P1/P2 前置修复进度（优先于下方所有记录）
+
+- **P1-1** MySQL stale connection（缺陷 #1）：已修复并推送（`create_engine` 加 `pool_pre_ping` / `pool_recycle`）。
+- **P1-2** Owner AI 预审页 Corporate Trust 视觉统一：已推送（紫/橙跳色统一为低饱和蓝，作用域限定 `.owner-ai-page`）。
+- **缺陷 #3** Schema Audit Timeline：已挂载并推送（`OwnerSchemaPage.tsx` 接入 `AuditTimelinePanel`，按 `taskId + entityType:"SCHEMA"` 读取）。
+- 当前 `HEAD = 9dbea2b`，分支 `integration/joint-test`。
+- 稳定 tag `demo-stable-p1-0609` → `09e5bf0`（P1-1 + P1-2 稳定点）。
+- 工作区干净，本地与远端已同步。
+
+---
+
 ## 2026-06-09 最新状态（优先于下方旧记录）
 
 - 当前分支：`fix/joint-test-web-shell`
