@@ -66,11 +66,13 @@ const exportFormats: Array<{
   { value: "EXCEL", title: "Excel", icon: "XLS", description: "工作簿格式，适合业务交付" },
 ];
 
+// sourcePath 必须使用 RuntimeContext 命名空间（后端 export 校验器 + worker 解析）：
+// $.item.* / $.answers（整对象）/ $.review.*（需 includeReviewRecords）。
 const defaultFields: ExportField[] = [
-  { id: "item_id", label: "数据 ID", source: "item.id", alias: "item_id", enabled: true },
-  { id: "source_payload", label: "原始数据", source: "item.sourcePayload", alias: "source_payload", enabled: true },
-  { id: "answers", label: "标注答案", source: "submission.answers", alias: "answers", enabled: true },
-  { id: "review_status", label: "审核状态", source: "submission.status", alias: "review_status", enabled: true },
+  { id: "item_id", label: "数据 ID", source: "$.item.id", alias: "item_id", enabled: true },
+  { id: "source_payload", label: "原始数据", source: "$.item.sourcePayload", alias: "source_payload", enabled: true },
+  { id: "answers", label: "标注答案", source: "$.answers", alias: "answers", enabled: true },
+  { id: "review_status", label: "审核状态", source: "$.review.latestDecision", alias: "review_status", enabled: true },
 ];
 
 export default function OwnerExportPage({ role }: OwnerExportPageProps) {

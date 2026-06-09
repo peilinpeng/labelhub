@@ -23,10 +23,19 @@ _REVIEW_STATUS_MAP = {
     "RETURNED": "RETURNED",
 }
 
+# RuntimeContext 命名空间根。sourcePath 允许是命名空间根本身（如 $.answers 整对象），
+# 或其下的具体路径（如 $.item.id）。
 _VALID_NAMESPACES = (
-    "$.task.", "$.schema.", "$.item.", "$.answers.",
-    "$.review.", "$.system.", "$.meta.",
+    "$.task", "$.schema", "$.item", "$.answers",
+    "$.review", "$.system", "$.meta",
 )
+
+
+def _is_valid_source_path(source_path: str) -> bool:
+    return any(
+        source_path == ns or source_path.startswith(ns + ".")
+        for ns in _VALID_NAMESPACES
+    )
 
 
 def _validate_mapping(mapping_json: dict) -> None:
@@ -45,7 +54,7 @@ def _validate_mapping(mapping_json: dict) -> None:
 
     for col in columns:
         source_path = col.get("sourcePath", "")
-        if not any(source_path.startswith(ns) for ns in _VALID_NAMESPACES):
+        if not _is_valid_source_path(source_path):
             raise ExportMappingInvalidException(
                 f"sourcePath {source_path!r} 不符合 RuntimeContext 命名空间规范"
             )

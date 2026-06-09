@@ -96,3 +96,28 @@ def test_get_export_records_endpoint(client, auth, db_session):
 
 def test_get_export_records_not_found(client, auth):
     assert client.get("/api/v1/exports/exp_ghost/records", headers=auth["OWNER"]).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# 导出字段映射校验（sourcePath 必须是 RuntimeContext 命名空间）
+# ---------------------------------------------------------------------------
+def test_validate_mapping_accepts_runtimecontext_paths():
+    """命名空间根（$.answers 整对象）与具体路径（$.item.id）都应通过。"""
+    export_domain._validate_mapping({
+        "format": "JSONL",
+        "columns": [
+            {"sourcePath": "$.item.id"},
+            {"sourcePath": "$.item.sourcePayload"},
+            {"sourcePath": "$.answers"},
+            {"sourcePath": "$.review.latestDecision"},
+        ],
+    })
+
+
+def test_validate_mapping_rejects_non_namespace_path():
+    """无 $. 前缀或非法命名空间（如旧的 item.id / submission.answers）应被拒。"""
+    import pytest
+    from app.middleware.error_handler import ExportMappingInvalidException
+    for bad in ("item.id", "submission.answers", "submission.status", "$.unknown.x"):
+        with pytest.raises(ExportMappingInvalidException):
+            export_domain._validate_mapping({"format": "JSONL", "columns": [{"sourcePath": bad}]})
