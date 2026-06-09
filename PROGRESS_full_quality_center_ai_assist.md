@@ -6,7 +6,26 @@
 ---
 
 ## 当前阶段
-阶段 2（Contracts）已完成，准备进入阶段 3（后端 API）。
+阶段 3（后端 API）已完成，准备进入阶段 4（Mock）。
+
+### 阶段 3 已完成
+- 新增后端表 `apps/api/app/models/ai_assist.py`（`ai_assist_actions`），记录 action + 状态 + patch 应用结果（追加只写）。
+- 新增 `apps/api/app/schemas/ai_assist.py`：镜像 contracts，`action` 用 `Literal` → 非法值自动 422。
+- 新增 `apps/api/app/services/ai_assist_domain.py`：
+  - `derive_suggestions()`：从 AI 预审结果 `fieldIssues` 派生确定性 id 建议（`aas_{submission_id}_{idx}`），状态取自最近一条 action。
+  - `apply_action()`：校验 submission/suggestion/action → 保存动作 → accept/edit_accept 带补丁时应用到 `submission.answers_json`（终态冻结则抛错转 APPLY_FAILED，绝不静默）→ emit 主审计事件 + PATCH_APPLIED/FAILED 审计事件 → 返回更新后 suggestion/action。
+- 新增路由 `apps/api/app/routers/ai_assist.py`，并在 `main.py` 注册：
+  - `GET  /api/v1/review/submissions/{submission_id}/ai-assist/suggestions`
+  - `POST /api/v1/review/submissions/{submission_id}/ai-assist/{suggestion_id}/actions`
+- `tests/conftest.py` 注册新模型。
+- 新增集成测试 `tests/integration/test_ai_assist_actions.py`（7 例，覆盖 accept/edit_accept/dismiss、补丁应用、终态失败、404、422）。
+
+### 阶段 3 测试结果
+- 本机 `.venv`（Python 3.9.6）过旧，无法运行后端（项目目标 3.11；现有 `audit_event.py` 等也用 `X|None` 裸语法）。用 `uv venv --python 3.11 apps/api/.venv311` 建 3.11 环境装 requirements。
+- `pytest tests/integration/test_ai_assist_actions.py`：7 passed。
+- 全量 `pytest -m "not integration"`：165 passed, 1 deselected。
+- 全量 `pytest`：165 passed, 1 failed —— 失败项 `test_concurrency.py::test_concurrent_claim_no_oversell` 标记 `pytest.mark.integration`，需运行中的后端 + 真实 MySQL（`localhost:3000`），本机无 → 环境依赖，非本次引入。
+- 注：`.venv311` 已被 gitignore，不会提交。
 
 ### 阶段 2 已完成
 - 新增 `packages/contracts/src/ai-assist.ts`：`AiAssistActionType` / `AiAssistSuggestionStatus` / `AiAssistPatchOperation` / `AiAssistStructuredPatch` / `AiAssistSuggestion` / `AiAssistActionRecord` / `AiAssistActionRequest` / `AiAssistActionResponse` / `ListAiAssistSuggestionsResponse`。复用 `AuditActor` / `AiAssistType` / `AuditEventType`，未重复造类型。
