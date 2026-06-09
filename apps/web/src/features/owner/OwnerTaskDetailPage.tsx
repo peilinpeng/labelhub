@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
-import { fetchTask } from "../../api/owner";
+import { fetchTask, fetchTaskStats, type TaskStats } from "../../api/owner";
 import { Badge, Card } from "../../ui/primitives";
 import { MarkdownPreview, docToMarkdown } from "../../ui/markdown";
 import type { Task } from "@labelhub/contracts";
@@ -44,6 +44,7 @@ function formatDate(value?: string | null): string {
 export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPageProps) {
   const { taskId } = useParams<{ taskId: string }>();
   const [task, setTask] = useState<Task | null>(null);
+  const [stats, setStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +62,12 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
         setLoading(false);
       }
     })();
+  }, [taskId]);
+
+  useEffect(() => {
+    if (!taskId) return;
+    // 统计是看板增强项，失败不影响任务详情主体渲染。
+    void fetchTaskStats(taskId).then(setStats).catch(() => setStats(null));
   }, [taskId]);
 
   if (loading) {
@@ -106,20 +113,20 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
       <section className="owner-task-board-grid" aria-label="任务看板">
         <Card className="owner-board-card owner-board-card--primary">
           <span>提交进度</span>
-          <strong>-</strong>
-          <p>等待后端返回真实提交统计</p>
+          <strong>{stats ? `${stats.submittedTotal}/${stats.datasetTotal}` : "-"}</strong>
+          <p>{stats ? `已提交 ${stats.submittedTotal} / 共 ${stats.datasetTotal} 题` : "等待后端返回真实提交统计"}</p>
           <div className="soft-progress soft-progress--wide">
-            <span className="soft-progress__bar" style={{ width: "0%" }} />
+            <span className="soft-progress__bar" style={{ width: `${stats?.progressPercent ?? 0}%` }} />
           </div>
         </Card>
         <Card className="owner-board-card">
           <span>可导出结果</span>
-          <strong>-</strong>
+          <strong>{stats ? stats.accepted : "-"}</strong>
           <p>审核通过后进入导出池</p>
         </Card>
         <Card className="owner-board-card">
           <span>剩余配额</span>
-          <strong>-</strong>
+          <strong>{stats?.quotaRemaining ?? "-"}</strong>
           <p>按 {strategyLabel(task.distributionStrategy)} 分发</p>
         </Card>
         <Card className="owner-board-card">
@@ -197,10 +204,10 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
               </div>
             </div>
             <div className="owner-status-list">
-              <div><span>进行中</span><strong>-</strong></div>
-              <div><span>已提交</span><strong>-</strong></div>
-              <div><span>已通过</span><strong>-</strong></div>
-              <div><span>已打回</span><strong>-</strong></div>
+              <div><span>进行中</span><strong>{stats?.inProgress ?? "-"}</strong></div>
+              <div><span>已提交</span><strong>{stats?.inReview ?? "-"}</strong></div>
+              <div><span>已通过</span><strong>{stats?.accepted ?? "-"}</strong></div>
+              <div><span>已打回</span><strong>{stats?.returned ?? "-"}</strong></div>
             </div>
             <div className="owner-task-actions-grid">
               <Link to={`/owner/tasks/${task.id}/dataset`} className="lh-button">

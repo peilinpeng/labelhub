@@ -37,6 +37,25 @@ export async function fetchTask(taskId: string): Promise<Task> {
   return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
 }
 
+export interface TaskStats {
+  taskId: string;
+  datasetTotal: number;
+  datasetAvailable: number;
+  inProgress: number;
+  inReview: number;
+  accepted: number;
+  returned: number;
+  rejected: number;
+  submittedTotal: number;
+  quotaTotal: number | null;
+  quotaRemaining: number | null;
+  progressPercent: number;
+}
+
+export async function fetchTaskStats(taskId: string): Promise<TaskStats> {
+  return apiGet<TaskStats>(`/api/v1/tasks/${taskId}/stats`);
+}
+
 export async function createTask(
   request: Pick<Task, "title" | "quota" | "distributionStrategy" | "reviewPolicy"> & {
     description?: string;

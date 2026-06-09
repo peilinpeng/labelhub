@@ -352,3 +352,18 @@ class GenerateSchemaResponse(BaseModel):
     validation: SchemaValidationResultResponse
     warnings: list[str] = []
     generatedBy: GeneratedByResponse
+
+
+class TaskStatsResponse(BaseModel):
+    taskId: str
+    datasetTotal: int
+    datasetAvailable: int
+    inProgress: int
+    inReview: int
+    accepted: int
+    returned: int
+    rejected: int
+    submittedTotal: int
+    quotaTotal: int | None
+    quotaRemaining: int | None
+    progressPercent: int

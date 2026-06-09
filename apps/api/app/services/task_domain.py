@@ -320,3 +320,62 @@ def archive_task(
     db.commit()
     db.refresh(task)
     return task, log
+
+
+def get_task_stats(db: Session, task_id: str, actor: Actor) -> dict:
+    """任务概览统计：数据集进度、各状态计数、剩余配额（契约 §23.1 OWNER 看板）。"""
+    from app.models.dataset import DatasetItem
+    from app.models.assignment import Assignment
+    from app.models.submission import Submission
+
+    task = _get_task_or_404(db, task_id)
+    _assert_owner(task, actor)
+
+    def _count(model, *conds) -> int:
+        return db.query(model).filter(model.task_id == task_id, *conds).count()
+
+    dataset_total = _count(DatasetItem)
+    dataset_available = _count(DatasetItem, DatasetItem.status == "AVAILABLE")
+
+    in_progress = _count(
+        Assignment, Assignment.status.in_(("CLAIMED", "DRAFTING"))
+    )
+    # 占用配额的领取：未取消 / 未过期
+    quota_used = _count(
+        Assignment, ~Assignment.status.in_(("CANCELED", "EXPIRED"))
+    )
+
+    review_pipeline = (
+        "SUBMITTED", "AI_REVIEWING", "AI_PASSED",
+        "NEEDS_HUMAN_REVIEW", "HUMAN_REVIEWING", "FINAL_REVIEWING",
+    )
+    in_review = _count(Submission, Submission.status.in_(review_pipeline))
+    accepted = _count(Submission, Submission.status == "ACCEPTED")
+    returned = _count(Submission, Submission.status == "RETURNED")
+    rejected = _count(Submission, Submission.status == "REJECTED")
+    submitted_total = in_review + accepted + returned + rejected
+
+    quota = task.quota_json or {}
+    quota_total = quota.get("total")
+    quota_remaining = (
+        max(quota_total - quota_used, 0) if isinstance(quota_total, int) else None
+    )
+    progress_percent = (
+        min(round(100 * submitted_total / dataset_total), 100)
+        if dataset_total > 0 else 0
+    )
+
+    return {
+        "taskId": task_id,
+        "datasetTotal": dataset_total,
+        "datasetAvailable": dataset_available,
+        "inProgress": in_progress,
+        "inReview": in_review,
+        "accepted": accepted,
+        "returned": returned,
+        "rejected": rejected,
+        "submittedTotal": submitted_total,
+        "quotaTotal": quota_total,
+        "quotaRemaining": quota_remaining,
+        "progressPercent": progress_percent,
+    }

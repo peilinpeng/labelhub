@@ -309,6 +309,7 @@ from app.schemas.task import (
     PublishTaskRequest, PublishTaskResponse,
     PauseTaskRequest, EndTaskRequest, ArchiveTaskRequest,
     TaskTransitionResponse, AuditLogSummaryResponse,
+    TaskStatsResponse,
 )
 
 
@@ -348,6 +349,19 @@ def get_task(
     """获取任务详情（契约 §23.1：OWNER/REVIEWER/LABELER 均可访问）。"""
     task = task_domain.get_task(db, task_id, actor)
     return TaskResponse.from_orm(task)
+
+
+@router.get(
+    "/tasks/{task_id}/stats",
+    response_model=TaskStatsResponse,
+    summary="任务概览统计（OWNER 看板：进度 / 各状态计数 / 剩余配额）",
+)
+def get_task_stats(
+    task_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> TaskStatsResponse:
+    return TaskStatsResponse(**task_domain.get_task_stats(db, task_id, actor))
 
 
 # ── PATCH /tasks/{task_id}（updateTask，仅 DRAFT）────────────────────────────

@@ -133,3 +133,35 @@ def test_publish_with_reviewconfig_ok(client, auth, db_session):
     )
     assert resp.status_code == 200
     assert resp.json()["task"]["status"] == "PUBLISHED"
+
+
+def test_task_stats_counts(client, auth, db_session):
+    """任务统计：数据集总数、进行中（已领取未提交）、剩余配额。"""
+    from tests.helpers import setup_published_task
+
+    ctx = setup_published_task(client, db_session, auth["OWNER"], items=3)
+    task_id = ctx["task_id"]
+
+    # 初始：3 题，无领取
+    r0 = client.get(f"/api/v1/tasks/{task_id}/stats", headers=auth["OWNER"])
+    assert r0.status_code == 200, r0.text
+    s0 = r0.json()
+    assert s0["datasetTotal"] == 3
+    assert s0["inProgress"] == 0
+    assert s0["accepted"] == 0
+    assert s0["progressPercent"] == 0
+
+    # 领取一题 → 进行中 +1，剩余配额 -1
+    client.post(f"/api/v1/tasks/{task_id}/claim", json={}, headers=auth["LABELER"])
+    s1 = client.get(f"/api/v1/tasks/{task_id}/stats", headers=auth["OWNER"]).json()
+    assert s1["inProgress"] == 1
+    if s1["quotaTotal"] is not None:
+        assert s1["quotaRemaining"] == s1["quotaTotal"] - 1
+
+
+def test_task_stats_requires_owner(client, auth, db_session):
+    from tests.helpers import setup_published_task
+
+    ctx = setup_published_task(client, db_session, auth["OWNER"])
+    resp = client.get(f"/api/v1/tasks/{ctx['task_id']}/stats", headers=auth["LABELER"])
+    assert resp.status_code == 403
