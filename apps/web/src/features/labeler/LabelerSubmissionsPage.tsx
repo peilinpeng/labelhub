@@ -267,7 +267,7 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
                     tone={entry.kind === "editable" ? "success" : "default"}
                     disabled={entry.kind === "blocked"}
                     title={entry.kind === "blocked" ? "该作答已取消或过期，无法再修改" : undefined}
-                    onClick={() => navigate(`/labeler/workspace/${a.assignmentId}`)}
+                    onClick={() => navigate(`/labeler/workspace/${a.id}`)}
                   >
                     {entry.label}
                   </Button>

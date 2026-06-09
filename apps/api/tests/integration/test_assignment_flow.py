@@ -79,6 +79,23 @@ def test_list_items_nonexistent_assignment_404(client, auth, db_session):
 
 
 # ---------------------------------------------------------------------------
+# 我的提交（GET /me/submissions 返回 assignment 形状）
+# ---------------------------------------------------------------------------
+def test_my_submissions_exposes_assignment_id(client, auth, db_session):
+    """每条记录须同时带 id 与 assignmentId（同值），供「我的提交」入口跳转作答页。"""
+    ctx = setup_published_task(client, db_session, auth["OWNER"])
+    asn_id = _claim(client, auth, ctx["task_id"])
+
+    resp = client.get("/api/v1/me/submissions", headers=auth["LABELER"])
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    item = items[0]
+    assert item["id"] == asn_id
+    assert item["assignmentId"] == asn_id
+
+
+# ---------------------------------------------------------------------------
 # A2：LLM 辅助（无外部 LLM，验证分支与权限）
 # ---------------------------------------------------------------------------
 def test_llm_assist_rejects_non_llm_node(client, auth, db_session):

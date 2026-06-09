@@ -7,6 +7,9 @@ from app.schemas.dataset import DatasetItemResponse
 
 class AssignmentResponse(BaseModel):
     id: str
+    # assignmentId 与 id 同值，便于把本响应当作「assignment 形状」消费的前端
+    # （如 GET /me/submissions 的「我的提交」列表）按任一字段定位 assignment。
+    assignmentId: str
     taskId: str
     itemId: str
     labelerId: str
@@ -22,7 +25,7 @@ class AssignmentResponse(BaseModel):
     @classmethod
     def from_orm(cls, a: Any) -> "AssignmentResponse":
         return cls(
-            id=a.id, taskId=a.task_id, itemId=a.item_id,
+            id=a.id, assignmentId=a.id, taskId=a.task_id, itemId=a.item_id,
             labelerId=a.labeler_id, schemaVersionId=a.schema_version_id,
             status=a.status, lockedUntil=a.locked_until,
             latestSubmissionId=a.latest_submission_id,
