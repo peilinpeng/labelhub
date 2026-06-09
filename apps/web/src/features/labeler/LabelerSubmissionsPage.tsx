@@ -1,7 +1,7 @@
-import type { Assignment, AssignmentStatus, Task } from "@labelhub/contracts";
+import type { AssignmentStatus, Submission, Task } from "@labelhub/contracts";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listMarketplaceTasks, listMyAssignments } from "../../api/labeler";
+import { listMarketplaceTasks, listMySubmissions } from "../../api/labeler";
 import { Badge, Button, Card, KpiCard } from "../../ui/primitives";
 import type { Role } from "../../app/routes";
 
@@ -83,6 +83,29 @@ function statusNote(status: string): string | undefined {
   return STATUS_NOTE[status];
 }
 
+// 进入工作台的入口文案与可达性，依据状态判断标注员现在能否修改这条作答。
+// editable=可编辑（打回 / 进行中）；review=审核中或已通过仅可查看；blocked=已取消/过期。
+type Entry = { label: string; kind: "editable" | "review" | "blocked" };
+
+const EDITABLE_STATUSES = new Set([
+  "RETURNED",
+  "REJECTED",
+  "NEEDS_REVISION",
+  "CLAIMED",
+  "DRAFTING",
+  "DRAFT",
+  "IN_PROGRESS",
+]);
+const RETURNED_STATUSES = new Set(["RETURNED", "REJECTED", "NEEDS_REVISION"]);
+const BLOCKED_STATUSES = new Set(["CANCELED", "EXPIRED"]);
+
+function workspaceEntry(status: string): Entry {
+  if (RETURNED_STATUSES.has(status)) return { label: "继续修改", kind: "editable" };
+  if (EDITABLE_STATUSES.has(status)) return { label: "进入工作台", kind: "editable" };
+  if (BLOCKED_STATUSES.has(status)) return { label: "暂不可修改", kind: "blocked" };
+  return { label: "查看提交", kind: "review" };
+}
+
 const EXTRA_STATUS_TONE: Record<string, "default" | "primary" | "success" | "warning" | "danger"> = {
   AI_PASSED: "success",
   NEEDS_HUMAN_REVIEW: "warning",
@@ -135,7 +158,7 @@ const FILTERS: Array<{ key: FilterKey; label: string }> = [
 export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageProps) {
   void role;
   const navigate = useNavigate();
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [assignments, setAssignments] = useState<Submission[]>([]);
   const [taskTitleById, setTaskTitleById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,7 +169,7 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
       try {
         setLoading(true);
         setError(null);
-        const items = await listMyAssignments();
+        const items = await listMySubmissions();
         setAssignments(items);
         // 尽力补全任务标题（市场任务里能查到就用，查不到回退 taskId）
         try {
@@ -220,7 +243,7 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
       ) : (
         <div className="soft-grid">
           {visible.map((a) => {
-            const status = a.status as AssignmentStatus;
+            const entry = workspaceEntry(a.status);
             return (
               <Card key={a.id} className="soft-panel info-card">
                 <div className="form-stack">
@@ -241,10 +264,12 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
                     </div>
                   </div>
                   <Button
-                    tone={status === "RETURNED" ? "success" : "default"}
-                    onClick={() => navigate(`/labeler/workspace/${a.id}`)}
+                    tone={entry.kind === "editable" ? "success" : "default"}
+                    disabled={entry.kind === "blocked"}
+                    title={entry.kind === "blocked" ? "该作答已取消或过期，无法再修改" : undefined}
+                    onClick={() => navigate(`/labeler/workspace/${a.assignmentId}`)}
                   >
-                    {status === "RETURNED" ? "查看意见并修改" : "进入工作台"}
+                    {entry.label}
                   </Button>
                 </div>
               </Card>
