@@ -79,6 +79,8 @@ export type AuditEventType =
   | "AI_ASSIST_ACCEPTED"
   | "AI_ASSIST_DISMISSED"
   | "AI_ASSIST_EDITED"
+  | "AI_ASSIST_PATCH_APPLIED"
+  | "AI_ASSIST_PATCH_FAILED"
   | "AI_REVIEW_TRIGGERED"
   | "AI_REVIEW_OUTPUT_GENERATED"
   | "AI_REVIEW_CONFIRMED_BY_REVIEWER"
@@ -377,6 +379,17 @@ export interface AiAssistOutcomeAuditPayload {
   promptSnapshotHash?: string;
 }
 
+export type AiAssistPatchAuditPayload = {
+  suggestionId: ID | string;
+  submissionId?: ID | string;
+  nodeId?: string;
+  action?: "accept" | "edit_accept" | "dismiss";
+  patchApplied?: boolean;
+  appliedPatchFieldNames?: string[];
+  patchFailureReason?: string;
+  summary?: string;
+};
+
 export type AiReviewGeneratedAuditPayload = {
   aiReviewJobId?: ID | string;
   decision?: string;
@@ -428,6 +441,7 @@ export type AuditEventPayload =
   | ReviewSubmittedAuditPayload
   | ReviewDiffGeneratedAuditPayload
   | AiAssistOutcomeAuditPayload
+  | AiAssistPatchAuditPayload
   | AiReviewGeneratedAuditPayload
   | ExportGeneratedAuditPayload
   | DataQualityPassportGeneratedAuditPayload

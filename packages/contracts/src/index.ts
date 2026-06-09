@@ -1,3 +1,4 @@
+export * from "./ai-assist";
 export * from "./api";
 export * from "./audit";
 export * from "./checksum";

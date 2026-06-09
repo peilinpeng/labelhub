@@ -6,7 +6,23 @@
 ---
 
 ## 当前阶段
-阶段 1（只读盘点）已完成，准备进入阶段 2（Contracts）。
+阶段 2（Contracts）已完成，准备进入阶段 3（后端 API）。
+
+### 阶段 2 已完成
+- 新增 `packages/contracts/src/ai-assist.ts`：`AiAssistActionType` / `AiAssistSuggestionStatus` / `AiAssistPatchOperation` / `AiAssistStructuredPatch` / `AiAssistSuggestion` / `AiAssistActionRecord` / `AiAssistActionRequest` / `AiAssistActionResponse` / `ListAiAssistSuggestionsResponse`。复用 `AuditActor` / `AiAssistType` / `AuditEventType`，未重复造类型。
+- `audit.ts` 追加事件类型 `AI_ASSIST_PATCH_APPLIED` / `AI_ASSIST_PATCH_FAILED` + `AiAssistPatchAuditPayload`（并入 `AuditEventPayload` 联合）。覆盖五类事件：采纳 / 编辑后采纳(AI_ASSIST_EDITED) / 忽略 / 修订已应用 / 修订应用失败。
+- `index.ts` 导出 `ai-assist`。
+- 新增测试 `__tests__/ai-assist-actions.test.ts`（9 例）。
+- raw payload 未被设计成前端必须展示字段（structuredPatch 仅字段级 diff）。
+
+### 阶段 2 测试结果
+- `npm run -w @labelhub/contracts typecheck`：通过。
+- `npm run -w @labelhub/contracts test`：84 passed（基线 75 + 新增 9）/ 0 failed。
+- 根 `npm run typecheck`：全部通过。
+- 根 `npm test`：contracts 84 / schema-core 142 / schema-compiler 31 / schema-renderer 通过；**schema-designer 5 failed（基线已存在，与本次改动无关，已 git stash 验证）**。
+
+### 已知基线问题（非本次引入）
+- `@labelhub/schema-designer` `SchemaDesigner.test.tsx` 5 例失败，在 stash 掉本分支改动后仍失败 → 属上游既有问题，不在本实验目标内，不修复也不删测试。
 
 ---
 

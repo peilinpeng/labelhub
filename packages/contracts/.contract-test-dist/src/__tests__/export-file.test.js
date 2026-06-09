@@ -41,6 +41,12 @@ const contract_guards_1 = require("../utils/contract-guards");
         (0, strict_1.equal)((0, contract_guards_1.fileUploadTransitionAuditAction)("createUploadUrl"), "FILE_UPLOAD_URL_CREATED");
         (0, strict_1.equal)((0, contract_guards_1.fileUploadTransitionAuditAction)("confirmUpload"), "FILE_CONFIRMED");
     });
+    (0, node_test_1.test)("failUpload 生命周期 PENDING / UPLOADING -> FAILED", () => {
+        (0, strict_1.equal)((0, contract_guards_1.canFailUpload)("PENDING"), true);
+        (0, strict_1.equal)((0, contract_guards_1.canFailUpload)("UPLOADING"), true);
+        (0, strict_1.equal)((0, contract_guards_1.canFailUpload)("READY"), false);
+        (0, strict_1.equal)((0, contract_guards_1.fileUploadTransitionAuditAction)("failUpload"), "FILE_UPLOAD_FAILED");
+    });
     (0, node_test_1.test)("upload 字段 FileRef.fileId 必须属于当前 assignment 或当前用户", () => {
         const fileRef = {
             fileId: "file_answer_1",
