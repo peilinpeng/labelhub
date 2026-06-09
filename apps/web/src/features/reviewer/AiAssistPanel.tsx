@@ -187,11 +187,12 @@ export function AiAssistPanel({ submissionId, onActionApplied }: AiAssistPanelPr
                   <div className="review-ai-assist__diff">
                     {patch.map((op) => (
                       <div className="review-ai-assist__diff-row" key={op.fieldName}>
-                        <strong>{op.fieldName}</strong>
-                        <span>{formatValue(op.previousValue)}</span>
-                        <em aria-hidden="true">→</em>
+                        <span className="review-ai-assist__diff-field">{op.fieldName}</span>
+                        <span className="review-ai-assist__prev">{formatValue(op.previousValue)}</span>
+                        <em className="review-ai-assist__arrow" aria-hidden="true">→</em>
                         {isEditing ? (
                           <Textarea
+                            className="review-ai-assist__edit"
                             rows={2}
                             value={editDraft[op.fieldName] ?? ""}
                             onChange={(event) =>
@@ -211,22 +212,27 @@ export function AiAssistPanel({ submissionId, onActionApplied }: AiAssistPanelPr
                 {isPending ? (
                   isEditing ? (
                     <div className="review-ai-assist__actions">
-                      <Button disabled={isBusy} onClick={() => confirmEdit(suggestion)}>
+                      <Button className="review-ai-assist__btn" disabled={isBusy} onClick={() => confirmEdit(suggestion)}>
                         确认采纳
                       </Button>
-                      <Button tone="ghost" disabled={isBusy} onClick={() => setEditingId(null)}>
+                      <Button className="review-ai-assist__btn" tone="ghost" disabled={isBusy} onClick={() => setEditingId(null)}>
                         取消
                       </Button>
                     </div>
                   ) : (
                     <div className="review-ai-assist__actions">
-                      <Button disabled={isBusy} onClick={() => void applyAction(suggestion, "accept")}>
+                      <Button className="review-ai-assist__btn" disabled={isBusy} onClick={() => void applyAction(suggestion, "accept")}>
                         一键采纳
                       </Button>
-                      <Button tone="ghost" disabled={isBusy || !canEditAccept} onClick={() => startEdit(suggestion)}>
+                      <Button className="review-ai-assist__btn" tone="ghost" disabled={isBusy || !canEditAccept} onClick={() => startEdit(suggestion)}>
                         编辑后采纳
                       </Button>
-                      <Button tone="danger" disabled={isBusy} onClick={() => void applyAction(suggestion, "dismiss")}>
+                      <Button
+                        className="review-ai-assist__btn review-ai-assist__btn--dismiss"
+                        tone="ghost"
+                        disabled={isBusy}
+                        onClick={() => void applyAction(suggestion, "dismiss")}
+                      >
                         忽略建议
                       </Button>
                     </div>

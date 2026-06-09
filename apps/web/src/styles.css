@@ -7520,6 +7520,24 @@ a {
   overflow: auto;
 }
 
+/* 笔记本中等宽度（13/14 寸常见为 1280–1440，且左侧导航占约 300px，
+   内容区实宽常不足 1000px）：右侧审计栏下沉为整行，主审核列不再被压成窄条；
+   各列恢复自然高度，由页面整体滚动，避免三栏各自滚动的割裂感。 */
+@media (max-width: 1440px) {
+  .review-human-page {
+    grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  }
+  .review-human-aside {
+    grid-column: 1 / -1;
+  }
+  .review-human-list,
+  .review-human-main,
+  .review-human-aside {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 .review-human-list {
   display: grid;
   align-content: start;
@@ -7794,30 +7812,80 @@ a {
   color: #334155;
   font-size: 13px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .review-ai-assist__diff {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  background: #f8fafc;
 }
 
+/* 字段 diff：默认按行流式排布，容器够宽时一行内显示「字段 原值 → 建议值」，
+   窄屏自动换行成「字段 / 原值 / ↓ / 建议值」，绝不撑破卡片。 */
 .review-ai-assist__diff-row {
-  display: grid;
-  grid-template-columns: minmax(96px, auto) minmax(0, 1fr) auto minmax(0, 1.4fr);
-  align-items: center;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
   font-size: 12px;
   color: #475569;
+  min-width: 0;
 }
 
-.review-ai-assist__diff-row strong {
+.review-ai-assist__diff-field {
+  flex: 0 0 auto;
+  font-weight: 800;
   color: #1e293b;
+}
+
+.review-ai-assist__prev,
+.review-ai-assist__next {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.review-ai-assist__prev {
+  color: #94a3b8;
+}
+
+.review-ai-assist__arrow {
+  flex: 0 0 auto;
+  color: #94a3b8;
+  font-style: normal;
 }
 
 .review-ai-assist__next {
   color: #047857;
   font-weight: 700;
+}
+
+.review-ai-assist__edit {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  /* 窄屏：字段 / 原值 / ↓ / 建议值 各占一行竖排。箭头单独成行并旋转成向下，
+     以左侧为旋转中心，避免被挤出行外或与相邻行重叠。 */
+  .review-ai-assist__diff-field,
+  .review-ai-assist__prev,
+  .review-ai-assist__next {
+    flex: 1 1 100%;
+  }
+  .review-ai-assist__arrow {
+    flex: 0 0 100%;
+    width: auto;
+    transform: rotate(90deg);
+    transform-origin: left center;
+    margin: 2px 0 2px 4px;
+  }
 }
 
 .review-ai-assist__notice {
@@ -7829,6 +7897,22 @@ a {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* 操作按钮整体缩小、弱化危险操作 */
+.review-ai-assist__btn {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.review-ai-assist__btn--dismiss {
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  color: #dc2626;
+  background: transparent;
+}
+
+.review-ai-assist__btn--dismiss:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.08);
 }
 
 .review-ai-assist__resolved {
@@ -9103,7 +9187,80 @@ a {
   gap: 16px;
 }
 
-@media (max-width: 900px) {
+/* 分段看板：一次只展示一个看板，避免数据多时页面无限变长 */
+.quality-board-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.quality-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--lh-border);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+/* 覆盖全局 [role="tab"] 的下划线样式，做成分段 / pill 控件 */
+.quality-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--lh-muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color var(--lh-ease), background var(--lh-ease), border-color var(--lh-ease);
+}
+
+.quality-tab:hover {
+  color: var(--lh-text);
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.quality-tab--active {
+  background: var(--lh-surface);
+  border-color: var(--lh-primary);
+  color: var(--lh-primary-strong);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.quality-tab__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quality-tab--active .quality-tab__count {
+  background: var(--lh-primary);
+  color: #fff;
+}
+
+.quality-board-section__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--lh-muted);
+}
+
+/* 中屏（含 13/14 寸笔记本去掉侧栏后的内容宽度）单列更宽，避免两列过紧 */
+@media (max-width: 1200px) {
   .quality-board-grid {
     grid-template-columns: 1fr;
   }
@@ -9113,6 +9270,7 @@ a {
   display: grid;
   align-content: start;
   gap: 10px;
+  min-width: 0;
 }
 
 .quality-board__head {
@@ -9196,10 +9354,49 @@ a {
   flex-direction: column;
 }
 
-.quality-overview-grid {
+/* 总览分三组（核心概览 / 质量动作 / 追溯记录），每组内部网格自适应，降低横向密度 */
+.quality-overview-groups {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: 2fr 2fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 1200px) {
+  .quality-overview-groups {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .quality-overview-groups {
+    grid-template-columns: 1fr;
+  }
+}
+
+.quality-overview-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.quality-overview-group__title {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--lh-muted);
+  letter-spacing: 0.02em;
+}
+
+.quality-overview-group__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .quality-overview-group__grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .quality-overview-stat {
@@ -9209,6 +9406,7 @@ a {
   border: 1px solid var(--lh-border);
   border-radius: 10px;
   background: #f8fafc;
+  min-width: 0;
 }
 
 .quality-overview-stat span {
@@ -9256,6 +9454,7 @@ a {
   border: 1px solid var(--lh-border);
   border-radius: 8px;
   background: #f8fafc;
+  min-width: 0;
 }
 
 .quality-board__row-head {
@@ -9277,6 +9476,8 @@ a {
   color: #334155;
   font-size: 13px;
   line-height: 1.55;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .quality-board__row-fields {
@@ -9300,6 +9501,15 @@ a {
   color: var(--lh-muted);
   font-size: 12px;
   font-weight: 700;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* row-meta 在窄屏不再强制贴右，避免与事件名挤压 */
+@media (max-width: 720px) {
+  .quality-board__row-meta {
+    margin-left: 0;
+  }
 }
 
 /* ---------------------------------------------------------------------------

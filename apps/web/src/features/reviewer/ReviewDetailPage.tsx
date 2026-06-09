@@ -8,6 +8,12 @@ import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "
 import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import type { AuditEventRecord, ReviewDecisionRequest, ReviewDetailResponse, ReviewPatch } from "@labelhub/contracts";
 import { AiAssistPanel } from "./AiAssistPanel";
+import {
+  actorRoleLabel,
+  auditEventLabel,
+  reviewDecisionLabel,
+  reviewStageLabel as stageLabelText,
+} from "./audit-humanize";
 import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-display";
 import { computeReviewPatches } from "./reviewer-diff";
 import {
@@ -296,10 +302,11 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               className={item.id === detail.submission.id ? "review-human-queue-item review-human-queue-item--active" : "review-human-queue-item"}
               key={item.id}
               to={`/reviewer/items/${item.id}`}
+              title={`提交 ${item.id}`}
             >
               <span>
                 <input checked={item.id === detail.submission.id} readOnly type="checkbox" />
-                {item.id}
+                {item.taskTitle}
               </span>
               <strong>{item.title}</strong>
               <small>
@@ -307,16 +314,16 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
               </small>
             </Link>
           ))}
-          {queueItems.length === 0 ? <div className="empty-state">暂无真实队列摘要</div> : null}
+          {queueItems.length === 0 ? <div className="empty-state">暂无队列摘要</div> : null}
         </div>
       </Card>
 
       <main className="review-human-main">
         <Card className="review-human-title-card">
           <section className="review-human-heading">
-            <div>
-              <h1>{detail.submission.id} · {display.title}</h1>
-              <p>题目 {detail.item.id} · {display.taskTitle} · 模板 r{detail.schema.schemaVersionNo ?? "-"} · {reviewPolicyLabel}</p>
+            <div className="review-human-heading__title" title={`提交 ${detail.submission.id} · 题目 ${detail.item.id}`}>
+              <h1>{display.title}</h1>
+              <p>{display.taskTitle} · 模板 r{detail.schema.schemaVersionNo ?? "-"} · {reviewPolicyLabel}</p>
             </div>
             <Badge tone={reviewStage === "FINAL_REVIEW" ? "primary" : "warning"}>第 {detail.submission.attemptNo} 轮 · {reviewStageLabel}</Badge>
           </section>
@@ -365,7 +372,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
                 <span key={score.key}>{score.key} <strong>{score.score}</strong></span>
               ))}
             </div>
-          ) : <div className="empty-state">暂无真实 AI 维度评分</div>}
+          ) : <div className="empty-state">暂无 AI 维度评分</div>}
           <p>{aiResult?.summary ?? display.issue}</p>
           <div className="review-human-ai-trace">
             <span>Prompt 快照：{aiTrace?.promptSnapshotHash ?? "暂无"}</span>
@@ -505,35 +512,35 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
 
       <aside className="review-human-aside">
         <Card className="review-human-metrics">
-          <div><span>审核统计</span><strong>-</strong></div>
-          <p className="page-subtitle">暂无真实个人审核统计接口数据</p>
+          <div><span>审核统计</span><strong>—</strong></div>
+          <p className="page-subtitle">暂无个人审核统计</p>
         </Card>
 
         <Card className="review-human-timeline">
-          <h3>审计时间线（{detail.submission.id}）</h3>
+          <h3>审计时间线</h3>
           <div className="review-human-history">
             {detail.history.map((record, index) => (
               <div key={record.id}>
-                <strong>第 {index + 1} 轮 · {record.stage}</strong>
-                <span>{record.decision} · {new Date(record.createdAt).toLocaleString("zh-CN")}</span>
+                <strong>第 {index + 1} 轮 · {stageLabelText(record.stage)}</strong>
+                <span>{reviewDecisionLabel(record.decision)} · {new Date(record.createdAt).toLocaleString("zh-CN")}</span>
               </div>
             ))}
             {detail.auditLogs.map((log) => (
               <div key={log.id}>
-                <strong>{log.action}</strong>
+                <strong>{auditEventLabel(log.action)}</strong>
                 <span>{new Date(log.createdAt).toLocaleString("zh-CN")}</span>
               </div>
             ))}
             {auditEvents.map((event) => (
               <div key={event.id}>
-                <strong>{event.type}</strong>
-                <span>{new Date(event.createdAt).toLocaleString("zh-CN")} · {event.actor.role}</span>
+                <strong>{auditEventLabel(event.type)}</strong>
+                <span>{new Date(event.createdAt).toLocaleString("zh-CN")} · {actorRoleLabel(event.actor.role)}</span>
               </div>
             ))}
           </div>
           {auditEventsError ? <p className="danger-text">{auditEventsError}</p> : null}
           {detail.history.length === 0 && detail.auditLogs.length === 0 && auditEvents.length === 0 && !auditEventsError ? (
-            <div className="empty-state">暂无真实审计时间线数据</div>
+            <div className="empty-state">暂无审计时间线</div>
           ) : null}
         </Card>
 
