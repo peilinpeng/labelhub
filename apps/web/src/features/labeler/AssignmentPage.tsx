@@ -549,9 +549,9 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
         <main className="labeler-runner-main">
           <section className="labeler-runner-main-head">
-            <div>
+            <div title={`题目 ${context.item.id}`}>
               <h1>{context.task.title} · 第 {currentItemNumber} 题</h1>
-              <p>模板 r{context.schema.schemaVersionNo ?? "-"} · 题目 ID {context.item.id}</p>
+              <p>模板 r{context.schema.schemaVersionNo ?? "-"} · 第 {currentItemNumber} / {totalItems} 题</p>
             </div>
             <div className="labeler-runner-head-actions">
               <Button disabled title="跳过功能暂未接入，可使用下方「下一题」切换题目">跳过</Button>

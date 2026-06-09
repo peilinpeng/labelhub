@@ -75,7 +75,7 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
             <div className="form-stack">
               <div>
                 <div className="page-actions">
-                  <Badge tone="success">{task.status === "PUBLISHED" ? "已发布" : task.status}</Badge>
+                  <Badge tone="success">{taskStatusLabel(task.status)}</Badge>
                   <Badge tone="primary">{distributionLabel(task.distributionStrategy.type)}</Badge>
                 </div>
                 <h3 className="task-title">{task.title}</h3>
@@ -103,6 +103,16 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
       {tasks.length === 0 ? <Card className="empty-state">暂无可领取的任务</Card> : null}
     </div>
   );
+}
+
+// 任务状态人话化；市场只展示已发布任务，未知状态回退「可领取」，不暴露 raw code。
+function taskStatusLabel(status: Task["status"]): string {
+  if (status === "PUBLISHED") return "已发布";
+  if (status === "PAUSED") return "已暂停";
+  if (status === "DRAFT") return "草稿";
+  if (status === "ENDED") return "已结束";
+  if (status === "ARCHIVED") return "已归档";
+  return "可领取";
 }
 
 function distributionLabel(type: Task["distributionStrategy"]["type"]): string {

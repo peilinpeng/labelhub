@@ -44,6 +44,7 @@ const STATUS_TONE: Record<AssignmentStatus, "default" | "primary" | "success" | 
 
 // 兼容可能出现的审核态/草稿态字符串；未识别一律回退，不向用户暴露 raw code。
 const EXTRA_STATUS_LABEL: Record<string, string> = {
+  AI_REVIEWING: "AI 预审中",
   AI_PASSED: "AI 预审通过",
   NEEDS_HUMAN_REVIEW: "待人工审核",
   HUMAN_REVIEWING: "审核中",
@@ -56,6 +57,31 @@ const EXTRA_STATUS_LABEL: Record<string, string> = {
   DRAFT: "草稿中",
   IN_PROGRESS: "进行中",
 };
+
+// 提交状态说明 / AI 预审反馈：把状态翻译成一句人话，帮助标注员理解下一步，纯展示无操作。
+const STATUS_NOTE: Record<string, string> = {
+  SUBMITTED: "已提交，等待 AI 预审。",
+  AI_REVIEWING: "AI 正在预审，请稍后查看结果。",
+  AI_PASSED: "AI 预审通过，等待人工复核或入库。",
+  NEEDS_HUMAN_REVIEW: "AI 预审完成，已转人工审核。",
+  HUMAN_REVIEWING: "审核员正在审核这条作答。",
+  FINAL_REVIEWING: "已进入终审环节。",
+  RETURNED: "审核打回，请按意见修改后重新提交。",
+  REJECTED: "审核打回，请按意见修改后重新提交。",
+  NEEDS_REVISION: "审核打回，请按意见修改后重新提交。",
+  ACCEPTED: "已通过审核，可进入导出 / 入库流程。",
+  APPROVED: "已通过审核，可进入导出 / 入库流程。",
+  PASSED: "已通过审核，可进入导出 / 入库流程。",
+  HUMAN_REVIEW_PASSED: "已通过审核，可进入导出 / 入库流程。",
+  CLAIMED: "已领取，进行中。",
+  DRAFTING: "草稿编辑中，记得提交。",
+  DRAFT: "草稿编辑中，记得提交。",
+  IN_PROGRESS: "进行中。",
+};
+
+function statusNote(status: string): string | undefined {
+  return STATUS_NOTE[status];
+}
 
 const EXTRA_STATUS_TONE: Record<string, "default" | "primary" | "success" | "warning" | "danger"> = {
   AI_PASSED: "success",
@@ -198,14 +224,16 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
             return (
               <Card key={a.id} className="soft-panel info-card">
                 <div className="form-stack">
-                  <div>
+                  <div title={`提交 ${a.id} · 题目 ${a.itemId}`}>
                     <div className="page-actions">
                       <Badge tone={humanStatusTone(a.status)}>
                         {humanStatusLabel(a.status)}
                       </Badge>
                     </div>
-                    <h3 className="task-title">{taskTitleById[a.taskId] ?? a.taskId}</h3>
-                    <p className="page-subtitle">题目：{a.itemId}</p>
+                    <h3 className="task-title">{taskTitleById[a.taskId] ?? "当前任务"}</h3>
+                    {statusNote(a.status) ? (
+                      <p className="labeler-submission-note">{statusNote(a.status)}</p>
+                    ) : null}
                   </div>
                   <div className="inset-well">
                     <div className="meta-line">

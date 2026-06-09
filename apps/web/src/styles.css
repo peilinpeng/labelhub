@@ -2422,6 +2422,17 @@ a {
   }
 }
 
+/* 我的提交：状态说明 / AI 预审反馈一句话，弱化但可读，安全换行 */
+.labeler-submission-note {
+  margin: 0;
+  color: var(--lh-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+
 .soft-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -2471,6 +2482,9 @@ a {
 .task-title {
   margin: 0 0 5px;
   font-size: 15px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .owner-page-header {
@@ -5266,12 +5280,16 @@ a {
   font-size: 14px;
   font-weight: 900;
   line-height: 1.55;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .labeler-runner-source small {
   color: #475569;
   font-size: 12px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .labeler-runner-form .labeler-renderer-frame {
@@ -7737,6 +7755,8 @@ a {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* 卡片整体内边距，避免标题 / 列表贴着边框 */
+  padding: 16px 18px;
 }
 
 .review-ai-assist__head {
@@ -9271,6 +9291,8 @@ a {
   align-content: start;
   gap: 10px;
   min-width: 0;
+  /* 看板卡片整体内边距，标题 / 行列表不再贴边 */
+  padding: 16px 18px;
 }
 
 .quality-board__head {
