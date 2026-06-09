@@ -2405,6 +2405,23 @@ a {
   gap: 18px;
 }
 
+/* 「我的提交」4 个统计卡：桌面一行 4 列，中屏 2+2，移动端单列 */
+.kpi-grid.labeler-submissions-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  .kpi-grid.labeler-submissions-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .kpi-grid.labeler-submissions-kpis {
+    grid-template-columns: 1fr;
+  }
+}
+
 .soft-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -8951,6 +8968,93 @@ a {
 }
 
 .quality-center-clue__meta {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Quality Center v2：页内质量看板 */
+.quality-board-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .quality-board-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.quality-board {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.quality-board__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.quality-board__head h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--lh-text);
+}
+
+.quality-board__head p {
+  margin: 0;
+  max-width: 420px;
+  color: var(--lh-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.quality-board__head-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.quality-board__link {
+  color: var(--lh-primary);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.quality-board__link:hover {
+  text-decoration: underline;
+}
+
+.quality-board__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quality-board__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--lh-border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.quality-board__meta {
   color: var(--lh-muted);
   font-size: 12px;
   font-weight: 700;

@@ -56,6 +56,74 @@ function isExportSignal(type: AuditEventType): boolean {
   return type.startsWith("EXPORT_") || type === "DATA_QUALITY_PASSPORT_GENERATED";
 }
 
+// actor role → 人话；未识别回退「系统」，不暴露原始 code。
+const ACTOR_ROLE_LABELS: Record<string, string> = {
+  OWNER: "任务负责人",
+  REVIEWER: "审核员",
+  LABELER: "标注员",
+  SYSTEM: "系统",
+};
+
+function actorRoleLabel(role: string): string {
+  return ACTOR_ROLE_LABELS[role] ?? "系统";
+}
+
+function formatEventTime(value: string): string {
+  return new Date(value).toLocaleString("zh-CN", { hour12: false });
+}
+
+// 各质量看板复用的事件列表：人话事件名 + 角色 + 时间 + 严重度，绝不展示原始 type/payload。
+function QualityBoard({
+  title,
+  description,
+  events,
+  emptyText,
+  error,
+  secondary,
+}: {
+  title: string;
+  description?: string;
+  events: AuditEventRecord[];
+  emptyText: string;
+  error: string | null;
+  secondary?: { to: string; label: string };
+}) {
+  return (
+    <Card className="quality-board">
+      <div className="quality-board__head">
+        <div>
+          <h3>{title}</h3>
+          {description ? <p>{description}</p> : null}
+        </div>
+        <div className="quality-board__head-aside">
+          <Badge tone={events.length > 0 ? "primary" : "default"}>最近 {events.length} 条</Badge>
+          {secondary ? (
+            <Link className="quality-board__link" to={secondary.to}>
+              {secondary.label} →
+            </Link>
+          ) : null}
+        </div>
+      </div>
+      {error ? (
+        <div className="empty-state">{error}</div>
+      ) : events.length === 0 ? (
+        <div className="empty-state">{emptyText}</div>
+      ) : (
+        <ul className="quality-board__list">
+          {events.map((event) => (
+            <li className="quality-board__item" key={event.id}>
+              <Badge tone={severityTone(event.severity)}>{auditTypeLabel(event.type)}</Badge>
+              <span className="quality-board__meta">
+                {actorRoleLabel(event.actor.role)} · {formatEventTime(String(event.createdAt))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 export default function OwnerQualityCenterPage({ role }: OwnerQualityCenterPageProps) {
   if (role !== "OWNER") {
     return (
@@ -107,7 +175,7 @@ function OwnerQualityCenterContent() {
     };
   }, []);
 
-  // 入口链接需要一个任务上下文：优先用真实任务，回退到默认演示任务，避免链接落空。
+  // 次级链接需要一个任务上下文：优先用真实任务，回退到默认任务，避免链接落空。
   const resolvedTaskId = tasks[0]?.id ?? "task_news_quality";
 
   const taskStats = useMemo(() => {
@@ -116,53 +184,14 @@ function OwnerQualityCenterContent() {
     return { total: tasks.length, published, draft };
   }, [tasks]);
 
-  // 以下计数全部来自真实审计事件，仅统计「最近拉取到的审计记录」，不伪造比率或总量。
-  const signalCounts = useMemo(() => {
-    let ai = 0;
-    let review = 0;
-    let exportSignal = 0;
-    let risk = 0;
-    for (const event of events) {
-      if (isAiSignal(event.type)) ai += 1;
-      if (isReviewSignal(event.type)) review += 1;
-      if (isExportSignal(event.type)) exportSignal += 1;
-      if (event.severity !== "INFO") risk += 1;
-    }
-    return { ai, review, exportSignal, risk };
-  }, [events]);
+  // 风险信号：来自真实审计事件中 severity 非 INFO 的数量，不写死。
+  const riskCount = useMemo(() => events.filter((event) => event.severity !== "INFO").length, [events]);
 
-  const recentClues = useMemo(() => events.slice(0, 8), [events]);
-
-  const entryCards: Array<{ to: string; title: string; description: string; count: number; countLabel: string }> = [
-    {
-      to: `/owner/tasks/${resolvedTaskId}/ai-config`,
-      title: "AI 预审 / AI 检查",
-      description: "维护异步预审规则、维度评分与人工兜底策略。",
-      count: signalCounts.ai,
-      countLabel: "最近 AI 相关审计",
-    },
-    {
-      to: "/owner/tasks",
-      title: "审核与打回线索",
-      description: "进入任务管理查看各任务的发布与审核状态。",
-      count: signalCounts.review,
-      countLabel: "最近审核相关审计",
-    },
-    {
-      to: `/owner/tasks/${resolvedTaskId}/export`,
-      title: "导出与质量护照",
-      description: "查看导出任务状态，并下钻数据质量护照摘要。",
-      count: signalCounts.exportSignal,
-      countLabel: "最近导出相关审计",
-    },
-    {
-      to: `/owner/tasks/${resolvedTaskId}/designer`,
-      title: "模板与审计日志",
-      description: "在模板搭建页查看版本审计时间线与发布前检查。",
-      count: events.length,
-      countLabel: "最近审计事件",
-    },
-  ];
+  // 各看板的事件子集，全部来自已加载的真实审计事件，按时间倒序，取最近若干条。
+  const aiEvents = useMemo(() => events.filter((event) => isAiSignal(event.type)).slice(0, 8), [events]);
+  const reviewEvents = useMemo(() => events.filter((event) => isReviewSignal(event.type)).slice(0, 8), [events]);
+  const exportEvents = useMemo(() => events.filter((event) => isExportSignal(event.type)).slice(0, 8), [events]);
+  const auditEvents = useMemo(() => events.slice(0, 12), [events]);
 
   if (loading) {
     return <Card className="state-panel">加载质量中心中...</Card>;
@@ -174,7 +203,7 @@ function OwnerQualityCenterContent() {
         <div>
           <h2 className="page-title">质量中心</h2>
           <p className="page-subtitle">
-            集中查看 AI 检查、人工审核、打回修订、导出与审计相关的质量信号。当前版本只展示已有任务产生的真实质量线索，不伪造统计指标。
+            集中查看 AI 检查、人工审核、打回修订、导出与审计记录，掌握每批数据的质量来源。
           </p>
         </div>
       </div>
@@ -186,7 +215,7 @@ function OwnerQualityCenterContent() {
         </Card>
       ) : null}
 
-      <div className="owner-summary-strip" aria-label="任务概览">
+      <div className="owner-summary-strip" aria-label="质量总览">
         <div className="owner-summary-item owner-summary-item--primary">
           <span>发布中任务</span>
           <strong>{taskStats.published}</strong>
@@ -200,66 +229,46 @@ function OwnerQualityCenterContent() {
           <strong>{taskStats.total}</strong>
         </div>
         <div className="owner-summary-item owner-summary-item--warning">
-          <span>最近审计风险信号</span>
-          <strong>{signalCounts.risk}</strong>
+          <span>最近风险信号</span>
+          <strong>{riskCount}</strong>
         </div>
       </div>
 
-      <section className="quality-center-grid" aria-label="质量信号入口">
-        {entryCards.map((card) => (
-          <Link className="quality-center-entry" key={card.title} to={card.to}>
-            <div className="quality-center-entry__head">
-              <strong>{card.title}</strong>
-              <Badge tone={card.count > 0 ? "primary" : "default"}>
-                {card.countLabel} {card.count}
-              </Badge>
-            </div>
-            <p>{card.description}</p>
-            <span className="quality-center-entry__cta">进入 →</span>
-          </Link>
-        ))}
-      </section>
+      <div className="quality-board-grid">
+        <QualityBoard
+          title="AI 预审看板"
+          description="最近的 AI 预审与 AI 辅助检查记录。"
+          events={aiEvents}
+          error={eventsError}
+          emptyText="暂无 AI 预审质量线索。任务产生 AI 检查结果后，这里会显示相关记录。"
+          secondary={{ to: `/owner/tasks/${resolvedTaskId}/ai-config`, label: "配置 AI 预审规则" }}
+        />
 
-      <Card className="quality-center-passport">
-        <div className="quality-center-passport__head">
-          <div>
-            <h3>Data Quality Passport</h3>
-            <p>
-              数据质量护照汇总模板版本、审核记录、AI 检查与导出审计，用于交付时说明数据质量来源。生成导出任务后，可在导出中心查看每批数据的真实质量护照。
-            </p>
-          </div>
-          <Link className="lh-button lh-button--primary" to={`/owner/tasks/${resolvedTaskId}/export`}>
-            前往导出中心
-          </Link>
-        </div>
-      </Card>
+        <QualityBoard
+          title="审核与打回看板"
+          description="最近的审核开始、提交、修订与打回记录。"
+          events={reviewEvents}
+          error={eventsError}
+          emptyText="暂无审核与打回线索。审核员处理任务后，这里会显示通过、打回和修订记录。"
+        />
 
-      <Card className="quality-center-clues">
-        <div className="quality-center-clues__head">
-          <div>
-            <h3>最近质量线索</h3>
-            <p>来自真实审计事件，按时间倒序展示最近的审核、AI 检查与导出动作。</p>
-          </div>
-        </div>
-        {eventsError ? (
-          <div className="empty-state">{eventsError}</div>
-        ) : recentClues.length === 0 ? (
-          <div className="empty-state">
-            暂无质量问题。任务产生审核结果后，这里会显示风险信号与修订线索。
-          </div>
-        ) : (
-          <ul className="quality-center-clue-list">
-            {recentClues.map((event) => (
-              <li className="quality-center-clue" key={event.id}>
-                <Badge tone={severityTone(event.severity)}>{auditTypeLabel(event.type)}</Badge>
-                <span className="quality-center-clue__meta">
-                  {event.actor.role} · {new Date(event.createdAt).toLocaleString("zh-CN", { hour12: false })}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+        <QualityBoard
+          title="导出与质量护照"
+          description="Data Quality Passport 用于汇总模板版本、审核记录、AI 检查与导出审计，帮助说明数据交付时的质量来源。"
+          events={exportEvents}
+          error={eventsError}
+          emptyText="暂无导出质量记录。生成导出任务后，这里会显示导出与质量护照线索。"
+          secondary={{ to: `/owner/tasks/${resolvedTaskId}/export`, label: "查看导出中心" }}
+        />
+
+        <QualityBoard
+          title="审计与追溯"
+          description="最近的审核、AI 检查、导出与模板发布动作，按时间倒序。"
+          events={auditEvents}
+          error={eventsError}
+          emptyText="暂无审计记录。系统产生审核、AI 检查、导出或模板发布动作后，这里会自动记录。"
+        />
+      </div>
     </div>
   );
 }

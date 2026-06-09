@@ -24,9 +24,9 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
         const data = await listMarketplaceTasks();
         setTasks(data.filter((task) => !isPlaceholderTask(task)));
         setOfflineNotice(null);
-      } catch (e) {
+      } catch {
         setTasks([]);
-        setOfflineNotice(`未加载任何占位数据。${(e as Error).message}`);
+        setOfflineNotice("任务市场加载失败，请稍后重试。");
       } finally {
         setLoading(false);
       }
@@ -60,13 +60,13 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
 
       {offlineNotice ? (
         <Card className="labeler-return-card">
-          <Badge tone="danger">接口异常</Badge>
+          <Badge tone="danger">加载失败</Badge>
           <p>{offlineNotice}</p>
         </Card>
       ) : null}
 
       <div className="kpi-grid">
-        <KpiCard label="可领取任务" value={tasks.length} hint="来自真实任务市场接口" />
+        <KpiCard label="可领取任务" value={tasks.length} hint="领取后进入标注工作台" />
       </div>
 
       <div className="soft-grid">

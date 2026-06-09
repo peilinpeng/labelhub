@@ -42,6 +42,60 @@ const STATUS_TONE: Record<AssignmentStatus, "default" | "primary" | "success" | 
   EXPIRED: "danger",
 };
 
+// 兼容可能出现的审核态/草稿态字符串；未识别一律回退，不向用户暴露 raw code。
+const EXTRA_STATUS_LABEL: Record<string, string> = {
+  AI_PASSED: "AI 预审通过",
+  NEEDS_HUMAN_REVIEW: "待人工审核",
+  HUMAN_REVIEWING: "审核中",
+  FINAL_REVIEWING: "终审中",
+  HUMAN_REVIEW_PASSED: "已通过",
+  APPROVED: "已通过",
+  PASSED: "已通过",
+  REJECTED: "打回待修改",
+  NEEDS_REVISION: "打回待修改",
+  DRAFT: "草稿中",
+  IN_PROGRESS: "进行中",
+};
+
+const EXTRA_STATUS_TONE: Record<string, "default" | "primary" | "success" | "warning" | "danger"> = {
+  AI_PASSED: "success",
+  NEEDS_HUMAN_REVIEW: "warning",
+  HUMAN_REVIEWING: "warning",
+  FINAL_REVIEWING: "primary",
+  HUMAN_REVIEW_PASSED: "success",
+  APPROVED: "success",
+  PASSED: "success",
+  REJECTED: "danger",
+  NEEDS_REVISION: "warning",
+  DRAFT: "default",
+  IN_PROGRESS: "default",
+};
+
+const EXTRA_CATEGORY: Record<string, Category> = {
+  DRAFT: "inProgress",
+  IN_PROGRESS: "inProgress",
+  AI_PASSED: "submitted",
+  NEEDS_HUMAN_REVIEW: "submitted",
+  HUMAN_REVIEWING: "submitted",
+  APPROVED: "accepted",
+  PASSED: "accepted",
+  HUMAN_REVIEW_PASSED: "accepted",
+  REJECTED: "returned",
+  NEEDS_REVISION: "returned",
+};
+
+function humanStatusLabel(status: string): string {
+  return STATUS_LABEL[status as AssignmentStatus] ?? EXTRA_STATUS_LABEL[status] ?? "待处理";
+}
+
+function humanStatusTone(status: string): "default" | "primary" | "success" | "warning" | "danger" {
+  return STATUS_TONE[status as AssignmentStatus] ?? EXTRA_STATUS_TONE[status] ?? "default";
+}
+
+function categoryOf(status: string): Category {
+  return CATEGORY_OF[status as AssignmentStatus] ?? EXTRA_CATEGORY[status] ?? "other";
+}
+
 type FilterKey = "all" | Category;
 
 const FILTERS: Array<{ key: FilterKey; label: string }> = [
@@ -87,7 +141,7 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
   const stats = useMemo(() => {
     const acc = { submitted: 0, accepted: 0, returned: 0, inProgress: 0, other: 0 };
     for (const a of assignments) {
-      acc[CATEGORY_OF[a.status as AssignmentStatus] ?? "other"] += 1;
+      acc[categoryOf(a.status)] += 1;
     }
     return acc;
   }, [assignments]);
@@ -95,7 +149,7 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
   const visible = useMemo(() => {
     const rows = filter === "all"
       ? assignments
-      : assignments.filter((a) => CATEGORY_OF[a.status as AssignmentStatus] === filter);
+      : assignments.filter((a) => categoryOf(a.status) === filter);
     return [...rows].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
   }, [assignments, filter]);
 
@@ -110,7 +164,7 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
         </div>
       </div>
 
-      <div className="kpi-grid">
+      <div className="kpi-grid labeler-submissions-kpis">
         <KpiCard label="已提交 · 审核中" value={stats.submitted} hint="等待 AI/人工审核" />
         <KpiCard label="已通过" value={stats.accepted} hint="已入库 / 可导出" />
         <KpiCard label="打回 · 待修改" value={stats.returned} hint="需查看意见后修改" />
@@ -146,8 +200,8 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
                 <div className="form-stack">
                   <div>
                     <div className="page-actions">
-                      <Badge tone={STATUS_TONE[status] ?? "default"}>
-                        {STATUS_LABEL[status] ?? status}
+                      <Badge tone={humanStatusTone(a.status)}>
+                        {humanStatusLabel(a.status)}
                       </Badge>
                     </div>
                     <h3 className="task-title">{taskTitleById[a.taskId] ?? a.taskId}</h3>
