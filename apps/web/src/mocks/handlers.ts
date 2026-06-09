@@ -166,6 +166,25 @@ export const handlers = [
     return draft === undefined ? errorJson("RESOURCE_NOT_FOUND", "schema draft 不存在", 404) : okJson(draft);
   }),
 
+  // 版本历史：映射 mock 的 SchemaVersion（snapshot/createdAt）为后端响应形状（schema/publishedAt），倒序。
+  http.get("/api/v1/tasks/:taskId/schema-versions", ({ params }) => {
+    const taskId = getParam(params as MockParams, "taskId");
+    const versions = mockDb.schemaVersions
+      .filter((v) => v.taskId === taskId)
+      .slice()
+      .sort((a, b) => b.schemaVersionNo - a.schemaVersionNo)
+      .map((v) => ({
+        id: v.id,
+        taskId: v.taskId,
+        schemaId: v.schemaId,
+        schemaVersionNo: v.schemaVersionNo,
+        contractVersion: v.contractVersion,
+        schema: v.snapshot,
+        publishedAt: v.createdAt,
+      }));
+    return okJson({ schemaVersions: versions });
+  }),
+
   http.put("/api/v1/tasks/:taskId/schema/draft", async ({ request, params }) => {
     return handleSaveSchemaDraftRequest(request, params as MockParams);
   }),

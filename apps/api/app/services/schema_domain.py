@@ -323,6 +323,23 @@ def get_schema_version(
     return version
 
 
+def list_schema_versions(
+    db: Session,
+    task_id: str,
+    actor,
+) -> list[SchemaVersion]:
+    """
+    列出某任务的全部已发布 Schema 版本，按版本号倒序（最新在前）。
+    用于版本历史 / 版本对比 / 回滚的前端显化；只读，不写 audit log。
+    """
+    return (
+        db.query(SchemaVersion)
+        .filter_by(task_id=task_id)
+        .order_by(SchemaVersion.schema_version_no.desc())
+        .all()
+    )
+
+
 # ---------------------------------------------------------------------------
 # generate_schema_draft：AI 生成 Schema 草稿（不落库，仅返回供前端预览/保存）
 # ---------------------------------------------------------------------------

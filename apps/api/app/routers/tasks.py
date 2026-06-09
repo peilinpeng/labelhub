@@ -486,6 +486,7 @@ from app.schemas.task import (
     SchemaDraftResponse,
     PublishSchemaVersionRequest, PublishSchemaVersionResponse,
     SchemaVersionResponse,
+    ListSchemaVersionsResponse,
     ValidateSchemaRequest, ValidateSchemaResponse,
     SchemaValidationResultResponse,
     GenerateSchemaRequest, GenerateSchemaResponse, GeneratedByResponse,
@@ -608,6 +609,25 @@ def get_schema_version(
     """获取不可变 Schema 版本快照（契约 §23.1：OWNER/REVIEWER/LABELER 均可访问）。"""
     version = schema_domain.get_schema_version(db, schema_version_id, actor)
     return SchemaVersionResponse.from_orm(version)
+
+
+# ── GET /tasks/{task_id}/schema-versions（listSchemaVersions：版本历史）──────
+
+@router.get(
+    "/tasks/{task_id}/schema-versions",
+    response_model=ListSchemaVersionsResponse,
+    summary="列出任务的 Schema 版本历史",
+)
+def list_schema_versions(
+    task_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER", "REVIEWER", "LABELER")),
+) -> ListSchemaVersionsResponse:
+    """列出某任务的全部已发布 Schema 版本（倒序），供版本历史 / 对比 / 回滚显化。"""
+    versions = schema_domain.list_schema_versions(db, task_id, actor)
+    return ListSchemaVersionsResponse(
+        schemaVersions=[SchemaVersionResponse.from_orm(v) for v in versions],
+    )
 
 
 # ── POST /schema/validate（validateSchema）──────────────────────────────────

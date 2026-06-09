@@ -305,6 +305,11 @@ class SchemaVersionResponse(BaseModel):
         )
 
 
+class ListSchemaVersionsResponse(BaseModel):
+    """GET /tasks/{taskId}/schema-versions 响应体：某任务的版本历史（倒序）。"""
+    schemaVersions: list[SchemaVersionResponse]
+
+
 class PublishSchemaVersionResponse(BaseModel):
     """POST /tasks/{taskId}/schema/publish 响应体"""
     schemaVersion: SchemaVersionResponse

@@ -25,7 +25,8 @@ import type {
   Task,
 } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
-import { fetchSchemaDraft, fetchSchemaVersion, fetchServerRegistry, fetchTask, publishSchema, publishTask, saveSchemaDraft } from "../../api/owner";
+import { fetchSchemaDraft, fetchSchemaVersion, fetchServerRegistry, fetchTask, publishSchema, publishTask, saveSchemaDraft, type SchemaVersionHistoryItem } from "../../api/owner";
+import { SchemaVersionPanel } from "./SchemaVersionPanel";
 import { Badge, Button, Card } from "../../ui/primitives";
 import {
   appendPublishPreviewAuditEvents,
@@ -167,6 +168,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [publishPreviewOpen, setPublishPreviewOpen] = useState(false);
   const [publishPreview, setPublishPreview] = useState<PublishPreviewState | undefined>();
   const [publishPreviewPreparing, setPublishPreviewPreparing] = useState(false);
+  const [versionRefreshKey, setVersionRefreshKey] = useState(0);
   const [activePresetId, setActivePresetId] = useState(() => presetIdForTask(taskId));
   const [dropActive, setDropActive] = useState(false);
   const [conditionRules, setConditionRules] = useState<ConditionRuleDraft[]>([]);
@@ -390,6 +392,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       failureStage = "PUBLISH_TASK";
       const publishedTask = await publishTask(currentTaskId, { schemaVersionId });
       setTask(publishedTask.task);
+      setVersionRefreshKey((key) => key + 1);
       showNotice("发布成功，任务已进入任务市场。", "success");
     } catch (error) {
       console.error("Owner 模板发布失败", error);
@@ -403,6 +406,69 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       setPublishFailureDetails(getPublishFailureSuggestions(error, failureStage));
       setStatusMessage(message);
       showNotice(message, failureStage === "PUBLISH_TASK" ? "info" : "danger");
+    } finally {
+      setPublishing(false);
+      setSaving(false);
+    }
+  };
+
+  // 复制为新草稿：把某历史版本快照载入编辑器（保留当前草稿修订号以便后续保存不冲突），不自动发布。
+  const handleCopyVersionToDraft = (snapshot: LabelHubSchema, version: SchemaVersionHistoryItem): void => {
+    setSchema({ ...snapshot, schemaDraftRevision: schema.schemaDraftRevision });
+    setActivePresetId(`version_${version.id}`);
+    setStatusMessage(`已载入第 ${version.schemaVersionNo} 版为编辑草稿`);
+    showNotice(`已把第 ${version.schemaVersionNo} 版载入为草稿，可继续编辑后保存或发布。`, "info");
+  };
+
+  // 历史保留式回滚：以旧版本快照重新发布，生成一个内容等同旧版的新版本入历史。
+  // 绑定遵循“版本冻结”原则——仅 DRAFT 任务会绑定到新版本；已发布任务保留原绑定（不报错）。
+  const handleRollbackToVersion = async (snapshot: LabelHubSchema, version: SchemaVersionHistoryItem): Promise<void> => {
+    const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
+    const rollbackSchema = { ...snapshot, schemaDraftRevision: schema.schemaDraftRevision };
+    try {
+      setSaving(true);
+      setPublishing(true);
+      showNotice(null);
+      const draftResponse = await saveSchemaDraft(currentTaskId, {
+        schema: rollbackSchema,
+        baseSchemaDraftRevision: schema.schemaDraftRevision,
+      });
+      setSchema(draftResponse.schema);
+      setValidation(draftResponse.validation);
+
+      const published = await publishSchema(currentTaskId, draftResponse.schemaDraftRevision);
+      const schemaVersionId = readPublishedSchemaVersionId(published.schemaVersion, draftResponse.schema.schemaVersionId);
+      const newVersionNo = readPublishedSchemaVersionNo(published.schemaVersion, draftResponse.schema.schemaVersionNo);
+      await appendSchemaPublishedAuditEvent({
+        schema: draftResponse.schema,
+        task,
+        schemaVersionId,
+        schemaVersionNo: newVersionNo,
+      });
+
+      // 尝试把任务绑定到新版本：仅 DRAFT 任务允许（契约 publishTask）。
+      // 已发布任务按“默认不迁移”的版本冻结策略保留原绑定，此处的拒绝属预期、不计为失败。
+      let rebound = false;
+      try {
+        const publishedTask = await publishTask(currentTaskId, { schemaVersionId });
+        setTask(publishedTask.task);
+        rebound = true;
+      } catch (bindError) {
+        console.info("回滚未重绑（版本冻结：任务已发布，保留原绑定）", bindError);
+      }
+
+      setVersionRefreshKey((key) => key + 1);
+      showNotice(
+        rebound
+          ? `已回滚：以第 ${version.schemaVersionNo} 版快照重新发布为第 ${newVersionNo} 版，并绑定到该任务。`
+          : `已基于第 ${version.schemaVersionNo} 版生成第 ${newVersionNo} 版快照并入历史。该任务已发布，按版本冻结策略保留原绑定；如需启用可“复制为新草稿”后用于新任务。`,
+        "success",
+      );
+    } catch (error) {
+      console.error("Owner 模板回滚失败", error);
+      const message = getPublishFailureMessage(error, "PUBLISH_SCHEMA");
+      setPublishFailureDetails(getPublishFailureSuggestions(error, "PUBLISH_SCHEMA"));
+      showNotice(message, "danger");
     } finally {
       setPublishing(false);
       setSaving(false);
@@ -989,6 +1055,14 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           />
         </div>
       </Card>
+
+      <SchemaVersionPanel
+        taskId={resolveTaskId(taskId, schema.meta.taskId)}
+        activeSchemaVersionId={task?.activeSchemaVersionId}
+        refreshKey={versionRefreshKey}
+        onCopyToDraft={handleCopyVersionToDraft}
+        onRollback={(snapshot, version) => void handleRollbackToVersion(snapshot, version)}
+      />
 
       {publishPreview ? (
         <PublishPreviewDialog

@@ -66,6 +66,29 @@ export async function fetchSchemaVersion(schemaVersionId: string): Promise<Schem
   return isRecord(res) && "schemaVersion" in res ? (res as { schemaVersion: SchemaVersion }).schemaVersion : res;
 }
 
+/**
+ * GET /tasks/{taskId}/schema-versions 返回的版本历史项。
+ * 字段对齐真实后端 SchemaVersionResponse（schema 为已发布快照，publishedAt 为发布时间），
+ * 与 contracts SchemaVersion（snapshot/createdAt）命名不同，这里按后端实际响应建模。
+ */
+export interface SchemaVersionHistoryItem {
+  id: string;
+  taskId: string;
+  schemaId: string;
+  schemaVersionNo: number;
+  contractVersion: string;
+  schema: LabelHubSchema;
+  publishedAt: string;
+}
+
+export async function listSchemaVersions(taskId: string): Promise<SchemaVersionHistoryItem[]> {
+  const res = await apiGet<{ schemaVersions?: SchemaVersionHistoryItem[] } | SchemaVersionHistoryItem[]>(
+    `/api/v1/tasks/${taskId}/schema-versions`,
+  );
+  if (Array.isArray(res)) return res;
+  return res.schemaVersions ?? [];
+}
+
 export async function saveSchemaDraft(
   taskId: string,
   request: SaveSchemaDraftRequest
