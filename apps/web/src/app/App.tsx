@@ -69,21 +69,25 @@ function LoginPage({ onLogin }: { onLogin: (role: Role, email: string, password:
     role: Role;
     title: string;
     username: string;
+    password: string;
   }> = [
     {
       role: "OWNER",
       title: "任务负责人账号",
-      username: "owner@labelhub.test",
+      username: "owner@labelhub.com",
+      password: "password123",
     },
     {
       role: "LABELER",
       title: "标注员账号",
-      username: "labeler@labelhub.test",
+      username: "labeler@labelhub.com",
+      password: "password123",
     },
     {
       role: "REVIEWER",
       title: "人工审核账号",
-      username: "reviewer@labelhub.test",
+      username: "reviewer@labelhub.com",
+      password: "password123",
     },
   ];
   const [activeAccount, setActiveAccount] = useState<(typeof accounts)[number] | null>(null);
@@ -95,7 +99,7 @@ function LoginPage({ onLogin }: { onLogin: (role: Role, email: string, password:
   const openLoginDialog = (account: (typeof accounts)[number]) => {
     setActiveAccount(account);
     setEmail(account.username);
-    setPassword("");
+    setPassword(account.password);
     setLoginError(null);
   };
 

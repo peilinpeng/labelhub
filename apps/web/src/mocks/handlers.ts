@@ -658,10 +658,13 @@ async function handleAppRouteRequest(request: Request): Promise<Response | undef
 function demoActorForEmail(email: string): { id: string; role: "OWNER" | "LABELER" | "REVIEWER"; displayName: string } | undefined {
   switch (email) {
     case "owner@labelhub.test":
+    case "owner@labelhub.com":
       return { id: "usr_owner", role: "OWNER", displayName: "任务负责人" };
     case "labeler@labelhub.test":
+    case "labeler@labelhub.com":
       return { id: "usr_labeler", role: "LABELER", displayName: "标注员" };
     case "reviewer@labelhub.test":
+    case "reviewer@labelhub.com":
       return { id: "usr_reviewer", role: "REVIEWER", displayName: "审核员" };
     default:
       return undefined;
