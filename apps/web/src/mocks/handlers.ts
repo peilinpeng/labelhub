@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import type {
+  AiAssistActionRequest,
   BatchReviewRequest,
   ClaimTaskRequest,
   AppendAuditEventRequest,
@@ -28,8 +29,10 @@ import type {
 } from "@labelhub/contracts";
 import {
   appendAuditEvent,
+  applyAiAssistAction,
   audit,
   batchDecideReview,
+  deriveAiAssistSuggestions,
   callLLMAssist,
   claimReview,
   claimTask,
@@ -306,6 +309,37 @@ export const handlers = [
         : { body: response };
     });
   }),
+
+  http.get("/api/v1/review/submissions/:submissionId/ai-assist/suggestions", ({ params }) => {
+    const submissionId = getParam(params as MockParams, "submissionId");
+    const submission = mockDb.submissions.find((item) => item.id === submissionId);
+    if (submission === undefined) {
+      return errorJson("RESOURCE_NOT_FOUND", "审核详情不存在", 404);
+    }
+    return okJson({ suggestions: deriveAiAssistSuggestions(submissionId) });
+  }),
+
+  http.post(
+    "/api/v1/review/submissions/:submissionId/ai-assist/:suggestionId/actions",
+    async ({ request, params }) => {
+      const submissionId = getParam(params as MockParams, "submissionId");
+      const suggestionId = getParam(params as MockParams, "suggestionId");
+      const body = await readJson<AiAssistActionRequest>(request);
+      return withIdempotency(request, body, () => {
+        if (!["accept", "edit_accept", "dismiss"].includes(body.action)) {
+          return { body: apiErrorBody("VALIDATION_FAILED", "AI Assist 动作不合法"), status: 422 };
+        }
+        const result = applyAiAssistAction(submissionId, suggestionId, body);
+        if (result === undefined) {
+          return { body: apiErrorBody("RESOURCE_NOT_FOUND", "审核详情不存在"), status: 404 };
+        }
+        if ("error" in result) {
+          return { body: apiErrorBody("RESOURCE_NOT_FOUND", "AI 建议不存在"), status: 404 };
+        }
+        return { body: result, status: 201 };
+      });
+    },
+  ),
 
   http.post("/api/v1/review/batch-decision", async ({ request }) => {
     const body = await readJson<BatchReviewRequest>(request);

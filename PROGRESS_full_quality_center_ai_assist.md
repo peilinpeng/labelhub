@@ -6,7 +6,21 @@
 ---
 
 ## 当前阶段
-阶段 3（后端 API）已完成，准备进入阶段 4（Mock）。
+阶段 4（Mock）已完成，准备进入阶段 5（前端 Reviewer AI Assist）。
+
+### 阶段 4 已完成
+- `apps/web/src/mocks/data/reviews.mock.ts`：为 4 条 AI 预审结果的 fieldIssues 补 `suggestion`（复用 contracts 既有可选字段），使派生建议带真实结构化补丁，便于演示一键采纳真正改写答案。
+- `apps/web/src/mocks/mock-db.ts`：
+  - MockState 增加 `aiAssistActions: AiAssistActionRecord[]`。
+  - `deriveAiAssistSuggestions(submissionId)` / `applyAiAssistAction(submissionId, suggestionId, request)`，逻辑与后端一致（确定性 id、终态冻结 → APPLY_FAILED、主事件 + PATCH_APPLIED/FAILED 审计事件，经 `appendAuditEvent` 写入，幂等键防重复）。
+- `apps/web/src/mocks/handlers.ts`：新增 MSW 路由
+  - `GET  /api/v1/review/submissions/:submissionId/ai-assist/suggestions`
+  - `POST /api/v1/review/submissions/:submissionId/ai-assist/:suggestionId/actions`（带幂等、非法 action → 422、未找到 → 404）。
+- mock 文案未写进 UI；KPI 不写死（Quality Center 从审计事件实时计数）；mock 结构与 contracts/后端一致。
+- 本地点击一键采纳后，写入的 AI_ASSIST_* 审计事件可被 `queryAuditEvents` 读取 → Quality Center AI 看板可见。
+
+### 阶段 4 测试结果
+- `cd apps/web && npm run typecheck`：通过。
 
 ### 阶段 3 已完成
 - 新增后端表 `apps/api/app/models/ai_assist.py`（`ai_assist_actions`），记录 action + 状态 + patch 应用结果（追加只写）。
