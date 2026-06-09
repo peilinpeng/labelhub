@@ -278,7 +278,12 @@ cd apps/web && npm run typecheck && npm run build
 
 | 序号 | 发现时间 | 所属模块 | 描述 | 严重程度 | 状态 | 截图路径 |
 |---|---|---|---|---|---|---|
-| 1 | `（填写）` | `（填写）` | `（填写）` | 高/中/低 | 未修复/已修复 | `（填写）` |
+| 1 | 2026-06-09 | 真实后端 / 全局 | 后端长时间空闲后首批请求 500：`apps/api/app/database.py` 的 `create_engine` 未配 `pool_pre_ping` / `pool_recycle`，MySQL 空闲超时后连接池里是死连接。复现：api 容器 Up 超过 MySQL wait_timeout（默认 8h）后调用任意接口（如 POST /auth/login）。期望：正常返回。实际：第一次报 `{"code":"VALIDATION_FAILED","message":"服务端内部错误"}`，api 日志 `pymysql OperationalError (2006, "MySQL server has gone away")`；重试即成功。Console：前端只看到通用错误提示。⚠️ 高度疑似历史「任务创建/发布偶发失败」（P1-1）的根因。**修复**：`create_engine` 加 `pool_pre_ping=True, pool_recycle=3600`；重建 api/worker 后验证：容器内 pytest 170 passed；经 5173 真实链路首次登录 200，Owner 建任务→存模板→发布模板→上传文件→导入数据集→发布任务全链路 2xx；api 日志再无 gone away / Broken pipe / 500。运维注意：重建 api 容器后需 `docker compose restart web`，否则 web 容器内 vite 代理持有旧 api 连接会报 500。 | 高 | 已修复 | 无（见 api 容器日志 traceId f429b2e76c644cc08b53fe7e13d62d32） |
+| 2 | 2026-06-09 | Mock / Reviewer+导出 | mock 模式下审核决策不更新 submission 状态：在 `/reviewer/items/sub_1002`、`sub_1003` 提交「通过/保存修订并通过」成功（审计事件 REVIEW_SUBMITTED / REVIEW_DIFF_GENERATED 正常写入）后，`GET /api/v1/review/queue` 中两条仍为 `NEEDS_HUMAN_REVIEW`；连带 `/owner/tasks/task_news_quality/export` 导出结果为 0 条、质量护照「记录数 0 / 批次指纹 暂无」，QA 表 §8 的 passportBatchHash 验证项在 mock 下无法通过。期望：通过后状态流转、进入可导出池。实际：状态停滞、导出空。Console 无报错。（真实后端不受影响，仅 `mock-db.ts` 状态机缺口） | 中 | 未修复 | 无 |
+| 3 | 2026-06-09 | Owner 模板搭建 | QA 表 §4.2/§4.3 要求「Audit Timeline 显示 SCHEMA_PUBLISH_BLOCKED / SCHEMA_VERSION_PUBLISHED」，但模板搭建页和任务详情页都没有审计时间线 UI；事件本身已正确写入 `/api/v1/audit-events`。`apps/web/src/features/owner/AuditTimelinePanel.tsx` 组件存在但全仓库无任何引用（死代码）。期望：发布/阻断后页面可见审计时间线。实际：只能在质量中心看到全局事件流。Console 无报错。 | 中 | 未修复 | 无 |
+| 4 | 2026-06-09 | Labeler AI 辅助 | AI 建议为「还需要补充信息」（阻断）状态时，「一键采纳」正确物理禁用，但「反馈问题」按钮同样被禁用，且没有 QA 表 §6.1 预期的可点击「忽略建议」入口——阻断状态下用户无法关闭/忽略这条 AI 建议区块。期望：忽略/反馈入口可用。实际：两个按钮均 disabled。Console 无报错。 | 低 | 未修复 | 无 |
+| 5 | 2026-06-09 | Owner 导出中心 | 下载历史时间戳直接渲染原始 ISO/UTC 字符串 `2026-06-09T20:07:24.731Z`（本地实际 22:07），未本地化、未格式化，且与平台其他页面「2026/6/9 22:05:10」格式不一致。 | 低 | 未修复 | 无 |
+| 6 | 2026-06-09 | 真实后端 / 文件上传 | `POST /files/{id}/confirm` 不校验二进制内容是否真的已上传：对一个从未成功上传内容的文件 confirm 返回 200 并置 READY，随后 `POST /tasks/{id}/dataset/import` 报 422「本地文件不存在: /workspace/.storage/...」。期望：confirm 时校验存储文件存在，否则 409/422。实际：confirm 假成功，错误延迟到导入阶段才暴露。复现：upload-url 拿 fileId → 跳过（或失败）upload → 直接 confirm → import。 | 中 | 未修复 | 无 |
 
 > 若无缺陷，请填写：**无缺陷**
 

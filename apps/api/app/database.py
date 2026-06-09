@@ -11,7 +11,9 @@ from app.config import settings
 _db_url = settings.DATABASE_URL
 if _db_url.startswith("mysql://"):
     _db_url = "mysql+pymysql://" + _db_url[len("mysql://"):]
-engine = create_engine(_db_url)
+# pool_pre_ping：取连接前先探活，剔除被 MySQL wait_timeout 杀掉的死连接（避免空闲后首次请求 2006 "server has gone away"）
+# pool_recycle：连接存活超 1 小时主动重建，始终低于 MySQL 默认 wait_timeout(8h)
+engine = create_engine(_db_url, pool_pre_ping=True, pool_recycle=3600)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
