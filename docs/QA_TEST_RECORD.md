@@ -55,18 +55,25 @@ cd packages/schema-renderer && npm run typecheck && npm run test
 cd apps/web && npm run typecheck && npm run build
 ```
 
+> 执行日期：2026-06-09（Claude Code 自动化复跑，全绿）
+
 | 测试套件 | 预期 | 实际结果 | 通过/失败 |
 |---|---|---|---|
-| contracts typecheck | ✅ | `（填写）` | `（填写）` |
-| contracts test | ✅ | `（填写数量，例如：74/74）` | `（填写）` |
-| schema-core typecheck | ✅ | `（填写）` | `（填写）` |
-| schema-core test | ✅ | `（填写）` | `（填写）` |
-| schema-compiler typecheck | ✅ | `（填写）` | `（填写）` |
-| schema-compiler test | 31/31 | `（填写）` | `（填写）` |
-| schema-renderer typecheck | ✅ | `（填写）` | `（填写）` |
-| schema-renderer test | 41/41 | `（填写）` | `（填写）` |
-| apps/web typecheck | ✅ | `（填写）` | `（填写）` |
-| apps/web build | ✅ | `（填写）` | `（填写）` |
+| contracts typecheck | ✅ | 通过（tsc --noEmit 无错误） | ✅ |
+| contracts test | ✅ | 84/84 | ✅ |
+| schema-core typecheck | ✅ | 通过 | ✅ |
+| schema-core test | ✅ | 142/142 | ✅ |
+| schema-compiler typecheck | ✅ | 通过 | ✅ |
+| schema-compiler test | 31/31 | 31/31 | ✅ |
+| schema-renderer typecheck | ✅ | 通过 | ✅ |
+| schema-renderer test | 41/41 | 67/67（测试已扩充） | ✅ |
+| schema-designer test | ✅ | 14/14（修复 5 处过期断言后） | ✅ |
+| workflow-core test | ✅ | 29/29 | ✅ |
+| apps/web typecheck | ✅ | 通过 | ✅ |
+| apps/web build | ✅ | 通过（296 模块；仅遗留 vendor 循环 chunk warning，非阻断） | ✅ |
+| **apps/api pytest** | ✅ | **165 passed**（`-m "not integration"`；1 个行锁并发用例需真实 MySQL，已 deselect） | ✅ |
+
+> 注：apps/api 测试需安装 `celery[redis]` / `redis`（已并入 `apps/api/requirements.txt`）；CI（`.github/workflows/api-ci.yml`）以 `pytest -m "not integration"` 运行。
 
 ---
 
