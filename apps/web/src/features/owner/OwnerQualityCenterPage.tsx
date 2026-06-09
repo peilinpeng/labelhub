@@ -86,7 +86,7 @@ function QualityBoard({
   events: AuditEventRecord[];
   emptyText: string;
   error: string | null;
-  secondary?: { to: string; label: string };
+  secondary?: { to?: string; label: string; disabledHint?: string };
 }) {
   return (
     <Card className="quality-board">
@@ -97,10 +97,14 @@ function QualityBoard({
         </div>
         <div className="quality-board__head-aside">
           <Badge tone={events.length > 0 ? "primary" : "default"}>最近 {events.length} 条</Badge>
-          {secondary ? (
+          {secondary?.to ? (
             <Link className="quality-board__link" to={secondary.to}>
               {secondary.label} →
             </Link>
+          ) : secondary ? (
+            <span className="quality-board__link quality-board__link--disabled" title={secondary.disabledHint}>
+              {secondary.label}
+            </span>
           ) : null}
         </div>
       </div>
@@ -175,8 +179,7 @@ function OwnerQualityCenterContent() {
     };
   }, []);
 
-  // 次级链接需要一个任务上下文：优先用真实任务，回退到默认任务，避免链接落空。
-  const resolvedTaskId = tasks[0]?.id ?? "task_news_quality";
+  const resolvedTaskId = tasks[0]?.id;
 
   const taskStats = useMemo(() => {
     const published = tasks.filter((task) => task.status === "PUBLISHED").length;
@@ -215,22 +218,26 @@ function OwnerQualityCenterContent() {
         </Card>
       ) : null}
 
-      <div className="owner-summary-strip" aria-label="质量总览">
+      <div className="owner-summary-strip quality-summary-strip" aria-label="质量总览">
         <div className="owner-summary-item owner-summary-item--primary">
           <span>发布中任务</span>
           <strong>{taskStats.published}</strong>
+          <small>当前可进入分发流程</small>
         </div>
         <div className="owner-summary-item">
           <span>草稿任务</span>
           <strong>{taskStats.draft}</strong>
+          <small>等待模板或数据配置</small>
         </div>
         <div className="owner-summary-item owner-summary-item--success">
           <span>任务总数</span>
           <strong>{taskStats.total}</strong>
+          <small>当前账号创建的任务</small>
         </div>
         <div className="owner-summary-item owner-summary-item--warning">
           <span>最近风险信号</span>
           <strong>{riskCount}</strong>
+          <small>来自近期质量审计记录</small>
         </div>
       </div>
 
@@ -241,7 +248,7 @@ function OwnerQualityCenterContent() {
           events={aiEvents}
           error={eventsError}
           emptyText="暂无 AI 预审质量线索。任务产生 AI 检查结果后，这里会显示相关记录。"
-          secondary={{ to: `/owner/tasks/${resolvedTaskId}/ai-config`, label: "配置 AI 预审规则" }}
+          secondary={{ to: "/owner/ai-config", label: "配置 AI 预审规则" }}
         />
 
         <QualityBoard
@@ -258,7 +265,9 @@ function OwnerQualityCenterContent() {
           events={exportEvents}
           error={eventsError}
           emptyText="暂无导出质量记录。生成导出任务后，这里会显示导出与质量护照线索。"
-          secondary={{ to: `/owner/tasks/${resolvedTaskId}/export`, label: "查看导出中心" }}
+          secondary={resolvedTaskId
+            ? { to: `/owner/tasks/${resolvedTaskId}/export`, label: "查看导出中心" }
+            : { label: "查看导出中心", disabledHint: "请先创建任务后再查看导出中心。" }}
         />
 
         <QualityBoard

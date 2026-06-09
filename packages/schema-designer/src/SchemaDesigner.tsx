@@ -25,6 +25,7 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
     }
     return findNodeById(props.schema, state.selectedNodeId);
   }, [props.schema, state.selectedNodeId]);
+  const displayedValidationResult = props.validationResult ?? state.validationResult;
 
   const emitSchemaChange = (nextSchema: LabelHubSchema) => {
     const validationResult = validateDesignerSchema(nextSchema);
@@ -60,6 +61,7 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
       canvas={
         <DesignerCanvas
           nodes={props.schema.root.children}
+          nodeErrors={props.nodeErrors}
           readonly={readonly}
           selectedNodeId={state.selectedNodeId}
           onDelete={(nodeId) => deleteSelectedNode(actionContext, nodeId)}
@@ -81,7 +83,7 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
           previewAnswers={state.previewAnswers}
           sampleContext={props.sampleContext}
           schema={props.schema}
-          validationResult={state.validationResult}
+          validationResult={displayedValidationResult}
           onPreviewAnswersChange={(previewAnswers) => setState((current) => ({ ...current, previewAnswers }))}
         />
       }
@@ -99,7 +101,13 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
           />
         )
       }
-      validation={<ValidationPanel localErrors={state.localErrors} validationResult={state.validationResult} />}
+      validation={
+        <ValidationPanel
+          localErrors={state.localErrors}
+          validationResult={displayedValidationResult}
+          onSelectNode={(nodeId) => setState((current) => ({ ...current, selectedNodeId: nodeId }))}
+        />
+      }
       />
     </div>
   );

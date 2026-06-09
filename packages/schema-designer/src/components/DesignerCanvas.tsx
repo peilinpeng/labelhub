@@ -3,6 +3,7 @@ import { NodeBlock } from "./NodeBlock";
 
 export interface DesignerCanvasProps {
   nodes: SchemaNode[];
+  nodeErrors?: Record<string, string[]> | undefined;
   selectedNodeId?: string | undefined;
   readonly: boolean;
   onSelect(nodeId: string): void;
@@ -42,11 +43,13 @@ function TreeNode({
   onMoveUp,
   onMoveDown,
   onReorder,
+  nodeErrors,
 }: DesignerCanvasProps & { node: SchemaNode; depth: number }) {
   return (
     <div className="schema-designer-tree-node" style={{ marginLeft: depth * 18 }}>
       <NodeBlock
         node={node}
+        errors={nodeErrors?.[node.id] ?? []}
         readonly={readonly}
         selected={selectedNodeId === node.id}
         onDelete={onDelete}
@@ -62,6 +65,7 @@ function TreeNode({
               depth={depth + 1}
               node={child}
               nodes={[]}
+              nodeErrors={nodeErrors}
               readonly={readonly}
               selectedNodeId={selectedNodeId}
               onDelete={onDelete}

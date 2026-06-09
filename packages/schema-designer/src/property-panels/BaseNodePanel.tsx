@@ -9,16 +9,19 @@ export interface BaseNodePanelProps {
 }
 
 export function BaseNodePanel({ node, readonly, onPatch }: BaseNodePanelProps) {
+  const titleMissing = node.title.trim().length === 0;
   return (
     <section>
       <h3>基础</h3>
       <label>
-        名称
+        <span>组件名称 <b className="schema-property-required">*</b></span>
         <input
+          aria-invalid={titleMissing}
           disabled={readonly}
           value={node.title}
           onChange={(event) => onPatch({ title: event.target.value })}
         />
+        {titleMissing ? <small className="schema-property-error">组件名称不能为空。</small> : null}
       </label>
       <label>
         说明

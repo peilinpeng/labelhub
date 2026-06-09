@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
 import { Link, useParams } from "react-router-dom";
 import { SchemaDesigner, validateDesignerSchema } from "@labelhub/schema-designer";
 import {
@@ -40,6 +40,7 @@ import {
 import { localServerComponentRegistry } from "./localComponentRegistry";
 import { PublishPreviewDialog } from "./PublishPreviewDialog";
 import { createSchemaFromPreset, schemaPresetSummaries } from "./schemaPresetLibrary";
+import { AuditTimelinePanel } from "./AuditTimelinePanel";
 
 interface OwnerSchemaPageProps {
   role: Role;
@@ -87,6 +88,14 @@ interface PublishPreviewState {
   deprecationWarnings: DeprecationIssue[];
   manualMappingSlots: ManualMappingSlot[];
   oldSchemaStatusMessage?: string;
+}
+
+interface PublishConfigurationIssue {
+  id: string;
+  message: string;
+  suggestion: string;
+  badge: string;
+  nodeId?: string;
 }
 
 interface CustomSchemaPreset {
@@ -153,8 +162,10 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [statusMessage, setStatusMessage] = useState("正在加载模板编辑器");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [publishNotice, setPublishNotice] = useState<string | null>(null);
   const [publishNoticeTone, setPublishNoticeTone] = useState<NoticeTone>("info");
+  const [publishFailureDetails, setPublishFailureDetails] = useState<string[]>([]);
   const [previewExpanded, setPreviewExpanded] = useState(false);
   const [publishPreviewOpen, setPublishPreviewOpen] = useState(false);
   const [publishPreview, setPublishPreview] = useState<PublishPreviewState | undefined>();
@@ -170,6 +181,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [customPresets, setCustomPresets] = useState<CustomSchemaPreset[]>(() => readCustomSchemaPresets());
   const [presetTitleInput, setPresetTitleInput] = useState("");
   const [presetDescriptionInput, setPresetDescriptionInput] = useState("");
+  const publishIssueListRef = useRef<HTMLDivElement>(null);
 
   const loadAuditEvents = useCallback(async (): Promise<void> => {
     const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
@@ -271,6 +283,17 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     ],
     [customPresets],
   );
+  const presetIssueCounts = useMemo(() => {
+    const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
+    const taskTitle = task?.title ?? "当前任务";
+    return new Map(presetOptions.map((preset) => {
+      const presetSchema = preset.source === "custom"
+        ? preset.schema
+        : ensureNewsQualityPreviewFields(createSchemaFromPreset(preset.id, currentTaskId, taskTitle));
+      const rebound = bindPresetToCurrentDraft(presetSchema, schema, currentTaskId, taskTitle);
+      return [preset.id, collectPublishConfigurationIssues(rebound, currentTaskId).length] as const;
+    }));
+  }, [presetOptions, schema, task?.title, taskId]);
 
   // 模板状态人话化：草稿 / 已发布 / 有未发布修改。仅依据真实 schema.status 与
   // task.activeSchemaVersionId 推导，数据不足时退回「本地编辑草稿」，不伪造已发布。
@@ -278,37 +301,55 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     if (schema.status === "PUBLISHED") {
       return { label: "已发布", tone: "success", hint: `当前版本 ${schemaRevisionLabel(schema)}，可用于任务分发与标注。` };
     }
-    if (task?.activeSchemaVersionId !== undefined) {
+    if (task?.activeSchemaVersionId) {
       return { label: "有未发布修改", tone: "warning", hint: "已存在发布版本，当前为草稿修改，发布后才会对标注员生效。" };
     }
     return { label: "草稿", tone: "primary", hint: "当前模板状态来自本地编辑草稿，保存草稿不等于发布。" };
   }, [schema, task]);
 
+  const publishConfigurationIssues = useMemo(
+    () => collectPublishConfigurationIssues(schema, task?.id ?? taskId),
+    [schema, task?.id, taskId],
+  );
+  const publishValidationResult = useMemo(
+    () => createPublishValidationResult(schema, publishConfigurationIssues),
+    [schema, publishConfigurationIssues],
+  );
+  const publishBlockedByDataset = publishNotice?.includes("可领取数据") ?? false;
+  const publishBlockedByAiConfig = publishNotice?.includes("AI 预审") ?? false;
+  const schemaAuditEvents = useMemo(
+    () => auditEvents.filter((event) => event.type.startsWith("SCHEMA_") || event.type === "DEPRECATION_WARNING_GENERATED").slice(0, 8),
+    [auditEvents],
+  );
+  const nodeErrorMap = useMemo<Record<string, string[]>>(() => {
+    const result: Record<string, string[]> = {};
+    for (const issue of publishConfigurationIssues) {
+      if (issue.nodeId === undefined) continue;
+      result[issue.nodeId] = [...(result[issue.nodeId] ?? []), issue.badge];
+    }
+    return result;
+  }, [publishConfigurationIssues]);
+
   // 发布前的本地自检结果人话化：只展示可读 message（必要时带字段标题），不暴露 code / path / 原始对象。
   const validationSummary = useMemo<{ tone: "success" | "warning" | "danger"; badge: string; errors: string[]; warnings: string[] }>(() => {
-    let result: SchemaValidationResult;
-    try {
-      result = validateDesignerSchema(schema);
-    } catch {
-      return { tone: "warning", badge: "暂时无法自检", errors: [], warnings: ["模板自检暂时不可用，可继续在画布中调整。"] };
-    }
     const titleByNodeId = new Map(fieldNodes.map((field) => [field.id, field.title || field.name]));
     const toText = (issue: SchemaValidationError): string => {
       const fieldTitle = issue.nodeId !== undefined ? titleByNodeId.get(issue.nodeId) : undefined;
       return fieldTitle ? `「${fieldTitle}」${issue.message}` : issue.message;
     };
-    const errors = result.errors.map(toText);
-    const warnings = result.warnings.map(toText);
-    if (!result.valid) {
+    const errors = publishConfigurationIssues.map((issue) => `${issue.message} ${issue.suggestion}`);
+    const warnings = publishValidationResult.warnings.map(toText);
+    if (errors.length > 0) {
       return { tone: "danger", badge: "暂不可发布", errors, warnings };
     }
     return { tone: warnings.length > 0 ? "warning" : "success", badge: warnings.length > 0 ? "可发布 · 有提醒" : "可以发布", errors, warnings };
-  }, [schema, fieldNodes]);
+  }, [fieldNodes, publishConfigurationIssues, publishValidationResult.warnings]);
 
   // 统一的页面提示出口：区分成功 / 失败 / 中性，避免失败提示仍显示成功样式。
   const showNotice = (message: string | null, tone: NoticeTone = "info"): void => {
     setPublishNotice(message);
     if (message !== null) setPublishNoticeTone(tone);
+    if (tone !== "danger") setPublishFailureDetails([]);
   };
 
   const handleSaveDraft = async (): Promise<void> => {
@@ -323,9 +364,12 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       setValidation(response.validation);
       setStatusMessage(`草稿已保存，版本 ${response.schemaDraftRevision}`);
       showNotice("模板草稿已保存。", "success");
-    } catch {
+    } catch (error) {
+      console.error("Owner 模板草稿保存失败", error);
       setStatusMessage("草稿保存失败，当前修改仍保留在本页。");
-      showNotice("草稿保存失败，请稍后重试。当前修改仍保留在本页，可重试保存。", "danger");
+      const message = getPublishFailureMessage(error, "SAVE_DRAFT");
+      setPublishFailureDetails(getPublishFailureSuggestions(error, "SAVE_DRAFT"));
+      showNotice(message, "danger");
     } finally {
       setSaving(false);
     }
@@ -348,6 +392,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     let failureStage: OwnerPublishFailureStage = "SAVE_DRAFT";
     try {
       setSaving(true);
+      setPublishing(true);
       showNotice(null);
       if (preview !== undefined) {
         await appendPublishRequestedAuditEvent(createOwnerPublishAuditPreview(schema, task, preview));
@@ -362,21 +407,23 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       setValidation(draftResponse.validation);
 
       failureStage = "PUBLISH_SCHEMA";
-      const published = await publishSchema(currentTaskId);
+      const published = await publishSchema(currentTaskId, draftResponse.schemaDraftRevision);
       const schemaVersionId = readPublishedSchemaVersionId(published.schemaVersion, draftResponse.schema.schemaVersionId);
-
-      failureStage = "PUBLISH_TASK";
-      const publishedTask = await publishTask(currentTaskId, { schemaVersionId });
-      setTask(publishedTask.task);
       await appendSchemaPublishedAuditEvent({
         schema: draftResponse.schema,
-        task: publishedTask.task,
+        task,
         schemaVersionId,
         schemaVersionNo: readPublishedSchemaVersionNo(published.schemaVersion, draftResponse.schema.schemaVersionNo),
       });
       await loadAuditEvents();
+
+      failureStage = "PUBLISH_TASK";
+      const publishedTask = await publishTask(currentTaskId, { schemaVersionId });
+      setTask(publishedTask.task);
+      await loadAuditEvents();
       showNotice("发布成功，任务已进入任务市场，审计日志已刷新。", "success");
     } catch (error) {
+      console.error("Owner 模板发布失败", error);
       await appendSchemaPublishFailedAuditEvent({
         schema,
         task,
@@ -384,21 +431,32 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         error,
       });
       await loadAuditEvents();
-      const message = error instanceof Error ? error.message : "发布失败，请稍后重试。";
-      setStatusMessage("发布失败，请检查后端服务或当前 schema 状态。");
-      showNotice(`发布失败：${message}`, "danger");
+      const message = getPublishFailureMessage(error, failureStage);
+      setPublishFailureDetails(getPublishFailureSuggestions(error, failureStage));
+      setStatusMessage(message);
+      showNotice(message, failureStage === "PUBLISH_TASK" ? "info" : "danger");
     } finally {
+      setPublishing(false);
       setSaving(false);
     }
   };
 
   const handlePublish = async (): Promise<void> => {
+    if (publishConfigurationIssues.length > 0) {
+      setPublishFailureDetails([]);
+      showNotice("发布失败：模板参数不完整", "danger");
+      window.requestAnimationFrame(() => {
+        publishIssueListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return;
+    }
     try {
       setPublishPreviewPreparing(true);
       showNotice(null);
       const preview = await buildPublishPreview({
         schema,
         task,
+        schemaValidation: publishValidationResult,
       });
       await appendPublishPreviewAuditEvents(createOwnerPublishAuditPreview(schema, task, preview));
       await loadAuditEvents();
@@ -416,6 +474,17 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     const preview = publishPreview;
     setPublishPreviewOpen(false);
     void confirmPublish(preview);
+  };
+
+  const focusIssueNode = (nodeId: string | undefined) => {
+    if (nodeId === undefined) return;
+    const nodeCard = Array.from(document.querySelectorAll<HTMLElement>(".schema-node-card"))
+      .find((element) => element.dataset.nodeId === nodeId);
+    if (nodeCard === undefined) return;
+    nodeCard.scrollIntoView({ behavior: "smooth", block: "center" });
+    const selectButton = Array.from(nodeCard.querySelectorAll("button"))
+      .find((button) => button.textContent?.trim().includes("选择"));
+    selectButton?.click();
   };
 
   const handleDesignerCanvasClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -444,12 +513,18 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const handleLoadPreset = (preset: SchemaPresetOption) => {
     const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
     const taskTitle = task?.title ?? "当前任务";
+    const nextSchema = preset.source === "custom"
+      ? bindPresetToCurrentDraft(preset.schema, schema, currentTaskId, taskTitle)
+      : bindPresetToCurrentDraft(
+        ensureNewsQualityPreviewFields(createSchemaFromPreset(preset.id, currentTaskId, taskTitle)),
+        schema,
+        currentTaskId,
+        taskTitle,
+      );
     setActivePresetId(preset.id);
-    if (preset.source === "custom") {
-      setSchema(rebindPresetSchema(preset.schema, currentTaskId, taskTitle));
-    } else {
-      setSchema(ensureNewsQualityPreviewFields(createSchemaFromPreset(preset.id, currentTaskId, taskTitle)));
-    }
+    setSchema(nextSchema);
+    setPresetTitleInput(nextSchema.root.title || nextSchema.meta.name);
+    setPresetDescriptionInput(nextSchema.meta.description || "");
     setValidation(undefined);
     setStatusMessage(`已加载「${preset.title}」预设模板`);
     showNotice(`已将「${preset.title}」加载到当前任务「${taskTitle}」下，可继续在画布中调整字段。`, "info");
@@ -457,7 +532,12 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
 
   const handleCreateBlankPresetTemplate = () => {
     const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
-    const blankSchema = createBlankSchema(currentTaskId);
+    const blankSchema = bindPresetToCurrentDraft(
+      createBlankSchema(currentTaskId),
+      schema,
+      currentTaskId,
+      task?.title ?? "当前任务",
+    );
     setSchema(blankSchema);
     setValidation(undefined);
     setActivePresetId(`custom_draft_${Date.now()}`);
@@ -571,18 +651,24 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           </h2>
           <p>{task.title}</p>
           <p className="schema-builder-intro">
-            这里配置标注任务模板，决定标注员作答时看到哪些字段与校验。保存草稿不等于发布；发布后该版本才能用于任务创建、分发与标注。
+            配置字段结构、校验规则与联动逻辑。
           </p>
         </div>
         <div className="schema-builder-toolbar__actions">
+          <Link to={RoutePath.OWNER_TASKS} className="lh-button">
+            返回任务
+          </Link>
+          <Button type="button" disabled={saving} onClick={() => void handleSaveDraft()}>
+            {saving && !publishing ? "保存中..." : "保存草稿"}
+          </Button>
           <Button type="button" onClick={() => setPreviewExpanded(true)}>
-            预览
+            实时预览
           </Button>
           <Button type="button" onClick={exportSchemaJson}>
             导出 JSON
           </Button>
           <Button type="button" tone="primary" disabled={saving || publishPreviewPreparing} onClick={() => void handlePublish()}>
-            {publishPreviewPreparing ? "检查中..." : "保存并发布模板"}
+            {publishing ? "发布中..." : publishPreviewPreparing ? "检查中..." : "保存并发布模板"}
           </Button>
         </div>
       </Card>
@@ -597,12 +683,53 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       <p className="schema-builder-status-hint">{templateStatus.hint}</p>
 
       {publishNotice ? (
-        <Card className={`labeler-return-card schema-builder-notice schema-builder-notice--${publishNoticeTone}`}>
-          <Badge tone={publishNoticeTone === "danger" ? "danger" : publishNoticeTone === "success" ? "success" : "primary"}>
-            {publishNoticeTone === "danger" ? "操作失败" : publishNoticeTone === "success" ? "已更新" : "提示"}
-          </Badge>
-          <p>{publishNotice}</p>
-        </Card>
+        <div className="schema-builder-notice-slot" ref={publishIssueListRef}>
+          <Card className={`labeler-return-card schema-builder-notice schema-builder-notice--${publishNoticeTone}`}>
+            <Badge tone={publishNoticeTone === "danger" ? "danger" : publishNoticeTone === "success" ? "success" : "primary"}>
+              {publishNoticeTone === "danger" ? "操作失败" : publishNoticeTone === "success" ? "已更新" : "提示"}
+            </Badge>
+            <p>{publishNotice}</p>
+            {publishBlockedByDataset || publishBlockedByAiConfig ? (
+              <div className="schema-builder-notice-actions">
+                {publishBlockedByDataset ? (
+                  <Link to={`/owner/tasks/${resolveTaskId(taskId, schema.meta.taskId)}/dataset`} className="lh-button lh-button--primary">
+                    去导入数据集
+                  </Link>
+                ) : null}
+                {publishBlockedByAiConfig ? (
+                  <Link to={`/owner/tasks/${resolveTaskId(taskId, schema.meta.taskId)}/ai-config`} className="lh-button">
+                    去配置 AI 预审
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
+            {publishNoticeTone === "danger" && publishConfigurationIssues.length > 0 ? (
+              <div className="schema-builder-publish-issues">
+                <strong>请先修复以下问题：</strong>
+                <ul>
+                  {publishConfigurationIssues.map((issue) => (
+                    <li key={issue.id}>
+                      <button type="button" onClick={() => focusIssueNode(issue.nodeId)}>
+                        <span>{issue.message}</span>
+                        <small>{issue.suggestion}</small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {publishNoticeTone === "danger" && publishConfigurationIssues.length === 0 && publishFailureDetails.length > 0 ? (
+              <div className="schema-builder-publish-issues">
+                <strong>建议处理：</strong>
+                <ul>
+                  {publishFailureDetails.map((detail) => (
+                    <li key={detail}><span>{detail}</span></li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </Card>
+        </div>
       ) : null}
 
       <Card className="schema-preset-panel schema-preset-panel--compact">
@@ -631,6 +758,9 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
               onClick={() => handleLoadPreset(preset)}
             >
               <span>{activePresetId === preset.id ? "当前模板" : preset.source === "custom" ? "自定义预设" : "预设模板"}</span>
+              {(presetIssueCounts.get(preset.id) ?? 0) > 0 ? (
+                <span className="schema-preset-card__warning">需补充配置 · {presetIssueCounts.get(preset.id)} 项</span>
+              ) : null}
               <strong>{preset.title}</strong>
               <em>{preset.fields}</em>
             </button>
@@ -861,21 +991,13 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             <h3>{templateTitle}</h3>
             <p>{schema.meta.description || "暂无说明"}</p>
           </div>
-          <div className="schema-canvas-header__actions">
-            <Button type="button" disabled={saving} onClick={() => void handleSaveDraft()}>
-              {saving ? "保存中..." : "保存草稿"}
-            </Button>
-            <Link to={RoutePath.OWNER_TASKS} className="lh-button">
-              返回任务
-            </Link>
-          </div>
         </div>
 
         {previewExpanded ? (
           <>
             <button type="button" className="schema-preview-backdrop" aria-label="关闭预览" onClick={() => setPreviewExpanded(false)} />
-            <button type="button" className="schema-preview-close" onClick={() => setPreviewExpanded(false)}>
-              关闭预览
+            <button type="button" className="schema-preview-close" aria-label="关闭实时预览" onClick={() => setPreviewExpanded(false)}>
+              关闭
             </button>
           </>
         ) : null}
@@ -894,26 +1016,27 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             serverRegistry={serverRegistry}
             sampleContext={sampleContext}
             readonly={false}
+            nodeErrors={nodeErrorMap}
+            validationResult={publishValidationResult}
             onSchemaChange={setSchema}
           />
         </div>
       </Card>
 
-      <Card className="schema-audit-entry">
-        <div>
-          <strong>发布与审计记录</strong>
-          <p>
-            {auditEventsError
-              ? "审计记录加载失败，完整记录可在质量中心查看。"
-              : auditEventsLoading
-                ? "正在同步审计记录..."
-                : `本任务已有 ${auditEvents.length} 条审计记录。发布与审计记录可在质量中心查看。`}
-          </p>
-        </div>
-        <Link to="/owner/quality" className="lh-button">
-          查看质量中心 →
+      <div className="schema-audit-section">
+        <AuditTimelinePanel
+          events={schemaAuditEvents}
+          loading={auditEventsLoading}
+          error={auditEventsError}
+          title="发布与审计记录"
+          description="记录模板保存、校验、发布与失败事件"
+          emptyText="暂无发布与审计记录"
+          onRefresh={() => void loadAuditEvents()}
+        />
+        <Link to="/owner/quality" className="lh-button schema-audit-section__link">
+          查看质量中心
         </Link>
-      </Card>
+      </div>
 
       {publishPreview ? (
         <PublishPreviewDialog
@@ -962,14 +1085,257 @@ function SelectField({
   );
 }
 
+function collectPublishConfigurationIssues(
+  schema: LabelHubSchema,
+  expectedTaskId?: string,
+): PublishConfigurationIssue[] {
+  const nodes = flattenNodes(schema).filter((node) => node.id !== schema.root.id);
+  const nodeIndexById = new Map(nodes.map((node, index) => [node.id, index + 1]));
+  const issues: PublishConfigurationIssue[] = [];
+  const seen = new Set<string>();
+  const addIssue = (issue: PublishConfigurationIssue) => {
+    const key = `${issue.nodeId ?? "schema"}:${issue.badge}:${issue.message}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    issues.push(issue);
+  };
+  const nodePrefix = (node: SchemaNode): string => {
+    const index = nodeIndexById.get(node.id);
+    const title = node.title.trim() || "未命名组件";
+    return index === undefined ? `节点「${title}」` : `第 ${index} 个节点「${title}」`;
+  };
+
+  if (schema.meta.name.trim().length === 0 || schema.meta.name.trim() === "未命名预设模板") {
+    addIssue({
+      id: "schema-name",
+      badge: "模板名称未完成",
+      message: "模板名称尚未填写。",
+      suggestion: "请在“当前模板”的预设名称中填写清晰名称。",
+    });
+  }
+
+  if (!schema.meta.taskId || (expectedTaskId !== undefined && schema.meta.taskId !== expectedTaskId)) {
+    addIssue({
+      id: "schema-task-binding",
+      badge: "任务绑定异常",
+      message: "模板没有正确绑定当前任务。",
+      suggestion: "请重新加载当前任务模板后再发布。",
+    });
+  }
+
+  if (!Number.isInteger(schema.schemaDraftRevision) || (schema.schemaDraftRevision ?? 0) < 1) {
+    addIssue({
+      id: "schema-draft-revision",
+      badge: "草稿版本缺失",
+      message: "模板缺少有效的草稿版本号。",
+      suggestion: "请刷新页面重新获取最新模板草稿。",
+    });
+  }
+
+  if (nodes.length === 0) {
+    addIssue({
+      id: "schema-nodes",
+      badge: "画布为空",
+      message: "模板画布中还没有组件。",
+      suggestion: "请从左侧添加至少一个展示或作答组件。",
+    });
+  }
+
+  for (const node of nodes) {
+    if (node.id.trim().length === 0) {
+      addIssue({
+        id: `node-id-${nodeIndexById.get(node.id) ?? issues.length}`,
+        nodeId: node.id,
+        badge: "缺少节点标识",
+        message: `${nodePrefix(node)}：缺少节点标识 id。`,
+        suggestion: "请删除后重新添加该组件。",
+      });
+    }
+    if (node.title.trim().length === 0) {
+      addIssue({
+        id: `node-title-${node.id}`,
+        nodeId: node.id,
+        badge: "缺少组件名称",
+        message: `${nodePrefix(node)}：缺少组件名称。`,
+        suggestion: "请在右侧属性面板填写组件名称。",
+      });
+    }
+    if (node.kind === "FIELD" && node.name.trim().length === 0) {
+      addIssue({
+        id: `field-name-${node.id}`,
+        nodeId: node.id,
+        badge: "缺少字段名",
+        message: `${nodePrefix(node)}：缺少字段名称 name。`,
+        suggestion: "字段名称用于保存标注结果，不能为空。",
+      });
+    }
+    if (node.kind === "FIELD" && node.type.startsWith("choice.") && "options" in node) {
+      if (node.options.length < 2) {
+        addIssue({
+          id: `choice-options-${node.id}`,
+          nodeId: node.id,
+          badge: "缺少选项",
+          message: `${nodePrefix(node)}：至少需要 2 个选项。`,
+          suggestion: "请在右侧属性面板补充可区分的选项文字与保存值。",
+        });
+      }
+      node.options.forEach((option, optionIndex) => {
+        if (option.label.trim().length === 0 || option.value.trim().length === 0) {
+          addIssue({
+            id: `choice-option-${node.id}-${optionIndex}`,
+            nodeId: node.id,
+            badge: "选项未完成",
+            message: `${nodePrefix(node)}：第 ${optionIndex + 1} 个选项信息不完整。`,
+            suggestion: "选项文字和保存值都不能为空。",
+          });
+        }
+      });
+    }
+  }
+
+  let validationResult: SchemaValidationResult | undefined;
+  try {
+    validationResult = validateDesignerSchema(schema);
+  } catch {
+    validationResult = undefined;
+  }
+  for (const error of validationResult?.errors ?? []) {
+    const node = error.nodeId === undefined ? undefined : nodes.find((item) => item.id === error.nodeId);
+    addIssue({
+      id: `schema-${error.code}-${error.nodeId ?? "root"}-${error.path}`,
+      ...(error.nodeId === undefined ? {} : { nodeId: error.nodeId }),
+      badge: "配置未完成",
+      message: node === undefined ? error.message : `${nodePrefix(node)}：${error.message}`,
+      suggestion: node === undefined ? "请检查模板基础信息。" : "请在右侧属性面板完成该组件配置。",
+    });
+  }
+
+  return issues;
+}
+
+function createPublishValidationResult(
+  schema: LabelHubSchema,
+  issues: PublishConfigurationIssue[],
+): SchemaValidationResult {
+  let baseResult: SchemaValidationResult;
+  try {
+    baseResult = validateDesignerSchema(schema);
+  } catch {
+    baseResult = {
+      valid: false,
+      errors: [{
+        code: "SCHEMA_INVALID",
+        path: "$",
+        message: "模板检查暂时不可用，请刷新页面后重试。",
+      }],
+      warnings: [],
+    };
+  }
+
+  const errors: SchemaValidationError[] = issues.map((issue) => ({
+    code: "SCHEMA_INVALID",
+    path: issue.nodeId === undefined ? "$" : `$.nodes.${issue.nodeId}`,
+    message: `${issue.message} ${issue.suggestion}`,
+    ...(issue.nodeId === undefined ? {} : { nodeId: issue.nodeId }),
+  }));
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings: baseResult.warnings,
+  };
+}
+
+function getPublishFailureMessage(error: unknown, stage: OwnerPublishFailureStage): string {
+  const message = error instanceof Error ? error.message : "";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("409") || normalized.includes("conflict") || message.includes("草稿版本")) {
+    return "发布失败：模板草稿已被更新，请刷新页面后重新确认本次修改。";
+  }
+
+  if (
+    normalized.includes("failed to fetch")
+    || normalized.includes("networkerror")
+    || normalized.includes("internal server error")
+    || normalized.includes("服务未连接")
+  ) {
+    return "发布接口暂不可用，请稍后重试或联系后端确认接口。";
+  }
+
+  if (message.includes("数据集") || message.includes("可领取题目")) {
+    return "模板版本已发布，但任务还不能进入分发：请先导入至少一条可领取数据。";
+  }
+
+  if (message.includes("ReviewConfig") || message.includes("AI 审核") || message.includes("AI 预审")) {
+    return "模板版本已发布，但任务还不能进入分发：请先配置 AI 预审规则，或明确关闭 AI 预审。";
+  }
+
+  if (
+    normalized.includes("422")
+    || message.includes("请求参数校验失败")
+    || message.includes("schemaDraftRevision")
+    || message.includes("校验失败")
+  ) {
+    return "发布失败：模板参数不完整，请检查字段名称、字段类型与必填配置。";
+  }
+
+  if (stage === "SAVE_DRAFT") {
+    return "发布失败：模板草稿保存失败，请稍后重试。";
+  }
+
+  return message ? `发布失败：${message}` : "发布失败，请稍后重试。";
+}
+
+function getPublishFailureSuggestions(error: unknown, stage: OwnerPublishFailureStage): string[] {
+  const message = error instanceof Error ? error.message : "";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("409") || normalized.includes("conflict") || message.includes("schemaDraftRevision")) {
+    return [
+      "刷新页面获取最新草稿版本，再重新确认本次修改。",
+      "当前页面中的编辑不会被自动覆盖，刷新前可先导出 JSON 留存。",
+    ];
+  }
+  if (message.includes("数据集") || message.includes("可领取题目")) {
+    return [
+      "进入数据集管理页，上传 JSON / JSONL / Excel 数据文件。",
+      "导入后确认至少有 1 条题目处于“可领取”状态，再回到模板页重新发布任务。",
+    ];
+  }
+  if (message.includes("ReviewConfig") || message.includes("AI 审核") || message.includes("AI 预审")) {
+    return [
+      "进入 AI 预审配置页，保存预审规则，或明确关闭 AI 预审。",
+      "配置完成后回到模板页重新发布任务。",
+    ];
+  }
+  if (normalized.includes("422") || message.includes("校验失败")) {
+    return [
+      "检查“模板检查”中的字段名称、组件类型、选项和任务绑定。",
+      "修复全部错误后重新执行发布前检查。",
+    ];
+  }
+  if (stage === "PUBLISH_TASK") {
+    return [
+      "模板版本可能已经发布，但任务分发条件尚未满足。",
+      "请检查数据集、AI 预审配置和任务发布条件。",
+    ];
+  }
+  if (normalized.includes("failed to fetch") || normalized.includes("internal server error")) {
+    return ["确认后端服务可用后重试。"];
+  }
+  return ["保留当前修改并稍后重试；如持续失败，请在审计记录中查看失败阶段。"];
+}
+
 async function buildPublishPreview({
   schema,
   task,
+  schemaValidation,
 }: {
   schema: LabelHubSchema;
   task: Task | undefined;
+  schemaValidation: SchemaValidationResult;
 }): Promise<PublishPreviewState> {
-  const schemaValidation = validateDesignerSchema(schema);
   const deprecationResult = validateDeprecationRules(schema);
   const activeSchemaVersionId = task?.activeSchemaVersionId;
   let compatibilityReport: CompatibilityReport | undefined;
@@ -977,7 +1343,7 @@ async function buildPublishPreview({
   let isFirstPublish = true;
   let oldSchemaStatusMessage: string | undefined;
 
-  if (activeSchemaVersionId !== undefined) {
+  if (activeSchemaVersionId) {
     try {
       const schemaVersion = await fetchSchemaVersion(activeSchemaVersionId);
       const oldSchema = schemaVersion.snapshot;
@@ -1211,18 +1577,27 @@ function createBlankSchema(taskId: ID): LabelHubSchema {
   };
 }
 
-function rebindPresetSchema(schema: LabelHubSchema, taskId: ID, taskTitle: string): LabelHubSchema {
+function bindPresetToCurrentDraft(
+  presetSchema: LabelHubSchema,
+  currentSchema: LabelHubSchema,
+  taskId: ID,
+  taskTitle: string,
+): LabelHubSchema {
   const now = new Date().toISOString();
   return {
-    ...schema,
-    schemaId: `schema_${taskId}_${Date.now()}` as ID,
-    schemaDraftRevision: 1,
+    ...presetSchema,
+    schemaId: currentSchema.schemaId,
+    schemaDraftRevision: currentSchema.schemaDraftRevision,
+    ...(currentSchema.schemaVersionId === undefined ? {} : { schemaVersionId: currentSchema.schemaVersionId }),
+    ...(currentSchema.schemaVersionNo === undefined ? {} : { schemaVersionNo: currentSchema.schemaVersionNo }),
     status: "DRAFT",
     meta: {
-      ...schema.meta,
-      name: schema.meta.name || `${taskTitle}模板`,
-      description: schema.meta.description || `${taskTitle} - 自定义预设模板`,
+      ...presetSchema.meta,
+      name: presetSchema.meta.name || `${taskTitle}模板`,
+      description: presetSchema.meta.description || `${taskTitle} - 自定义预设模板`,
       taskId,
+      authorId: currentSchema.meta.authorId,
+      createdAt: currentSchema.meta.createdAt,
       updatedAt: now,
     },
   };

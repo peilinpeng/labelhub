@@ -3,9 +3,10 @@ import type { SchemaValidationError, SchemaValidationResult } from "@labelhub/co
 export interface ValidationPanelProps {
   validationResult: SchemaValidationResult;
   localErrors: SchemaValidationError[];
+  onSelectNode?(nodeId: string): void;
 }
 
-export function ValidationPanel({ validationResult, localErrors }: ValidationPanelProps) {
+export function ValidationPanel({ validationResult, localErrors, onSelectNode }: ValidationPanelProps) {
   const errors = [...validationResult.errors, ...localErrors];
 
   return (
@@ -13,16 +14,20 @@ export function ValidationPanel({ validationResult, localErrors }: ValidationPan
       <div className="schema-designer-panel__header">
         <div>
           <h2>模板检查</h2>
-          <p>本地结构检查</p>
+          <p>发布前完整检查</p>
         </div>
-        <span>{errors.length === 0 ? "无错误" : errors.length}</span>
+        <span>{errors.length === 0 ? "已通过" : `${errors.length} 项`}</span>
       </div>
-      {errors.length === 0 ? <p className="schema-designer-valid">当前模板结构无错误。</p> : null}
+      {errors.length === 0 ? <p className="schema-designer-valid">当前模板已通过发布前检查。</p> : null}
       {errors.length > 0 ? (
         <ul className="schema-designer-error-list">
           {errors.map((error, index) => (
             <li key={`${error.code}-${error.nodeId ?? "schema"}-${error.path}-${index}`}>
-              <span>{error.message}</span>
+              {error.nodeId !== undefined && onSelectNode !== undefined ? (
+                <button type="button" onClick={() => onSelectNode(error.nodeId as string)}>
+                  {error.message}
+                </button>
+              ) : <span>{error.message}</span>}
             </li>
           ))}
         </ul>

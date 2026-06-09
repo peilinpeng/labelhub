@@ -49,8 +49,16 @@ export async function createTask(
 }
 
 export async function fetchSchemaDraft(taskId: string): Promise<LabelHubSchema> {
-  const res = await apiGet<LabelHubSchema | { schema: LabelHubSchema }>(`/api/v1/tasks/${taskId}/schema/draft`);
-  return isRecord(res) && "schema" in res ? (res as { schema: LabelHubSchema }).schema : res;
+  const res = await apiGet<LabelHubSchema | { schema: LabelHubSchema; schemaDraftRevision?: number }>(
+    `/api/v1/tasks/${taskId}/schema/draft`,
+  );
+  if (isRecord(res) && "schema" in res) {
+    const response = res as { schema: LabelHubSchema; schemaDraftRevision?: number };
+    return response.schemaDraftRevision === undefined
+      ? response.schema
+      : { ...response.schema, schemaDraftRevision: response.schemaDraftRevision };
+  }
+  return res;
 }
 
 export async function fetchSchemaVersion(schemaVersionId: string): Promise<SchemaVersion> {
@@ -62,7 +70,11 @@ export async function saveSchemaDraft(
   taskId: string,
   request: SaveSchemaDraftRequest
 ): Promise<SaveSchemaDraftResponse> {
-  return apiPut<SaveSchemaDraftResponse>(`/api/v1/tasks/${taskId}/schema/draft`, request);
+  const response = await apiPut<SaveSchemaDraftResponse>(`/api/v1/tasks/${taskId}/schema/draft`, request);
+  return {
+    ...response,
+    schema: { ...response.schema, schemaDraftRevision: response.schemaDraftRevision },
+  };
 }
 
 export async function validateSchema(schema: LabelHubSchema): Promise<SchemaValidationResult> {
@@ -76,8 +88,14 @@ export async function generateSchema(
   return apiPost<GenerateSchemaResponse>(`/api/v1/tasks/${taskId}/schema/ai-generate`, request);
 }
 
-export async function publishSchema(taskId: string): Promise<{ schemaVersion: unknown; auditLog: unknown }> {
-  return apiPost<{ schemaVersion: unknown; auditLog: unknown }>(`/api/v1/tasks/${taskId}/schema/publish`, {});
+export async function publishSchema(
+  taskId: string,
+  schemaDraftRevision: number,
+): Promise<{ schemaVersion: unknown; auditLog: unknown }> {
+  return apiPost<{ schemaVersion: unknown; auditLog: unknown }>(
+    `/api/v1/tasks/${taskId}/schema/publish`,
+    { schemaDraftRevision },
+  );
 }
 
 export async function publishTask(taskId: string, request: PublishTaskRequest): Promise<PublishTaskResponse> {
