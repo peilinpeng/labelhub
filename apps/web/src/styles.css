@@ -639,30 +639,6 @@ a {
   line-height: 1.55;
 }
 
-.schema-audit-entry {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.schema-audit-entry strong {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 14px;
-  font-weight: 900;
-  color: var(--lh-text);
-}
-
-.schema-audit-entry p {
-  margin: 0;
-  max-width: 620px;
-  color: var(--lh-muted);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
 .owner-schema-issue-list {
   display: grid;
   gap: 8px;

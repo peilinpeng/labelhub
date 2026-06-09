@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
 import { Link, useParams } from "react-router-dom";
 import { SchemaDesigner, validateDesignerSchema } from "@labelhub/schema-designer";
 import {
@@ -11,7 +11,6 @@ import {
   type DeprecationIssue,
 } from "@labelhub/schema-core";
 import type {
-  AuditEventRecord,
   CompatibilityReport,
   FieldNode,
   ID,
@@ -26,7 +25,6 @@ import type {
   Task,
 } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
-import { queryAuditEvents } from "../../api/audit";
 import { fetchSchemaDraft, fetchSchemaVersion, fetchServerRegistry, fetchTask, publishSchema, publishTask, saveSchemaDraft } from "../../api/owner";
 import { Badge, Button, Card } from "../../ui/primitives";
 import {
@@ -164,27 +162,9 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [conditionRules, setConditionRules] = useState<ConditionRuleDraft[]>([]);
   const [validationRules, setValidationRules] = useState<ValidationRuleDraft[]>([]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [auditEvents, setAuditEvents] = useState<AuditEventRecord[]>([]);
-  const [auditEventsLoading, setAuditEventsLoading] = useState(false);
-  const [auditEventsError, setAuditEventsError] = useState<string | null>(null);
   const [customPresets, setCustomPresets] = useState<CustomSchemaPreset[]>(() => readCustomSchemaPresets());
   const [presetTitleInput, setPresetTitleInput] = useState("");
   const [presetDescriptionInput, setPresetDescriptionInput] = useState("");
-
-  const loadAuditEvents = useCallback(async (): Promise<void> => {
-    const currentTaskId = resolveTaskId(taskId, schema.meta.taskId);
-    try {
-      setAuditEventsLoading(true);
-      setAuditEventsError(null);
-      const response = await queryAuditEvents({ taskId: currentTaskId, limit: 20 });
-      setAuditEvents(response.events);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "审计日志加载失败。";
-      setAuditEventsError(`审计日志加载失败：${message}`);
-    } finally {
-      setAuditEventsLoading(false);
-    }
-  }, [schema.meta.taskId, taskId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,10 +218,6 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       cancelled = true;
     };
   }, [taskId]);
-
-  useEffect(() => {
-    void loadAuditEvents();
-  }, [loadAuditEvents]);
 
   useEffect(() => {
     setPresetTitleInput(schema.root.title || schema.meta.name || "未命名预设模板");
@@ -374,8 +350,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         schemaVersionId,
         schemaVersionNo: readPublishedSchemaVersionNo(published.schemaVersion, draftResponse.schema.schemaVersionNo),
       });
-      await loadAuditEvents();
-      showNotice("发布成功，任务已进入任务市场，审计日志已刷新。", "success");
+      showNotice("发布成功，任务已进入任务市场。", "success");
     } catch (error) {
       await appendSchemaPublishFailedAuditEvent({
         schema,
@@ -383,7 +358,6 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         stage: failureStage,
         error,
       });
-      await loadAuditEvents();
       const message = error instanceof Error ? error.message : "发布失败，请稍后重试。";
       setStatusMessage("发布失败，请检查后端服务或当前 schema 状态。");
       showNotice(`发布失败：${message}`, "danger");
@@ -401,7 +375,6 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         task,
       });
       await appendPublishPreviewAuditEvents(createOwnerPublishAuditPreview(schema, task, preview));
-      await loadAuditEvents();
       setPublishPreview(preview);
       setPublishPreviewOpen(true);
     } catch (error) {
@@ -897,22 +870,6 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             onSchemaChange={setSchema}
           />
         </div>
-      </Card>
-
-      <Card className="schema-audit-entry">
-        <div>
-          <strong>发布与审计记录</strong>
-          <p>
-            {auditEventsError
-              ? "审计记录加载失败，完整记录可在质量中心查看。"
-              : auditEventsLoading
-                ? "正在同步审计记录..."
-                : `本任务已有 ${auditEvents.length} 条审计记录。发布与审计记录可在质量中心查看。`}
-          </p>
-        </div>
-        <Link to="/owner/quality" className="lh-button">
-          查看质量中心 →
-        </Link>
       </Card>
 
       {publishPreview ? (
