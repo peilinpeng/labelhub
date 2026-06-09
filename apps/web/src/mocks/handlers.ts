@@ -343,7 +343,30 @@ export const handlers = [
 
   http.get("/api/v1/me/submissions", () => okJson(listMySubmissions())),
 
-  http.get("/api/v1/review/queue", () => okJson(listReviewQueue())),
+  http.get("/api/v1/review/queue", () =>
+    // 契约要求 ReviewQueueItem（{ submission, taskId, taskTitle, itemId, aiDecision }）；
+    // mock-db 内部存的是原始 Submission，这里包装成队列项形状，否则前端按 item.submission.* 读取会全部落空。
+    okJson(
+      listReviewQueue().map((submission) => ({
+        submission: {
+          id: submission.id,
+          assignmentId: submission.assignmentId,
+          taskId: submission.taskId,
+          itemId: submission.itemId,
+          labelerId: submission.labelerId,
+          schemaVersionId: submission.schemaVersionId,
+          attemptNo: submission.attemptNo,
+          status: submission.status,
+          createdAt: submission.createdAt ?? new Date().toISOString(),
+          updatedAt: submission.updatedAt ?? submission.createdAt ?? new Date().toISOString(),
+        },
+        taskId: submission.taskId,
+        taskTitle: mockDb.tasks.find((task) => task.id === submission.taskId)?.title ?? submission.taskId,
+        itemId: submission.itemId,
+        aiDecision: null,
+      })),
+    ),
+  ),
 
   http.get("/api/v1/review/submissions/:submissionId", ({ params }) => {
     const detail = getReviewDetail(getParam(params as MockParams, "submissionId"));

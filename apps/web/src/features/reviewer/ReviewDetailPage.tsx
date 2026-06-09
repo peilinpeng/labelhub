@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
 import { queryAuditEvents } from "../../api/audit";
-import { claimReview, decideReview, getReviewDetail } from "../../api/reviewer";
+import { claimReview, decideReview, getReviewDetail, listReviewQueue } from "../../api/reviewer";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Input, Select, Textarea } from "../../ui/primitives";
@@ -14,14 +14,12 @@ import {
   reviewDecisionLabel,
   reviewStageLabel as stageLabelText,
 } from "./audit-humanize";
-import { getReviewerSubmissionDisplay, listKnownReviewDisplays } from "./review-display";
+import { getQueueDisplay, getReviewerSubmissionDisplay, type ReviewerSubmissionDisplay } from "./review-display";
 import { computeReviewPatches } from "./reviewer-diff";
 import {
-  appendAiReviewFeedbackAuditSafely,
   appendReviewDiffGeneratedAuditSafely,
   appendReviewStartedAuditSafely,
   appendReviewSubmittedAuditSafely,
-  type AiReviewFeedback,
 } from "./reviewer-audit-events";
 
 interface ReviewDetailPageProps {
@@ -47,6 +45,18 @@ function valueText(value: unknown): string {
   return String(value);
 }
 
+// AI 预审维度 key 的中文展示名（与 Owner 端 AI 预审规则维度一致）。未知 key 原样回退。
+const DIMENSION_LABELS: Record<string, string> = {
+  factuality: "事实完整性",
+  category: "类别准确性",
+  evidence: "证据充分性",
+  format: "格式合规",
+};
+
+function dimensionLabel(key: string): string {
+  return DIMENSION_LABELS[key] ?? key;
+}
+
 export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   void role;
   const { submissionId } = useParams<{ submissionId: string }>();
@@ -57,11 +67,12 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const [deciding, setDeciding] = useState(false);
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<ReviewDecision | null>(null);
-  const selectedIds = submissionId ? [submissionId] : [];
-  const [aiReviewFeedback, setAiReviewFeedback] = useState<AiReviewFeedback>("NOT_USED");
   // 字段级修订：维护一个修订后的答案对象（按字段编辑），提交时与原答案做 shallow diff 生成 patches。
   const [correctedAnswers, setCorrectedAnswers] = useState<Record<string, unknown>>({});
-  const [queueOpen, setQueueOpen] = useState(false);
+  // 审计时间线右侧抽屉，默认收起以最大化主内容区。
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  // 左侧审核队列：从真实审核队列接口拉取，供详情页内快速切换提交。
+  const [queue, setQueue] = useState<ReviewerSubmissionDisplay[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEventRecord[]>([]);
   const [auditEventsError, setAuditEventsError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -87,8 +98,26 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   }, [submissionId, refreshTick]);
 
   useEffect(() => {
-    setAiReviewFeedback("NOT_USED");
-  }, [submissionId]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const items = await listReviewQueue({ pageSize: 100 });
+        if (!cancelled) {
+          setQueue(
+            items
+              .filter((item) => item != null && item.submission != null && typeof item.submission.id === "string")
+              .map(getQueueDisplay),
+          );
+        }
+      } catch (error) {
+        console.warn("审核队列加载失败：", error);
+        if (!cancelled) setQueue([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshTick]);
 
   useEffect(() => {
     if (!detail || startedAuditSubmissionIdsRef.current.has(detail.submission.id)) {
@@ -193,15 +222,6 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
           correctedAnswers: parsedCorrectedAnswers,
         });
       }
-      if (aiResult) {
-        appendAiReviewFeedbackAuditSafely({
-          detail,
-          response,
-          feedback: aiReviewFeedback,
-          aiConfidence: aiResult.confidence,
-          aiDimensionCount: aiResult.dimensionScores.length,
-        });
-      }
       window.setTimeout(() => navigate(RoutePath.REVIEWER_QUEUE), 650);
     } catch (error) {
       console.warn("提交审核决策失败：", error);
@@ -257,62 +277,71 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
     issue: aiResult?.summary ?? "该提交需要人工确认字段完整性和审核结论。",
     recommendation: "待人工复核",
   };
-  const queueItems = listKnownReviewDisplays();
+  // 当前正在审核的提交始终出现在队列顶部（即便其状态已不在待审队列里），便于定位与高亮。
+  // 注意：此处在早返回之后，必须是普通计算而非 Hook，避免违反 Hooks 调用顺序规则。
+  const queueItems: ReviewerSubmissionDisplay[] = queue.some((item) => item.id === detail.submission.id)
+    ? queue
+    : [
+        {
+          id: detail.submission.id,
+          title: display.title,
+          taskTitle: display.taskTitle,
+          labeler: display.labeler,
+          payload: {},
+          previousPayload: {},
+          issue: display.issue,
+          recommendation: display.recommendation,
+        },
+        ...queue,
+      ];
   const reviewStage = detail.submission.status === "FINAL_REVIEWING" ? "FINAL_REVIEW" : "HUMAN_REVIEW";
   const reviewStageLabel = reviewStage === "FINAL_REVIEW" ? "终审视图" : "复审视图";
   const reviewPolicyLabel = detail.task.reviewPolicy.type === "DOUBLE_REVIEW" ? "双轮审核" : "单轮审核";
 
   return (
-    <div className="review-human-page">
-      <main className="review-human-main">
-        <Card className="review-human-queue-bar">
-          <button
-            type="button"
-            className="review-human-queue-bar__toggle"
-            aria-expanded={queueOpen}
-            onClick={() => setQueueOpen((open) => !open)}
-          >
-            <span className="review-human-queue-bar__title">审核队列</span>
-            <span className="review-human-queue-bar__meta">已选 {selectedIds.length} 条 · 共 {queueItems.length} 条</span>
-            <span className="review-human-queue-bar__chevron">{queueOpen ? "收起 ▲" : "展开 ▼"}</span>
-          </button>
-          {queueOpen ? (
-            <div className="review-human-queue">
-              {queueItems.map((item) => (
-                <Link
-                  className={item.id === detail.submission.id ? "review-human-queue-item review-human-queue-item--active" : "review-human-queue-item"}
-                  key={item.id}
-                  to={`/reviewer/items/${item.id}`}
-                  title={`提交 ${item.id}`}
-                >
-                  <span>{item.taskTitle}</span>
-                  <strong>{item.title}</strong>
-                  <small>
-                    <Badge tone="warning">{item.recommendation}</Badge>
-                  </small>
-                </Link>
-              ))}
-              {queueItems.length === 0 ? <div className="empty-state">暂无队列摘要</div> : null}
-            </div>
-          ) : null}
-        </Card>
+    <div className={timelineOpen ? "review-human-page review-human-page--drawer-open" : "review-human-page"}>
+      <aside className="review-human-queue-col" aria-label="审核队列">
+        <header className="review-human-queue-col__head">
+          <span className="review-human-queue-col__title">审核队列</span>
+          <span className="review-human-queue-col__meta">共 {queueItems.length} 条</span>
+        </header>
+        <nav className="review-human-queue">
+          {queueItems.map((item) => (
+            <Link
+              className={item.id === detail.submission.id ? "review-human-queue-item review-human-queue-item--active" : "review-human-queue-item"}
+              key={item.id}
+              to={`/reviewer/items/${item.id}`}
+              title={`提交 ${item.id}`}
+            >
+              <span>{item.id}</span>
+              <strong>{item.title}</strong>
+              <small>
+                <Badge tone="warning">{item.recommendation}</Badge>
+              </small>
+            </Link>
+          ))}
+          {queueItems.length === 0 ? <div className="empty-state">暂无队列摘要</div> : null}
+        </nav>
+      </aside>
 
-        <Card className="review-human-title-card">
-          <section className="review-human-heading">
-            <div className="review-human-heading__title" title={`提交 ${detail.submission.id} · 题目 ${detail.item.id}`}>
-              <h1>{display.title}</h1>
-              <p>{display.taskTitle} · 模板 r{detail.schema.schemaVersionNo ?? "-"} · {reviewPolicyLabel}</p>
-            </div>
-            <Badge tone={reviewStage === "FINAL_REVIEW" ? "primary" : "warning"}>第 {detail.submission.attemptNo} 轮 · {reviewStageLabel}</Badge>
-          </section>
-          <div className="review-human-stage-strip">
-            <span>AI 预审</span>
-            <strong>{reviewStageLabel}</strong>
-            <span>第 1 / 2 轮 diff</span>
-            <span>AI 评语</span>
-            <span>完整审计时间线</span>
+      <main className="review-human-main">
+        <div className="review-human-toolbar">
+          <div className="review-human-toolbar__title" title={`提交 ${detail.submission.id} · 题目 ${detail.item.id}`}>
+            <h1>{display.title}</h1>
+            <p>{display.taskTitle} · 模板 r{detail.schema.schemaVersionNo ?? "-"} · {reviewPolicyLabel}</p>
           </div>
-        </Card>
+          <div className="review-human-toolbar__actions">
+            <Badge tone={reviewStage === "FINAL_REVIEW" ? "primary" : "warning"}>第 {detail.submission.attemptNo} 轮 · {reviewStageLabel}</Badge>
+            <button
+              type="button"
+              className="review-human-timeline-toggle"
+              aria-expanded={timelineOpen}
+              onClick={() => setTimelineOpen((open) => !open)}
+            >
+              审计时间线
+            </button>
+          </div>
+        </div>
 
         <div className="review-human-compare">
           <Card className="review-human-compare-card">
@@ -342,63 +371,21 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         <Card className="review-human-ai">
           <div className="review-human-ai__head">
             <h3>AI 评语与预审结果</h3>
-            <Badge tone="primary">{aiTrace?.modelPolicyId ?? "AI Agent"}</Badge>
+            <Badge tone="primary">
+              {aiTrace?.modelPolicyId ? `AI 预审代理 · ${aiTrace.modelPolicyId}` : "AI 预审代理"}
+            </Badge>
           </div>
           {dimensionScores.length > 0 ? (
             <div className="review-human-ai__scores">
               {dimensionScores.map((score) => (
-                <span key={score.key}>{score.key} <strong>{score.score}</strong></span>
+                <span key={score.key}>{dimensionLabel(score.key)} <strong>{score.score}</strong></span>
               ))}
             </div>
           ) : <div className="empty-state">暂无 AI 维度评分</div>}
+          {typeof aiResult?.confidence === "number" ? (
+            <p className="review-human-ai__confidence">AI 置信度 {Math.round(aiResult.confidence * 100)}%</p>
+          ) : null}
           <p>{aiResult?.summary ?? display.issue}</p>
-          <div className="review-human-ai-trace">
-            <span>Prompt 快照：{aiTrace?.promptSnapshotHash ?? "暂无"}</span>
-            <span>调用状态：{aiTrace?.status ?? "暂无"}</span>
-            <span>Token：{aiTrace?.totalTokens ?? "-"}</span>
-            <span>耗时：{aiTrace?.latencyMs !== undefined && aiTrace?.latencyMs !== null ? `${aiTrace.latencyMs}ms` : "-"}</span>
-          </div>
-          {aiTrace?.promptTemplate ? (
-            <details className="review-human-prompt">
-              <summary>查看 Prompt 模板</summary>
-              <pre>{aiTrace.promptTemplate}</pre>
-            </details>
-          ) : null}
-          {aiResult ? (
-            <fieldset className="review-human-ai-feedback">
-              <legend>AI 预审是否对本次审核有帮助？</legend>
-              <label>
-                <input
-                  checked={aiReviewFeedback === "HELPFUL"}
-                  name={`ai-review-feedback-${detail.submission.id}`}
-                  onChange={() => setAiReviewFeedback("HELPFUL")}
-                  type="radio"
-                  value="HELPFUL"
-                />
-                有帮助
-              </label>
-              <label>
-                <input
-                  checked={aiReviewFeedback === "NOT_HELPFUL"}
-                  name={`ai-review-feedback-${detail.submission.id}`}
-                  onChange={() => setAiReviewFeedback("NOT_HELPFUL")}
-                  type="radio"
-                  value="NOT_HELPFUL"
-                />
-                没帮助
-              </label>
-              <label>
-                <input
-                  checked={aiReviewFeedback === "NOT_USED"}
-                  name={`ai-review-feedback-${detail.submission.id}`}
-                  onChange={() => setAiReviewFeedback("NOT_USED")}
-                  type="radio"
-                  value="NOT_USED"
-                />
-                未参考
-              </label>
-            </fieldset>
-          ) : null}
         </Card>
 
         <AiAssistPanel
@@ -472,42 +459,51 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         </div>
       </main>
 
-      <aside className="review-human-aside">
-        <Card className="review-human-metrics">
-          <div><span>审核统计</span><strong>—</strong></div>
-          <p className="page-subtitle">暂无个人审核统计</p>
-        </Card>
-
-        <Card className="review-human-timeline">
+      <aside
+        className={timelineOpen ? "review-human-drawer review-human-drawer--open" : "review-human-drawer"}
+        aria-label="审计时间线"
+        aria-hidden={!timelineOpen}
+      >
+        <div className="review-human-drawer__head">
           <h3>审计时间线</h3>
-          <div className="review-human-history">
-            {detail.history.map((record, index) => (
-              <div key={record.id}>
-                <strong>第 {index + 1} 轮 · {stageLabelText(record.stage)}</strong>
-                <span>{reviewDecisionLabel(record.decision)} · {new Date(record.createdAt).toLocaleString("zh-CN")}</span>
-              </div>
-            ))}
-            {detail.auditLogs.map((log) => (
-              <div key={log.id}>
-                <strong>{auditEventLabel(log.action)}</strong>
-                <span>{new Date(log.createdAt).toLocaleString("zh-CN")}</span>
-              </div>
-            ))}
-            {auditEvents.map((event) => (
-              <div key={event.id}>
-                <strong>{auditEventLabel(event.type)}</strong>
-                <span>{new Date(event.createdAt).toLocaleString("zh-CN")} · {actorRoleLabel(event.actor.role)}</span>
-              </div>
-            ))}
-          </div>
-          {auditEventsError ? <p className="danger-text">{auditEventsError}</p> : null}
-          {detail.history.length === 0 && detail.auditLogs.length === 0 && auditEvents.length === 0 && !auditEventsError ? (
-            <div className="empty-state">暂无审计时间线</div>
-          ) : null}
-        </Card>
-
-        <Link className="lh-button" to={RoutePath.REVIEWER_QUEUE}>返回 AI 预审队列</Link>
+          <button
+            type="button"
+            className="review-human-drawer__close"
+            onClick={() => setTimelineOpen(false)}
+            aria-label="关闭审计时间线"
+          >
+            ×
+          </button>
+        </div>
+        <div className="review-human-history">
+          {detail.history.map((record, index) => (
+            <div key={record.id}>
+              <strong>第 {index + 1} 轮 · {stageLabelText(record.stage)}</strong>
+              <span>{reviewDecisionLabel(record.decision)} · {new Date(record.createdAt).toLocaleString("zh-CN")}</span>
+            </div>
+          ))}
+          {detail.auditLogs.map((log) => (
+            <div key={log.id}>
+              <strong>{auditEventLabel(log.action)}</strong>
+              <span>{new Date(log.createdAt).toLocaleString("zh-CN")}</span>
+            </div>
+          ))}
+          {auditEvents.map((event) => (
+            <div key={event.id}>
+              <strong>{auditEventLabel(event.type)}</strong>
+              <span>{new Date(event.createdAt).toLocaleString("zh-CN")} · {actorRoleLabel(event.actor.role)}</span>
+            </div>
+          ))}
+        </div>
+        {auditEventsError ? <p className="danger-text">{auditEventsError}</p> : null}
+        {detail.history.length === 0 && detail.auditLogs.length === 0 && auditEvents.length === 0 && !auditEventsError ? (
+          <div className="empty-state">暂无审计时间线</div>
+        ) : null}
       </aside>
+
+      {timelineOpen ? (
+        <div className="review-human-drawer-backdrop" onClick={() => setTimelineOpen(false)} aria-hidden="true" />
+      ) : null}
 
       <ConfirmDialog
         open={pendingDecision !== null}
