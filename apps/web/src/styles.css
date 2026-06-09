@@ -9183,6 +9183,125 @@ a {
   font-weight: 700;
 }
 
+/* ---- Full Quality Center 总览 + 富事件看板 ---- */
+.quality-section-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 950;
+  color: var(--lh-text);
+}
+
+.quality-overview {
+  display: flex;
+  flex-direction: column;
+}
+
+.quality-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.quality-overview-stat {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--lh-border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.quality-overview-stat span {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quality-overview-stat strong {
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1;
+  color: var(--lh-text);
+}
+
+.quality-overview-stat--primary {
+  border-color: rgba(124, 58, 237, 0.32);
+  background: rgba(124, 58, 237, 0.06);
+}
+
+.quality-overview-stat--success {
+  border-color: rgba(5, 150, 105, 0.32);
+  background: rgba(5, 150, 105, 0.06);
+}
+
+.quality-overview-stat--warning {
+  border-color: rgba(217, 119, 6, 0.32);
+  background: rgba(217, 119, 6, 0.07);
+}
+
+.quality-board__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quality-board__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--lh-border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.quality-board__row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.quality-board__row-meta {
+  margin-left: auto;
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.quality-board__row-summary {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.quality-board__row-fields {
+  font-size: 12px;
+  color: #475569;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.quality-board__row-fields code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(124, 58, 237, 0.1);
+  color: #5b21b6;
+  font-size: 11px;
+}
+
+.quality-board__row-related {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 /* ---------------------------------------------------------------------------
    Reviewer「我的审核概览」
 --------------------------------------------------------------------------- */

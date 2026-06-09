@@ -6,7 +6,19 @@
 ---
 
 ## 当前阶段
-阶段 5（前端 Reviewer AI Assist）已完成，准备进入阶段 6（Full Quality Center）。
+阶段 6（Full Quality Center）已完成，准备进入阶段 7（全量验证收口）。
+
+### 阶段 6 已完成
+- 重写 `apps/web/src/features/owner/OwnerQualityCenterPage.tsx` 为页内看板（非跳转入口）：
+  - **总览**：任务总数 / 发布中 / 草稿 / 待人工审核（来自 review queue）/ 打回需修订（审计事件计数）/ AI 采纳 / AI 编辑后采纳 / AI 忽略 / 最近审计事件 / 最近风险信号 —— 全部实时计数，不写死。
+  - **AI 预审 / AI Assist 看板**：富事件行（人话事件名 + 状态人话化 + 角色 + 时间 + severity + 摘要 + 关联实体）。
+  - **审核与打回看板**、**数据修订 / Patch 看板**（修改字段 + 来源 AI/审核员/系统）、**导出与质量护照看板**（含 Passport 文案，空态不假下载）、**审计与追溯**（最近 12 条）。
+  - 仅展示 curated 人话摘要 / 引用 id，绝不渲染原始 event code / raw JSON / payload；未知事件回退「审计记录」；actor role 人话化映射。
+- `apps/web/src/styles.css`：新增总览 + 富事件看板样式。
+
+### 阶段 6 测试结果
+- `cd apps/web && npm run typecheck`：通过。
+- `cd apps/web && npm run build`：成功。
 
 ### 阶段 5 已完成
 - 新增 `apps/web/src/api/ai-assist.ts`：`listAiAssistSuggestions` / `submitAiAssistAction`。
