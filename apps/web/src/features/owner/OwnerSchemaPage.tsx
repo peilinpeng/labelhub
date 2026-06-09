@@ -11,6 +11,7 @@ import {
   type DeprecationIssue,
 } from "@labelhub/schema-core";
 import type {
+  AuditEventRecord,
   CompatibilityReport,
   FieldNode,
   ID,
@@ -26,6 +27,8 @@ import type {
 } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
 import { fetchSchemaDraft, fetchSchemaVersion, fetchServerRegistry, fetchTask, publishSchema, publishTask, saveSchemaDraft, type SchemaVersionHistoryItem } from "../../api/owner";
+import { queryAuditEvents } from "../../api/audit";
+import { AuditTimelinePanel } from "./AuditTimelinePanel";
 import { SchemaVersionPanel } from "./SchemaVersionPanel";
 import { Badge, Button, Card } from "../../ui/primitives";
 import {
@@ -169,6 +172,9 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [publishPreview, setPublishPreview] = useState<PublishPreviewState | undefined>();
   const [publishPreviewPreparing, setPublishPreviewPreparing] = useState(false);
   const [versionRefreshKey, setVersionRefreshKey] = useState(0);
+  const [auditEvents, setAuditEvents] = useState<AuditEventRecord[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
   const [activePresetId, setActivePresetId] = useState(() => presetIdForTask(taskId));
   const [dropActive, setDropActive] = useState(false);
   const [conditionRules, setConditionRules] = useState<ConditionRuleDraft[]>([]);
@@ -231,6 +237,29 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       cancelled = true;
     };
   }, [taskId]);
+
+  const resolvedAuditTaskId = resolveTaskId(taskId, schema.meta.taskId);
+
+  // 读取当前任务的 schema 治理审计事件（草稿保存、兼容性检查、阻断、废弃、发布等），只读展示。
+  const loadAuditTimeline = async (): Promise<void> => {
+    try {
+      setAuditLoading(true);
+      setAuditError(null);
+      const response = await queryAuditEvents({ taskId: resolvedAuditTaskId, entityType: "SCHEMA", limit: 50 });
+      setAuditEvents(response.events);
+    } catch (error) {
+      console.warn("Owner schema 审计日志加载失败", error);
+      setAuditError("审计日志加载失败，请稍后刷新重试。");
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  // 首次进入与每次发布/回滚后（versionRefreshKey 变化）刷新审计时间线。
+  useEffect(() => {
+    void loadAuditTimeline();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedAuditTaskId, versionRefreshKey]);
 
   useEffect(() => {
     setPresetTitleInput(schema.root.title || schema.meta.name || "未命名预设模板");
@@ -1062,6 +1091,16 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         refreshKey={versionRefreshKey}
         onCopyToDraft={handleCopyVersionToDraft}
         onRollback={(snapshot, version) => void handleRollbackToVersion(snapshot, version)}
+      />
+
+      <AuditTimelinePanel
+        events={auditEvents}
+        loading={auditLoading}
+        error={auditError}
+        onRefresh={() => void loadAuditTimeline()}
+        title="模板治理审计"
+        description="记录该任务的模板变更、发布前兼容性检查、Breaking Change 阻断、字段废弃与版本发布事件。"
+        emptyText="暂无模板治理事件。保存草稿或发起发布检查后，这里会出现对应记录。"
       />
 
       {publishPreview ? (
