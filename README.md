@@ -8,6 +8,27 @@
 
 ---
 
+## 0. 课题要求对照（4.1–4.6 + 验收标准）
+
+> 面向验收的功能完备性自检。每一行对应课题《核心功能需求》的一条，给出实现位置与演示入口。
+
+| 课题要求 | 实现情况 | 代码位置 / 演示入口 |
+| --- | --- | --- |
+| **4.1 任务管理**：状态机（草稿/发布中/已暂停/已结束）、富文本说明、标签、奖励、配额、截止时间、分发策略 | ✅ 状态机 `DRAFT/PUBLISHED/PAUSED/ENDED/ARCHIVED`；**三种分发策略（先到先得 / 指派 / 配额抢单）全部实现**（课题仅要求任选其一） | `apps/api/app/models/task.py`、`schemas/task.py`；`/owner/tasks` |
+| 数据集导入 **JSON / JSONL / Excel**、预览 | ✅ 三格式导入 + 题目预览 | `apps/api/app/routers/dataset.py`；`/owner/tasks/:id/dataset` |
+| **4.2 动态表单 Designer/Renderer**（核心难点）：物料→画布→属性面板、可序列化 JSON Schema、Designer 与 Labeler 同源渲染 | ✅ Designer / Renderer 解耦；物料覆盖单行/多行/单选/多选/标签/富文本/文件图片上传/JSON 编辑器/LLM 交互组件/ShowItem | `packages/schema-designer`、`packages/schema-renderer`；`/owner/tasks/:id/designer` |
+| 进阶：字段联动、自定义校验、分组容器 + 多 Tab | ✅ `visibleWhen/disabledWhen/linkageRules` 编译为 Formily reactions；必填/长度/正则/自定义校验；多 Tab 容器布局 | `packages/schema-compiler`、`packages/schema-renderer` |
+| **4.3 标注员工作台**：任务广场、作答、草稿自动保存、提交校验、题目级 LLM 辅助、我的数据 | ✅ 任务广场（搜索/筛选/卡片）；**领取制队列**（一次领取一条数据，提交后回广场领下一条）；草稿真实防抖自动保存；运行时提交校验；题目级 LLM 辅助；「我的提交」状态统计 | `apps/web/src/features/labeler`；`/labeler/tasks`、`/labeler/workspace/:id`、`/labeler/submissions` |
+| **4.4 AI 预审 Agent**（核心难点）：可配置 Prompt + 评分维度、异步入队、Function Calling 结构化输出、失败重试 + 幂等、结果可见可追溯 | ✅ 维度/阈值/权重可配置；Celery 异步队列；`FUNCTION_CALLING` 结构化输出（非裸文本解析）；`retry_count` 重试 + 幂等键；AI 评语与原始 Prompt 可在审核台查看 | `apps/api/app/services/review_domain.py`、`worker/ai_review_worker.py`；`/owner/ai-config` |
+| **4.5 多角色审核流转**：`PASS/RETURN/REVISE` 状态机、迁移可追溯（审计）、批量操作、打回附理由 + 上一轮意见可见、第 1/2 轮 diff | ✅ 结构化决策流；批量审核 `BatchReviewRequest`；`RETURN` 必填理由、Labeler 可见上轮意见；`REVIEW_DIFF_GENERATED` 字段级 diff 审计 | `apps/api/app/routers/review.py`、`services/review_domain.py`；`/reviewer/items` |
+| **4.6 多格式导出**：JSON / JSONL / CSV / Excel、异步导出 + 下载历史、字段映射可配置 | ✅ 四格式真实生成；Celery 异步导出；字段映射（选字段 / 重命名 / 是否含审核记录） | `apps/api/app/worker/export_worker.py`、`services/export_domain.py`；`/owner/tasks/:id/export` |
+| **工程质量（25%）**：TypeScript 全栈类型、单测/集成测试、README + 部署文档 | ✅ `@labelhub/contracts` 单一类型来源（无大量 any）；**后端 pytest 170 passed、端到端 e2e 21/21、共享库/前端 126 个测试文件全绿**；`docs/deployment.md` 部署文档 | `npm run test`、`pytest -m "not integration"`、`scripts/e2e_test.sh` |
+| **产品体验（15%）**：视觉统一、错误友好、操作可逆、1280×800 & 1920×1080 | ✅ 草稿自动保存 + 可逆操作；人话错误提示（不暴露工程词）；响应式（70+ 媒体查询，移动端适配为加分项） | — |
+
+> 答辩**提交物清单**（源码 Monorepo / 演示视频 / 架构图 / AI Coding 过程记录 / Demo 截图 / 可访问演示环境说明 / API 文档）见 [`submission/README.md`](./submission/README.md)。
+
+---
+
 ## 1. 项目解决的问题
 
 数据标注生产中有三个反复出现的难题：

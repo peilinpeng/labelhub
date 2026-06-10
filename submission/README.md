@@ -8,7 +8,7 @@
 - 前端：[`apps/web`](../apps/web)（React + TypeScript + Vite）
 - 后端：[`apps/api`](../apps/api)（FastAPI + SQLAlchemy + Alembic）
 - AI 审核 Agent / 异步任务：[`apps/api/app/worker`](../apps/api/app/worker)（Celery：AI 预审 + 导出）
-- 共享库：[`packages/`](../packages)（contracts / schema-core / schema-renderer / schema-designer / schema-compiler）
+- 共享库：[`packages/`](../packages)（contracts / schema-core / schema-compiler / schema-renderer / schema-designer / workflow-core）
 
 ## 2. README（架构 / 模块划分 / 启动 / 取舍）
 
