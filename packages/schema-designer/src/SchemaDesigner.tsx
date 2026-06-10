@@ -7,7 +7,7 @@ import { EmptyPropertyPanel, PropertyPanel } from "./components/PropertyPanel";
 import { MaterialPanel } from "./components/MaterialPanel";
 import { SchemaPreview } from "./components/SchemaPreview";
 import { ValidationPanel } from "./components/ValidationPanel";
-import { addMaterialNode, deleteSelectedNode, moveSelectedNode, patchNode } from "./designer-actions";
+import { addMaterialNode, deleteSelectedNode, moveSelectedNode, patchNode, reorderSelectedNode } from "./designer-actions";
 import { createDesignerState, syncDesignerState, validateDesignerSchema } from "./designer-state";
 import type { DesignerActionContext, DesignerState, SchemaDesignerProps } from "./types";
 
@@ -25,6 +25,7 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
     }
     return findNodeById(props.schema, state.selectedNodeId);
   }, [props.schema, state.selectedNodeId]);
+  const displayedValidationResult = props.validationResult ?? state.validationResult;
 
   const emitSchemaChange = (nextSchema: LabelHubSchema) => {
     const validationResult = validateDesignerSchema(nextSchema);
@@ -45,9 +46,14 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
   };
 
   return (
-    <>
+    <div className="schema-designer">
       {props.onPublishRequest !== undefined ? (
-        <button disabled={readonly || !state.validationResult.valid} type="button" onClick={() => void props.onPublishRequest?.(props.schema)}>
+        <button
+          className="schema-designer__publish"
+          disabled={readonly || !state.validationResult.valid}
+          type="button"
+          onClick={() => void props.onPublishRequest?.(props.schema)}
+        >
           请求发布
         </button>
       ) : null}
@@ -55,11 +61,13 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
       canvas={
         <DesignerCanvas
           nodes={props.schema.root.children}
+          nodeErrors={props.nodeErrors}
           readonly={readonly}
           selectedNodeId={state.selectedNodeId}
           onDelete={(nodeId) => deleteSelectedNode(actionContext, nodeId)}
           onMoveDown={(nodeId) => moveSelectedNode(actionContext, nodeId, "DOWN")}
           onMoveUp={(nodeId) => moveSelectedNode(actionContext, nodeId, "UP")}
+          onReorder={(draggedId, targetId) => reorderSelectedNode(actionContext, draggedId, targetId)}
           onSelect={(nodeId) => setState((current) => ({ ...current, selectedNodeId: nodeId }))}
         />
       }
@@ -75,7 +83,7 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
           previewAnswers={state.previewAnswers}
           sampleContext={props.sampleContext}
           schema={props.schema}
-          validationResult={state.validationResult}
+          validationResult={displayedValidationResult}
           onPreviewAnswersChange={(previewAnswers) => setState((current) => ({ ...current, previewAnswers }))}
         />
       }
@@ -93,9 +101,15 @@ export function SchemaDesigner(props: SchemaDesignerProps) {
           />
         )
       }
-      validation={<ValidationPanel localErrors={state.localErrors} validationResult={state.validationResult} />}
+      validation={
+        <ValidationPanel
+          localErrors={state.localErrors}
+          validationResult={displayedValidationResult}
+          onSelectNode={(nodeId) => setState((current) => ({ ...current, selectedNodeId: nodeId }))}
+        />
+      }
       />
-    </>
+    </div>
   );
 }
 

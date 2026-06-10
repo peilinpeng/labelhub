@@ -1,4 +1,4 @@
-import type { Expression, SchemaNode } from "@labelhub/contracts";
+import type { SchemaNode } from "@labelhub/contracts";
 import { createLocalError } from "../designer-state";
 
 export interface BaseNodePanelProps {
@@ -8,20 +8,23 @@ export interface BaseNodePanelProps {
   onLocalErrors(errors: ReturnType<typeof createLocalError>[]): void;
 }
 
-export function BaseNodePanel({ node, readonly, onPatch, onLocalErrors }: BaseNodePanelProps) {
+export function BaseNodePanel({ node, readonly, onPatch }: BaseNodePanelProps) {
+  const titleMissing = node.title.trim().length === 0;
   return (
     <section>
-      <h3>通用属性</h3>
+      <h3>基础</h3>
       <label>
-        标题
+        <span>组件名称 <b className="schema-property-required">*</b></span>
         <input
+          aria-invalid={titleMissing}
           disabled={readonly}
           value={node.title}
           onChange={(event) => onPatch({ title: event.target.value })}
         />
+        {titleMissing ? <small className="schema-property-error">组件名称不能为空。</small> : null}
       </label>
       <label>
-        描述
+        说明
         <textarea
           disabled={readonly}
           value={node.description ?? ""}
@@ -35,7 +38,7 @@ export function BaseNodePanel({ node, readonly, onPatch, onLocalErrors }: BaseNo
           type="checkbox"
           onChange={(event) => onPatch({ hidden: event.target.checked })}
         />
-        隐藏
+        默认隐藏
       </label>
       <label>
         <input
@@ -44,72 +47,9 @@ export function BaseNodePanel({ node, readonly, onPatch, onLocalErrors }: BaseNo
           type="checkbox"
           onChange={(event) => onPatch({ disabled: event.target.checked })}
         />
-        禁用
+        默认禁用
       </label>
-      <JsonExpressionEditor
-        disabled={readonly}
-        label="visibleWhen"
-        nodeId={node.id}
-        path={`$.nodes.${node.id}.visibleWhen`}
-        value={node.visibleWhen}
-        onChange={(value) => onPatch({ visibleWhen: value } as Partial<SchemaNode>)}
-        onLocalErrors={onLocalErrors}
-      />
-      <JsonExpressionEditor
-        disabled={readonly}
-        label="disabledWhen"
-        nodeId={node.id}
-        path={`$.nodes.${node.id}.disabledWhen`}
-        value={node.disabledWhen}
-        onChange={(value) => onPatch({ disabledWhen: value } as Partial<SchemaNode>)}
-        onLocalErrors={onLocalErrors}
-      />
     </section>
-  );
-}
-
-interface JsonExpressionEditorProps {
-  label: string;
-  nodeId: string;
-  path: string;
-  value: Expression | undefined;
-  disabled: boolean;
-  onChange(value: Expression | undefined): void;
-  onLocalErrors(errors: ReturnType<typeof createLocalError>[]): void;
-}
-
-function JsonExpressionEditor({
-  label,
-  nodeId,
-  path,
-  value,
-  disabled,
-  onChange,
-  onLocalErrors,
-}: JsonExpressionEditorProps) {
-  return (
-    <label>
-      {label}
-      <textarea
-        disabled={disabled}
-        defaultValue={formatJson(value)}
-        onBlur={(event) => {
-          const raw = event.target.value.trim();
-          if (raw.length === 0) {
-            onLocalErrors([]);
-            onChange(undefined);
-            return;
-          }
-          const parsed = parseJson(raw);
-          if (parsed.ok) {
-            onLocalErrors([]);
-            onChange(parsed.value as Expression);
-          } else {
-            onLocalErrors([createLocalError(nodeId, path, `${label} JSON 解析失败`)]);
-          }
-        }}
-      />
-    </label>
   );
 }
 

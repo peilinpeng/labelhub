@@ -1,0 +1,54 @@
+%% LabelHub 系统架构图 — 渲染见 submission/architecture.png
+%% 源文件，可用 https://mermaid.live 或 submission/render-architecture.html 重新导出
+flowchart TB
+    subgraph Client["浏览器 · apps/web (React + TS + Vite)"]
+        direction LR
+        Owner["Owner 工作台<br/>任务/Schema Designer<br/>AI 预审配置 · 版本管理 · 导出"]
+        Labeler["Labeler 工作台<br/>动态表单作答 · 草稿 · AI 辅助"]
+        Reviewer["Reviewer 工作台<br/>队列 · 字段级 Diff · 终审"]
+    end
+
+    subgraph Shared["共享库 · packages/ (TypeScript, 契约驱动)"]
+        direction LR
+        Contracts["@labelhub/contracts<br/>类型 · 错误码 · 审计 · API"]
+        SchemaCore["schema-core<br/>遍历 · 表达式 · 校验 · 归一化"]
+        SchemaRenderer["schema-renderer<br/>作答/只读/Diff/预览渲染"]
+        SchemaDesigner["schema-designer<br/>物料 · 拖拽 · 属性配置"]
+        Workflow["workflow-core<br/>状态/命令"]
+    end
+
+    subgraph API["后端 · apps/api (FastAPI + SQLAlchemy)"]
+        direction TB
+        Routers["routers · REST API"]
+        Services["services · 业务逻辑"]
+        StateMachines["state_machines<br/>task/assignment/submission/export"]
+        Hash["utils/hashing<br/>canonical-json-v1 + SHA-256"]
+        Routers --> Services --> StateMachines
+        Services --> Hash
+    end
+
+    subgraph Async["异步 · Celery worker"]
+        direction LR
+        AIWorker["ai_review_worker<br/>结构化预审打分"]
+        ExportWorker["export_worker<br/>JSON/JSONL/CSV/Excel<br/>+ Data Quality Passport"]
+    end
+
+    MySQL[("MySQL 8<br/>领域模型 + 不可变 Schema 快照<br/>audit_logs / audit_events")]
+    Redis[("Redis 7<br/>Celery broker/backend")]
+    LLM{{"Doubao LLM<br/>function_calling 结构化输出"}}
+
+    Client -->|"/api · 契约类型"| Routers
+    Client -.->|引用| Shared
+    Services -->|入队| Redis
+    Redis --> Async
+    AIWorker -->|temperature=0| LLM
+    Services <--> MySQL
+    Async <--> MySQL
+
+    %% 前后端 hash 一致：同一组 test vectors 逐字节校验
+    Hash -. 同算法 .- SchemaCore
+
+    classDef store fill:#eef2ff,stroke:#6366f1,color:#1e1b4b;
+    classDef ext fill:#fff7ed,stroke:#f97316,color:#7c2d12;
+    class MySQL,Redis store;
+    class LLM ext;

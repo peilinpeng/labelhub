@@ -14,6 +14,8 @@ export interface SchemaDesignerProps {
   readonly?: boolean;
   serverRegistry: ServerComponentRegistryItem[];
   sampleContext: LabelHubRuntimeContext;
+  nodeErrors?: Record<string, string[]>;
+  validationResult?: SchemaValidationResult;
   onValidate?(schema: LabelHubSchema): SchemaValidationResult | Promise<SchemaValidationResult>;
   onPublishRequest?(schema: LabelHubSchema): void | Promise<void>;
 }

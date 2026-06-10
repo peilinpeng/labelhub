@@ -1,3 +1,5 @@
+import type { AuditAction } from "./audit";
+import type { FileWorkflowCommand } from "./file";
 import type { ID, ISODateTime } from "./global";
 import type { ReviewPolicy } from "./review";
 import type { RichTextDocument, ValidationError, ValidationResult } from "./schema";
@@ -91,6 +93,116 @@ export type SubmissionStatus =
   | "RETURNED"
   | "ACCEPTED"
   | "REJECTED";
+
+export type WorkflowCommand =
+  | TaskWorkflowCommand
+  | DatasetItemWorkflowCommand
+  | AssignmentWorkflowCommand
+  | SubmissionWorkflowCommand
+  | AIReviewWorkflowCommand
+  | ReviewWorkflowCommand
+  | ExportWorkflowCommand
+  | FileWorkflowCommand;
+
+export type TaskWorkflowCommand =
+  | "createTask"
+  | "publishTask"
+  | "pauseTask"
+  | "resumeTask"
+  | "endTask"
+  | "archiveTask";
+
+export type DatasetItemWorkflowCommand =
+  | "importItem"
+  | "claimItem"
+  | "releaseItem"
+  | "completeItem"
+  | "disableItem"
+  | "restoreItem";
+
+export type AssignmentWorkflowCommand =
+  | "claimAssignment"
+  | "saveDraft"
+  | "submitAssignment"
+  | "expireAssignment"
+  | "returnAssignment"
+  | "acceptAssignment"
+  | "cancelAssignment";
+
+export type SubmissionWorkflowCommand =
+  | "enqueueAIReview"
+  | "aiReviewPass"
+  | "aiReviewReturn"
+  | "aiReviewNeedHuman"
+  | "aiReviewFailedToHuman";
+
+export type AIReviewWorkflowCommand =
+  | "startAIReviewJob"
+  | "markAIReviewSucceeded"
+  | "markAIReviewFailed"
+  | "retryAIReviewJob"
+  | "markAIReviewFailedToHuman";
+
+export type ReviewWorkflowCommand =
+  | "claimReview"
+  | "humanReviewPass"
+  | "humanReviewReturn"
+  | "humanReviewReject"
+  | "finalReviewPass"
+  | "finalReviewReturn"
+  | "finalReviewReject";
+
+export type ExportWorkflowCommand =
+  | "createExportJob"
+  | "startExportJob"
+  | "markExportSucceeded"
+  | "markExportFailed"
+  | "cancelExportJob";
+
+export type ReviewDecisionSideEffect =
+  | {
+      decision: "RETURN";
+      submissionStatus: "RETURNED";
+      assignmentStatus: "RETURNED";
+      datasetItemStatus: "LOCKED";
+      requiresReason: true;
+      auditAction: Extract<AuditAction, "REVIEW_RETURNED">;
+    }
+  | {
+      decision: "REJECT";
+      submissionStatus: "REJECTED";
+      assignmentStatus: "CANCELED";
+      datasetItemStatus: "AVAILABLE";
+      requiresReason: true;
+      auditAction: Extract<AuditAction, "REVIEW_REJECTED">;
+    }
+  | {
+      decision: "PASS";
+      stage: "HUMAN_REVIEW";
+      reviewPolicy: "SINGLE_REVIEW";
+      submissionStatus: "ACCEPTED";
+      assignmentStatus: "ACCEPTED";
+      datasetItemStatus: "COMPLETED";
+      requiresReason: false;
+      auditAction: Extract<AuditAction, "REVIEW_ACCEPTED">;
+    }
+  | {
+      decision: "PASS";
+      stage: "HUMAN_REVIEW";
+      reviewPolicy: "DOUBLE_REVIEW";
+      submissionStatus: "FINAL_REVIEWING";
+      requiresReason: false;
+      auditAction: Extract<AuditAction, "FINAL_REVIEW_REQUESTED">;
+    }
+  | {
+      decision: "PASS";
+      stage: "FINAL_REVIEW";
+      submissionStatus: "ACCEPTED";
+      assignmentStatus: "ACCEPTED";
+      datasetItemStatus: "COMPLETED";
+      requiresReason: false;
+      auditAction: Extract<AuditAction, "REVIEW_ACCEPTED">;
+    };
 
 export interface Submission {
   id: ID;

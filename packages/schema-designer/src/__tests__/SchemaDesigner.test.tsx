@@ -91,7 +91,7 @@ describe("SchemaDesigner", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "多行文本" }));
 
-    await waitFor(() => expect(screen.getByText("字段：textareaField")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("保存字段：textareaField")).toBeTruthy());
     expect(onSchemaChange).toHaveBeenCalled();
   });
 
@@ -111,7 +111,7 @@ describe("SchemaDesigner", () => {
     renderDesigner({ initialSchema: schema, onSchemaChange });
 
     fireEvent.click(screen.getByRole("button", { name: "选择" }));
-    fireEvent.change(screen.getByLabelText("字段 name"), { target: { value: "summary" } });
+    fireEvent.change(screen.getByLabelText(/字段名称/), { target: { value: "summary" } });
 
     await waitFor(() =>
       expect(onSchemaChange).toHaveBeenCalledWith(
@@ -130,9 +130,9 @@ describe("SchemaDesigner", () => {
 
     const secondNode = getNodeBlock(document.body, "node_input_textarea");
     fireEvent.click(within(secondNode).getByRole("button", { name: "选择" }));
-    fireEvent.change(screen.getByLabelText("字段 name"), { target: { value: "textField" } });
+    fireEvent.change(screen.getByLabelText(/字段名称/), { target: { value: "textField" } });
 
-    await waitFor(() => expect(screen.getAllByText("FIELD_NAME_DUPLICATED").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(/必须在 schema version 内唯一/).length).toBeGreaterThan(0));
   });
 
   test("删除节点后 schema 中不存在该 node", async () => {
@@ -199,7 +199,7 @@ describe("SchemaDesigner", () => {
 
     renderDesigner({ initialSchema: schema });
 
-    expect(screen.getByText("SCHEMA_INVALID")).toBeTruthy();
+    expect(screen.getAllByText(/toFieldName 必须指向存在的/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/toFieldName/).length).toBeGreaterThan(0);
   });
 
@@ -212,7 +212,7 @@ describe("SchemaDesigner", () => {
 
     renderDesigner({ initialSchema: schema });
 
-    expect(screen.getByText("INVALID_JSON_PATH")).toBeTruthy();
+    expect(screen.getAllByText(/sourcePath 必须使用 RuntimeContext/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/sourcePath/).length).toBeGreaterThan(0);
   });
 });

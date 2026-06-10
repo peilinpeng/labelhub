@@ -14,14 +14,18 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+__exportStar(require("./ai-assist"), exports);
 __exportStar(require("./api"), exports);
 __exportStar(require("./audit"), exports);
+__exportStar(require("./checksum"), exports);
 __exportStar(require("./errors"), exports);
 __exportStar(require("./export"), exports);
 __exportStar(require("./file"), exports);
 __exportStar(require("./global"), exports);
+__exportStar(require("./migration"), exports);
 __exportStar(require("./registry"), exports);
 __exportStar(require("./review"), exports);
 __exportStar(require("./schema"), exports);
+__exportStar(require("./schema-versioning"), exports);
 __exportStar(require("./utils/contract-guards"), exports);
 __exportStar(require("./workflow"), exports);

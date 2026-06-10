@@ -7,12 +7,18 @@ import { FieldPropertyPanel } from "../property-panels/FieldPropertyPanel";
 import { LLMAssistPropertyPanel } from "../property-panels/LLMAssistPropertyPanel";
 import { ShowItemPropertyPanel } from "../property-panels/ShowItemPropertyPanel";
 
-export function PropertyPanel({ schema, node, readonly, localErrors, onNodePatch, onLocalErrors }: PropertyPanelProps) {
+export function PropertyPanel({ node, readonly, localErrors, onNodePatch, onLocalErrors }: PropertyPanelProps) {
   const onPatch = (patch: Partial<SchemaNode>) => onNodePatch(node.id, patch);
 
   return (
-    <section aria-label="属性面板">
-      <h2>属性面板</h2>
+    <section aria-label="属性面板" className="schema-designer-panel schema-designer-properties">
+      <div className="schema-designer-panel__header">
+        <div>
+          <h2>属性</h2>
+          <p>{node.title}</p>
+        </div>
+        <span>{nodeKindLabel(node)}</span>
+      </div>
       <BaseNodePanel node={node} readonly={readonly} onLocalErrors={onLocalErrors} onPatch={onPatch} />
       {node.kind === "FIELD" ? (
         <>
@@ -32,7 +38,7 @@ export function PropertyPanel({ schema, node, readonly, localErrors, onNodePatch
         <ContainerPropertyPanel node={node} readonly={readonly} onLocalErrors={onLocalErrors} onPatch={onPatch} />
       ) : null}
       {localErrors.length > 0 ? (
-        <ul>
+        <ul className="schema-designer-error-list">
           {localErrors.map((error, index) => (
             <li key={`${error.path}-${index}`} role="alert">
               {error.message}
@@ -40,20 +46,31 @@ export function PropertyPanel({ schema, node, readonly, localErrors, onNodePatch
           ))}
         </ul>
       ) : null}
-      <div>当前 schema：{schema.meta.name}</div>
     </section>
   );
 }
 
 export function EmptyPropertyPanel() {
   return (
-    <section aria-label="属性面板">
-      <h2>属性面板</h2>
-      <p>请选择一个节点。</p>
+    <section aria-label="属性面板" className="schema-designer-panel schema-designer-properties">
+      <div className="schema-designer-panel__header">
+        <div>
+          <h2>属性</h2>
+          <p>请选择一个组件后编辑</p>
+        </div>
+      </div>
+      <p className="schema-designer-empty">请选择一个节点。</p>
     </section>
   );
 }
 
 function isChoiceFieldNode(node: SchemaNode): node is ChoiceFieldNode {
   return node.kind === "FIELD" && node.type.startsWith("choice.");
+}
+
+function nodeKindLabel(node: SchemaNode): string {
+  if (node.kind === "FIELD") return "字段";
+  if (node.kind === "SHOW_ITEM") return "展示";
+  if (node.kind === "LLM_ASSIST") return "AI";
+  return "分组";
 }

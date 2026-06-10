@@ -16,7 +16,7 @@ const contract_guards_1 = require("../utils/contract-guards");
         (0, strict_1.equal)((0, contract_guards_1.isDefaultExportEligible)({ status: "ACCEPTED" }), true);
         (0, strict_1.equal)((0, contract_guards_1.isDefaultExportEligible)({ status: "AI_PASSED" }), false);
     });
-    (0, node_test_1.test)("PATCHED_ANSWERS 必须显式配置", () => {
+    (0, node_test_1.test)("PATCHED_ANSWERS 未显式允许时应被拒绝", () => {
         const mapping = {
             schemaVersionId: "sv_1",
             format: "JSONL",
@@ -24,10 +24,29 @@ const contract_guards_1 = require("../utils/contract-guards");
             includeReviewRecords: true,
             columns: [{ header: "类别", sourcePath: "$.answers.newsCategory" }],
         };
-        (0, strict_1.equal)((0, contract_guards_1.usesPatchedAnswersExplicitly)(mapping), true);
+        (0, strict_1.equal)((0, contract_guards_1.usesPatchedAnswersExplicitly)(mapping), false);
+        (0, strict_1.equal)((0, contract_guards_1.isExportAnswerSourceAllowed)(mapping), false);
+        (0, strict_1.equal)((0, contract_guards_1.isExportAnswerSourceAllowed)({ ...mapping, allowPatchedAnswers: true }), true);
     });
 });
 (0, node_test_1.describe)("文件契约", () => {
+    (0, node_test_1.test)("File upload lifecycle 使用 PENDING -> UPLOADING -> READY", () => {
+        const pendingFile = fileObject("file_upload_1", "USER", "usr_1", "DATASET_IMPORT", "PENDING");
+        const readyFile = fileObject("file_upload_2", "USER", "usr_1", "DATASET_IMPORT", "READY");
+        (0, strict_1.equal)((0, contract_guards_1.isCreateUploadUrlResult)(pendingFile), true);
+        (0, strict_1.equal)((0, contract_guards_1.canMarkUploadStarted)("PENDING"), true);
+        (0, strict_1.equal)((0, contract_guards_1.canConfirmUpload)("PENDING"), true);
+        (0, strict_1.equal)((0, contract_guards_1.canConfirmUpload)("UPLOADING"), true);
+        (0, strict_1.equal)((0, contract_guards_1.isCreateUploadUrlResult)(readyFile), false);
+        (0, strict_1.equal)((0, contract_guards_1.fileUploadTransitionAuditAction)("createUploadUrl"), "FILE_UPLOAD_URL_CREATED");
+        (0, strict_1.equal)((0, contract_guards_1.fileUploadTransitionAuditAction)("confirmUpload"), "FILE_CONFIRMED");
+    });
+    (0, node_test_1.test)("failUpload 生命周期 PENDING / UPLOADING -> FAILED", () => {
+        (0, strict_1.equal)((0, contract_guards_1.canFailUpload)("PENDING"), true);
+        (0, strict_1.equal)((0, contract_guards_1.canFailUpload)("UPLOADING"), true);
+        (0, strict_1.equal)((0, contract_guards_1.canFailUpload)("READY"), false);
+        (0, strict_1.equal)((0, contract_guards_1.fileUploadTransitionAuditAction)("failUpload"), "FILE_UPLOAD_FAILED");
+    });
     (0, node_test_1.test)("upload 字段 FileRef.fileId 必须属于当前 assignment 或当前用户", () => {
         const fileRef = {
             fileId: "file_answer_1",

@@ -23,14 +23,32 @@ export interface ReviewPatch {
   reason: string;
 }
 
-export interface ReviewCommand {
+export interface BaseReviewCommand {
   submissionId: ID;
   stage: HumanReviewStage;
-  decision: HumanReviewDecision;
-  reason?: string;
   comments?: ReviewComment[];
   patches?: ReviewPatch[];
 }
+
+export interface ReviewPassCommand extends BaseReviewCommand {
+  decision: "PASS";
+  reason?: string;
+}
+
+export interface ReviewReturnCommand extends BaseReviewCommand {
+  decision: "RETURN";
+  reason: string;
+}
+
+export interface ReviewRejectCommand extends BaseReviewCommand {
+  decision: "REJECT";
+  reason: string;
+}
+
+export type ReviewCommand =
+  | ReviewPassCommand
+  | ReviewReturnCommand
+  | ReviewRejectCommand;
 
 export interface BaseReviewResultRecord {
   id: ID;

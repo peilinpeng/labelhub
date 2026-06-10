@@ -1,0 +1,39 @@
+name: API CI
+
+# 后端 CI：仅在 apps/api 变更时运行单元 + 集成测试（SQLite in-memory，无需 MySQL/Redis）。
+# 行锁/并发等 @pytest.mark.integration 测试需真实 MySQL，CI 默认跳过。
+
+on:
+  push:
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/api-ci.yml"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/api-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests (unit + integration via SQLite, skip @integration)
+        run: pytest -m "not integration" -v
+
+      - name: Export OpenAPI schema (smoke)
+        run: python scripts/export_openapi.py

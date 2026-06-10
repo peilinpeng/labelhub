@@ -20,7 +20,10 @@
     "react-dom": ">=18"
   },
   "dependencies": {
+    "@formily/core": "^2",
+    "@formily/react": "^2",
     "@labelhub/contracts": "file:../contracts",
+    "@labelhub/schema-compiler": "file:../schema-compiler",
     "@labelhub/schema-core": "file:../schema-core"
   },
   "devDependencies": {

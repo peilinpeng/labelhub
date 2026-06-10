@@ -1,0 +1,25 @@
+{
+  "name": "@labelhub/schema-compiler",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LabelHub Schema 编译与静态分析包",
+  "type": "module",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --conditions=types --test src/__tests__/*.test.ts"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@labelhub/contracts": "file:../contracts",
+    "@labelhub/schema-core": "file:../schema-core"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
