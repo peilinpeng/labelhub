@@ -171,7 +171,7 @@ submission/
 - 导出 / Quality Passport
 - Audit timeline
 
-![Owner · Schema Designer 与版本治理](submission/screenshots/owner-3-schema-breaking-change.png)
+![Owner · AI 预审配置（维度权重自动归一化 + 规则预览）](submission/screenshots/owner-2-ai-config.png)
 
 ### Labeler —— 标注员工作台（`apps/web/src/features/labeler`）
 
