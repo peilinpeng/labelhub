@@ -69,6 +69,14 @@ export function PublishPreviewDialog({
     [compatibilityReport],
   );
 
+  // 把预检结论归纳成一句人话，作为对话框顶部的醒目结论。
+  const verdict = useMemo<{ tone: "success" | "warning" | "danger"; text: string }>(() => {
+    if (!publishAllowed) return { tone: "danger", text: "存在破坏性变更，已阻断发布。请先调整模板再发布。" };
+    if (requiresMigration) return { tone: "warning", text: "存在需要迁移的变更：可发布，但历史答卷需要后续迁移（当前仅预览，不执行迁移）。" };
+    if (requiresApproval) return { tone: "warning", text: "存在需要确认的变更：勾选确认后即可发布。" };
+    return { tone: "success", text: "向后兼容，可直接发布。" };
+  }, [publishAllowed, requiresApproval, requiresMigration]);
+
   if (!open) {
     return null;
   }
@@ -89,6 +97,8 @@ export function PublishPreviewDialog({
         </header>
 
         {oldSchemaStatusMessage ? <p className="publish-preview-dialog__notice">{oldSchemaStatusMessage}</p> : null}
+
+        <p className={`publish-preview-dialog__verdict publish-preview-dialog__verdict--${verdict.tone}`}>{verdict.text}</p>
 
         <div className="publish-preview-summary-grid">
           <SummaryItem label="Schema 校验" value={schemaValidation.valid ? "通过" : `${schemaValidation.errors.length} 个错误`} tone={schemaValidation.valid ? "success" : "danger"} />
@@ -126,6 +136,11 @@ export function PublishPreviewDialog({
         <section className="publish-preview-section">
           <h3>检测到需要迁移的变更</h3>
           <ChangeList changes={migrationChanges} emptyText={isFirstPublish ? "首次发布无需迁移。" : "暂无需要迁移的变更。"} />
+          {requiresMigration ? (
+            <p className="publish-preview-dialog__notice">
+              说明：此处仅做迁移影响预览。迁移执行链路（Dry Run 与历史答卷批量迁移）将在后续接入后端 migration pipeline，本次发布不会自动改动历史答卷。
+            </p>
+          ) : null}
         </section>
 
         <section className="publish-preview-section">

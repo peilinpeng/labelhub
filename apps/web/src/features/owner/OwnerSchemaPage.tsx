@@ -191,6 +191,9 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [publishPreview, setPublishPreview] = useState<PublishPreviewState | undefined>();
   const [publishPreviewPreparing, setPublishPreviewPreparing] = useState(false);
   const [versionRefreshKey, setVersionRefreshKey] = useState(0);
+  // 任务当前绑定（已发布）的版本号，由 SchemaVersionPanel 在加载真实版本历史后回传。
+  // 仅用于状态条显化，null 表示尚未发布版本或无法解析，不伪造版本号。
+  const [boundVersionNo, setBoundVersionNo] = useState<number | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEventRecord[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -926,8 +929,26 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
 
       <div className="schema-builder-statusbar">
         <Badge tone={templateStatus.tone}>模板状态：{templateStatus.label}</Badge>
-        <Badge tone="primary">当前模板版本：第 {schema.schemaDraftRevision ?? schema.schemaVersionNo ?? 1} 版</Badge>
-        <Badge tone="default">绑定任务：{task.title || "当前任务"}</Badge>
+        <span title="草稿每次保存自动递增的修订号，用于并发冲突检测，不等于已发布版本号">
+          <Badge tone="primary">草稿修订：第 {schema.schemaDraftRevision ?? 1} 次修改</Badge>
+        </span>
+        <span
+          title={
+            task.activeSchemaVersionId
+              ? `任务绑定的发布版本 ID：${task.activeSchemaVersionId}`
+              : "任务尚未发布任何模板版本"
+          }
+        >
+          <Badge tone={boundVersionNo != null ? "success" : "default"}>
+            任务绑定版本：
+            {boundVersionNo != null
+              ? `第 ${boundVersionNo} 版`
+              : task.activeSchemaVersionId
+                ? "已绑定已发布版本"
+                : "尚未发布"}
+          </Badge>
+        </span>
+        <Badge tone="default">所属任务：{task.title || "当前任务"}</Badge>
         <Badge tone="success">可用字段组件：{serverRegistry.length} 类</Badge>
         <span>{statusMessage}</span>
       </div>
@@ -1302,6 +1323,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         taskId={resolveTaskId(taskId, schema.meta.taskId)}
         activeSchemaVersionId={task?.activeSchemaVersionId}
         refreshKey={versionRefreshKey}
+        onActiveVersionResolved={setBoundVersionNo}
         onCopyToDraft={handleCopyVersionToDraft}
         onRollback={(snapshot, version) => void handleRollbackToVersion(snapshot, version)}
       />

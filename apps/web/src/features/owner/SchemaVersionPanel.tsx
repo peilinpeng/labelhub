@@ -10,10 +10,20 @@ interface SchemaVersionPanelProps {
   activeSchemaVersionId?: string;
   /** 外部发生发布/回滚后自增此值，触发版本历史重新拉取。 */
   refreshKey?: number;
+  /** 版本历史加载后回传任务绑定版本的版本号（无绑定/无法解析时为 null），供状态条显化。 */
+  onActiveVersionResolved?: (versionNo: number | null) => void;
   /** 复制为新草稿：把某版本快照载入编辑器（不自动发布）。 */
   onCopyToDraft: (schema: LabelHubSchema, version: SchemaVersionHistoryItem) => void;
   /** 历史保留式回滚：以该版本快照重新发布为新版本。 */
   onRollback: (schema: LabelHubSchema, version: SchemaVersionHistoryItem) => void;
+}
+
+/** 把相邻两版的兼容性报告归纳为单条人话化结论，供版本历史每行展示。 */
+function summarizeCompat(report: CompatibilityReport): { tone: "success" | "warning" | "danger"; text: string } {
+  if (!report.publishAllowed) return { tone: "danger", text: "较上一版有破坏性变更" };
+  if (report.requiresMigration) return { tone: "warning", text: "较上一版需要迁移" };
+  if (!report.compatible) return { tone: "warning", text: "较上一版有变更" };
+  return { tone: "success", text: "向后兼容上一版" };
 }
 
 function formatTime(value: string): string {
@@ -38,6 +48,7 @@ export function SchemaVersionPanel({
   taskId,
   activeSchemaVersionId,
   refreshKey,
+  onActiveVersionResolved,
   onCopyToDraft,
   onRollback,
 }: SchemaVersionPanelProps) {
@@ -56,6 +67,11 @@ export function SchemaVersionPanel({
         if (cancelled) return;
         setVersions(result);
         setError(null);
+        // 回传任务绑定版本号供状态条显化；无绑定或无法匹配时回传 null，不伪造。
+        const active = activeSchemaVersionId
+          ? result.find((v) => v.id === activeSchemaVersionId)
+          : undefined;
+        onActiveVersionResolved?.(active ? active.schemaVersionNo : null);
         // 默认对比：次新版本 → 最新版本（展示最近一次发布带来的变更）。
         if (result.length >= 2) {
           setFromId((cur) => cur || result[1].id);
@@ -68,6 +84,7 @@ export function SchemaVersionPanel({
         if (!cancelled) {
           setVersions([]);
           setError(err instanceof Error ? err.message : "版本历史加载失败。");
+          onActiveVersionResolved?.(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -76,7 +93,7 @@ export function SchemaVersionPanel({
     return () => {
       cancelled = true;
     };
-  }, [taskId, refreshKey]);
+  }, [taskId, refreshKey, activeSchemaVersionId, onActiveVersionResolved]);
 
   const fromVersion = versions.find((v) => v.id === fromId);
   const toVersion = versions.find((v) => v.id === toId);
@@ -90,6 +107,22 @@ export function SchemaVersionPanel({
       return null;
     }
   }, [fromVersion, toVersion]);
+
+  // 每个版本相对其上一版（更旧一版）的兼容性结论。versions 为倒序（最新在前），
+  // 故第 i 行的上一版是 versions[i + 1]；最旧一版无上一版，展示“首个版本”。
+  const rowCompat = useMemo(() => {
+    const map = new Map<string, { tone: "success" | "warning" | "danger"; text: string }>();
+    for (let i = 0; i < versions.length - 1; i += 1) {
+      const newer = versions[i];
+      const older = versions[i + 1];
+      try {
+        map.set(newer.id, summarizeCompat(checkBackwardCompatibility(older.schema, newer.schema)));
+      } catch {
+        /* 计算失败则不标注该行，避免误导 */
+      }
+    }
+    return map;
+  }, [versions]);
 
   return (
     <Card className="schema-version-panel">
@@ -110,17 +143,25 @@ export function SchemaVersionPanel({
       ) : (
         <>
           <div className="schema-version-list">
-            {versions.map((v) => {
+            {versions.map((v, index) => {
               const isActive = activeSchemaVersionId !== undefined && v.id === activeSchemaVersionId;
+              const isLatest = index === 0;
+              const compat = rowCompat.get(v.id);
+              const isFirstVersion = index === versions.length - 1;
               return (
                 <div className={isActive ? "schema-version-row schema-version-row--active" : "schema-version-row"} key={v.id}>
                   <div className="schema-version-row__main">
                     <div className="schema-version-row__title">
                       <strong>第 {v.schemaVersionNo} 版</strong>
                       {isActive ? <Badge tone="success">任务绑定中</Badge> : null}
+                      {isLatest ? <Badge tone="primary">最新发布</Badge> : null}
+                      {compat ? <Badge tone={compat.tone}>{compat.text}</Badge> : null}
+                      {isFirstVersion ? <Badge tone="default">首个版本</Badge> : null}
                       <span className="schema-version-row__contract">契约 {v.contractVersion}</span>
                     </div>
-                    <span className="schema-version-row__meta">{v.id} · 发布于 {formatTime(v.publishedAt)}</span>
+                    <span className="schema-version-row__meta" title={`版本 ID：${v.id} · 来源草稿：${v.schemaId}`}>
+                      发布于 {formatTime(v.publishedAt)}
+                    </span>
                   </div>
                   <div className="schema-version-row__actions">
                     <Button tone="ghost" onClick={() => onCopyToDraft(v.schema, v)}>复制为新草稿</Button>

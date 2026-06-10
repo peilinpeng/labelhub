@@ -9101,6 +9101,30 @@ a {
   line-height: 1.6;
 }
 
+.publish-preview-dialog__verdict {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.5;
+}
+.publish-preview-dialog__verdict--success {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+.publish-preview-dialog__verdict--warning {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+.publish-preview-dialog__verdict--danger {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
 .publish-preview-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -11348,6 +11372,7 @@ a {
 .schema-version-row__title {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .schema-version-row__title strong {
