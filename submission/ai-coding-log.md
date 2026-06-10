@@ -7,7 +7,7 @@
 ## 1. 概览
 
 - 开发周期：2026-05-24 ~ 2026-06-10。
-- 提交规模：约 208 次 commit（`feat` 57 · `fix` 42 · `docs` 35 · `test` 7 · …）。
+- 提交规模：约 232 次 commit（`feat` 58 · `fix` 48 · `docs` 44 · `chore` 16 · `test` 7 · …）。
 - 协作：3 人分工——后端 / 前端 / Agent·Worker（见 `README.md` §三人协作规则）。
 - 仓库：monorepo（`apps/web` + `apps/api` + `packages/*`），分支策略从 `dev` 拉 feature，集成在 `integration/joint-test`。
 
@@ -53,7 +53,7 @@
 
 AI 生成的代码统一纳入自动化校验（命令见 `README.md` §测试与验证、`docs/LabelHub_Final_Delivery.md` §6）：
 
-- 前端 / 共享库：`typecheck`、`build`、`test`（含 33 个 contracts 测试、前后端 hash test vectors）。
+- 前端 / 共享库：`typecheck`、`build`、`test`（含 84 个 contracts 测试、前后端 hash test vectors）。
 - 后端：`pytest`（单元 + 集成）、`bash apps/api/scripts/e2e_test.sh` 端到端。
 - 提交前：`git diff --check`。
 
