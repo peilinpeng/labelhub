@@ -60,44 +60,75 @@ LabelHub 对应的三个回答：
 ---
 
 ## 3. 系统架构
-```
-        Owner / Labeler / Reviewer
-                   │
-             apps/web (React)
-                   │  HTTP / API
-                   ▼
-          apps/api (FastAPI)
-          │        │
-          │        ├── MySQL（任务 / 提交 / 审核 / 版本 / 审计）
-          │        │
-          │        └── Redis（队列 / broker）
-          │                 │
-          │                 ▼
-          │          worker (Celery, apps/api image)
-          │                 │
-          │                 ▼
-          │          AI Review / Export
-          │
-          └── API Docs / Swagger
-```
-packages/contracts        前后端共享类型与 API 契约
-packages/schema-core      Schema 版本、兼容性、迁移计划纯函数
-packages/schema-renderer  动态表单 Runtime 与 AI preflight
-packages/schema-designer  Owner 侧 Schema 编辑
-packages/schema-compiler  Schema 编译相关能力
-packages/workflow-core    工作流核心能力
 
-各层职责：
+LabelHub 是 monorepo 全栈架构：浏览器端三角色工作台（`apps/web`）通过**契约化的 REST API** 访问后端（`apps/api`），后端把 AI 预审与导出这类耗时任务交给 **Celery worker** 异步处理；所有共享类型、Schema 内核与渲染能力沉淀在 `packages/*`，被前端、后端、Worker 与测试**共同引用同一份契约**。
 
-- **apps/web**：三角色前端工作台（React + TypeScript + Vite）。
-- **apps/api**：后端 API 服务（Python + FastAPI + SQLAlchemy），承载真实任务、提交、审核、版本和审计数据。
-- **worker**：后台异步任务（Celery），承载 AI Review 与 Export，与 `apps/api` 共用同一镜像，由独立进程启动。
-- **@labelhub/contracts**：前端、后端、Worker、Mock、测试的共享类型唯一来源。
-- **@labelhub/schema-core**：纯 TypeScript 内核，负责兼容性检查、版本冻结、字段废弃和迁移计划相关的确定性纯函数能力（不访问数据库）。
-- **@labelhub/schema-renderer**：动态表单 runtime 渲染层，并承载 AI preflight。
-- **@labelhub/schema-designer**：Owner 侧 Schema 编辑与预览工具。
-- **MySQL / Redis**：分别承载持久化数据与队列。
-- **MSW Mock 层**（`apps/web/src/mocks`）：在真实后端就绪前支持前端演示和并行开发，使用契约类型而非重新定义。
+### 3.1 总览图
+
+![LabelHub 系统架构](submission/architecture.png)
+
+> 源文件（Mermaid，可在 <https://mermaid.live> 重新导出）：[`submission/architecture.mmd`](submission/architecture.mmd)。
+
+### 3.2 分层职责
+
+| 层 | 模块 | 职责 |
+|---|---|---|
+| 前端 | `apps/web`（React 19 + TS + Vite） | 三角色工作台（Owner / Labeler / Reviewer）；标注页由版本化 Schema 运行时动态渲染 |
+| 后端 API | `apps/api`（FastAPI + SQLAlchemy） | REST 路由 → 业务服务 → **命令驱动状态机**；`canonical-json-v1 + SHA-256` 哈希 |
+| 异步 Worker | `apps/api/app/worker`（Celery） | `ai_review_worker` 结构化预审打分、`export_worker` 多格式导出 + Data Quality Passport；与 API 共用同一镜像 |
+| 共享契约 | `@labelhub/contracts` | 前端 / 后端 / Worker / Mock / 测试的**唯一类型来源**（状态、错误码、审计、API shape） |
+| Schema 内核 | `@labelhub/schema-core` | 遍历 / 表达式 / 校验 / 归一化 / 兼容性 / 版本冻结的确定性纯函数（不访问数据库） |
+| 渲染层 | `@labelhub/schema-renderer` | 动态表单 runtime + AI preflight；作答 / 只读 / Diff / 预览渲染 |
+| 设计器 | `@labelhub/schema-designer` | Owner 侧物料 / 拖拽 / 属性 · 校验 · 联动配置 |
+| 编译 / 工作流 | `@labelhub/schema-compiler`、`workflow-core` | Schema → Formily reactions 编译；状态 / 命令 |
+| 存储 | MySQL 8 / Redis 7 | 领域模型 + 不可变 Schema 快照 + `audit_logs/audit_events`；Celery broker/backend |
+| 大模型 | Doubao LLM | `function_calling` 结构化输出，`temperature=0` 提升评分稳定性 |
+
+> **MSW Mock 层**（`apps/web/src/mocks`）：真实后端就绪前支持前端演示与并行开发，复用契约类型而非重新定义。
+
+### 3.3 技术栈
+
+| 领域 | 选型 |
+|---|---|
+| 前端 | React 19、TypeScript 5、Vite 5、Formily 运行时 |
+| 后端 | Python 3.11、FastAPI、SQLAlchemy、Alembic、Pydantic |
+| 异步 / 队列 | Celery + Redis 7 |
+| 数据库 | MySQL 8 |
+| 大模型 | 豆包 Doubao（OpenAI 兼容，function calling） |
+| 测试 | `node:test`（共享库）、Vitest / RTL（web）、pytest（后端）、e2e 脚本 |
+
+### 3.4 端到端数据质量主线
+
+设计主线：**结构先可信 → 运行时校验 → AI 不绕过规则 → 人工留痕 → 交付带证据链**。
+
+![LabelHub 数据质量主线](submission/data-quality-flow.png)
+
+```txt
+Schema Governance → Labeler Runtime → AI Preflight → Human Review Diff → Export Passport
+       └──────────────── 全程写入 audit_logs / audit_events（与业务同事务）────────────────┘
+```
+
+### 3.5 审核工作流状态机（对应 4.5 长链路状态流转）
+
+提交对象（Submission）的状态迁移全程可追溯，每一步与审计**同事务**写入：
+
+```mermaid
+stateDiagram-v2
+    [*] --> SUBMITTED: Labeler 提交
+    SUBMITTED --> AI_REVIEWING: 入队 AI 预审
+    AI_REVIEWING --> AI_PASSED: AI 通过
+    AI_REVIEWING --> NEEDS_HUMAN_REVIEW: AI 打回 / 需人工
+    AI_PASSED --> HUMAN_REVIEWING: 进入人工复审
+    NEEDS_HUMAN_REVIEW --> HUMAN_REVIEWING: 进入人工复审
+    HUMAN_REVIEWING --> ACCEPTED: PASS / REVISE（带字段 patch）
+    HUMAN_REVIEWING --> RETURNED: RETURN（理由必填）
+    HUMAN_REVIEWING --> REJECTED: REJECT（终审拒绝）
+    RETURNED --> SUBMITTED: 标注员看打回意见 → 修改重提
+    ACCEPTED --> [*]: 入库 / 可导出
+    REJECTED --> [*]
+```
+
+> **决策语义**：Reviewer UI 提供 `PASS / RETURN / REVISE` 三种操作——`REVISE` 是「修订后通过」，携带字段级 patches，底层以 `PASS + patches` 落库；契约层的人工决策枚举为 `PASS / RETURN / REJECT`（`REJECT` 为终审拒绝）。状态值取自后端 `SubmissionStatus`，所有迁移写入审计。
 
 ---
 
@@ -140,6 +171,8 @@ submission/
 - 导出 / Quality Passport
 - Audit timeline
 
+![Owner · Schema Designer 与版本治理](submission/screenshots/owner-3-schema-breaking-change.png)
+
 ### Labeler —— 标注员工作台（`apps/web/src/features/labeler`）
 
 - 任务市场
@@ -149,6 +182,8 @@ submission/
 - AI Assist Panel
 - 被打回任务的继续修改
 
+![Labeler · 标注工作台（字段联动 + AI 辅助）](submission/screenshots/labeler-1-workspace.png)
+
 ### Reviewer —— 审核员工作台（`apps/web/src/features/reviewer`）
 
 - 审核队列
@@ -156,6 +191,10 @@ submission/
 - 审核详情
 - `PASS / RETURN / REVISE` 决策（`RETURN` 必填理由，`REVISE` 字段级修订）
 - AI 预审结果查看
+
+![Reviewer · 审核详情与字段级 Diff](submission/screenshots/reviewer-2-detail.png)
+
+> 更多界面见 [`submission/screenshots/`](submission/screenshots/)（三角色 6 张关键页 + 索引）。
 
 ### Shared Governance Layer —— 共享治理层（`packages/*`）
 
