@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card } from "../../ui/primitives";
 import { MarkdownPreview, docToMarkdown } from "../../ui/markdown";
+import { formatBeijingClock } from "../../utils/formatTime";
 import {
   appendAiAssistEditedAuditSafely,
   appendAiAssistOutcomeAuditSafely,
@@ -43,11 +44,9 @@ interface AcceptedAiAssistPatch {
   acceptedOrder: number;
 }
 
-// 自动保存徽章用：ISO 时间 → 本地 HH:MM:SS
+// 自动保存徽章用：ISO 时间 → 北京时间 HH:mm:ss
 function formatClock(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("zh-CN", { hour12: false });
+  return formatBeijingClock(iso);
 }
 
 function getItemTitle(item: DatasetItem): string {
@@ -118,6 +117,8 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  // 区分失败来源：autosave 失败用柔和提示（内容已保留），手动保存失败显示明确错误
+  const [saveErrorKind, setSaveErrorKind] = useState<"auto" | "manual" | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitNotice, setSubmitNotice] = useState<string | null>(null);
   const [submitFailed, setSubmitFailed] = useState(false);
@@ -183,9 +184,11 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           await saveDraft(assignmentId, { answers, clientRevision: 0 });
           savedSnapshotRef.current = snapshot;
           setLastSavedAt(new Date().toISOString());
+          setSaveErrorKind(null);
         } catch (e) {
           console.error("Auto-save draft failed:", e);
           setSaveFailed(true);
+          setSaveErrorKind("auto");
         } finally {
           setSaving(false);
         }
@@ -271,6 +274,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     if (!assignmentId) return;
     if (!isEditableAssignment) {
       setSaveFailed(false);
+      setSaveErrorKind(null);
       setSubmitFailed(true);
       setSubmitNotice(context ? readonlyAssignmentNotice(context.assignment.status) : "当前领取记录暂不可编辑。");
       return;
@@ -281,9 +285,11 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       await saveDraft(assignmentId, { answers, clientRevision: 0 });
       savedSnapshotRef.current = JSON.stringify(answers);
       setLastSavedAt(new Date().toISOString());
+      setSaveErrorKind(null);
     } catch (e) {
       console.error("Failed to save draft:", e);
       setSaveFailed(true);
+      setSaveErrorKind("manual");
     } finally {
       setSaving(false);
     }
@@ -491,7 +497,9 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     : saving
       ? "保存中..."
       : saveFailed
-        ? "保存失败，请稍后重试"
+        ? saveErrorKind === "auto"
+          ? "自动保存暂时失败，内容已保留，可稍后重试"
+          : "保存失败，请稍后重试"
         : lastSavedAt
           ? `草稿已自动保存 ${formatClock(lastSavedAt)}`
           : "草稿未保存";
@@ -505,7 +513,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           <span>标注员工作台 / 任务市场 · {context.task.title} / 当前领取数据</span>
         </div>
         <div className="labeler-runner-user">
-          <Badge tone={!isEditableAssignment ? "primary" : saving ? "warning" : saveFailed ? "danger" : lastSavedAt ? "success" : "default"}>
+          <Badge tone={!isEditableAssignment ? "primary" : saving ? "warning" : saveFailed ? (saveErrorKind === "auto" ? "warning" : "danger") : lastSavedAt ? "success" : "default"}>
             {draftBadgeText}
           </Badge>
           <span className="labeler-runner-avatar">标</span>

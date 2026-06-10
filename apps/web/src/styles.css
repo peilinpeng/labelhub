@@ -11472,6 +11472,15 @@ a {
   justify-content: space-between;
   gap: 12px;
 }
+/* 标题块可收缩换行，避免把右侧版本数 badge 挤压溢出 */
+.schema-version-panel__head > div:first-child {
+  min-width: 0;
+}
+/* 版本数 badge 不参与收缩、文字不换行，固定在右上角 */
+.schema-version-panel__head > :last-child {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .schema-version-panel__head h3 {
   margin: 0;
   font-size: 16px;
@@ -11506,20 +11515,23 @@ a {
 .schema-version-row--active {
   background: #f0fdf4;
 }
+/* 左侧信息块可收缩，避免窄宽度下把右侧操作按钮挤出横向滚动 */
+.schema-version-row__main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
 .schema-version-row__title {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  row-gap: 6px;
 }
 .schema-version-row__title strong {
   font-size: 14px;
   font-weight: 850;
   color: var(--lh-text);
-}
-.schema-version-row__contract {
-  font-size: 12px;
-  color: var(--lh-muted);
+  margin-right: 2px;
 }
 .schema-version-row__meta {
   display: block;

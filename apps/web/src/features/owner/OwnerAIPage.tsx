@@ -240,6 +240,11 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
             <label className="field-label">
               模型
               <Select value={model} onChange={(event) => setModel(event.target.value)} disabled={!enabled}>
+                {/* 兜底：后端保存的 modelPolicyId 若不在下列已知项中，仍按真实值展示，避免显示成旧模型或被保存覆盖 */}
+                {!["mp_doubao_pro", "doubao-pro-32k", "gpt-4o", "gpt-4"].includes(model) ? (
+                  <option value={model}>{model}（当前配置）</option>
+                ) : null}
+                <option value="mp_doubao_pro">Doubao Pro（mp_doubao_pro）</option>
                 <option value="doubao-pro-32k">doubao-pro-32k</option>
                 <option value="gpt-4o">GPT-4o</option>
                 <option value="gpt-4">GPT-4</option>

@@ -3,6 +3,7 @@ import type { CompatibilityReport, LabelHubSchema, SchemaChange } from "@labelhu
 import { checkBackwardCompatibility } from "@labelhub/schema-core";
 import { listSchemaVersions, type SchemaVersionHistoryItem } from "../../api/owner";
 import { Badge, Button, Card, Select } from "../../ui/primitives";
+import { formatBeijingDateTime } from "../../utils/formatTime";
 
 interface SchemaVersionPanelProps {
   taskId: string;
@@ -27,8 +28,7 @@ function summarizeCompat(report: CompatibilityReport): { tone: "success" | "warn
 }
 
 function formatTime(value: string): string {
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? value : d.toLocaleString("zh-CN");
+  return formatBeijingDateTime(value);
 }
 
 const LEVEL_LABEL: Record<string, string> = {
@@ -157,9 +157,8 @@ export function SchemaVersionPanel({
                       {isLatest ? <Badge tone="primary">最新发布</Badge> : null}
                       {compat ? <Badge tone={compat.tone}>{compat.text}</Badge> : null}
                       {isFirstVersion ? <Badge tone="default">首个版本</Badge> : null}
-                      <span className="schema-version-row__contract">契约 {v.contractVersion}</span>
                     </div>
-                    <span className="schema-version-row__meta" title={`版本 ID：${v.id} · 来源草稿：${v.schemaId}`}>
+                    <span className="schema-version-row__meta" title={`版本 ID：${v.id} · 来源草稿：${v.schemaId} · 契约 ${v.contractVersion}`}>
                       发布于 {formatTime(v.publishedAt)}
                     </span>
                   </div>

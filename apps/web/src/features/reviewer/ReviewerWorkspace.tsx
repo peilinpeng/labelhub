@@ -4,6 +4,7 @@ import { Role } from "../../app/routes";
 import { batchDecideReview, claimReview, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
 import type { ReviewDecisionRequest } from "@labelhub/contracts";
 import { Badge, Button, Card, Textarea } from "../../ui/primitives";
+import { formatBeijingClock } from "../../utils/formatTime";
 import { getQueueDisplay } from "./review-display";
 
 interface ReviewerWorkspaceProps {
@@ -28,7 +29,7 @@ function statusTone(status: ReviewQueueItem["submission"]["status"]): "success" 
 }
 
 function formatTime(value: string): string {
-  return new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return formatBeijingClock(value);
 }
 
 function reviewQueueStatusFor(filter: QueueFilter): string | undefined {

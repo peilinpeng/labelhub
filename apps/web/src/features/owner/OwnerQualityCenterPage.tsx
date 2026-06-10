@@ -8,6 +8,7 @@ import { listTasks } from "../../api/owner";
 import { listReviewQueue } from "../../api/reviewer";
 import { actorRoleLabel, auditEventLabel } from "../reviewer/audit-humanize";
 import { Badge, Card } from "../../ui/primitives";
+import { formatBeijingDateTime } from "../../utils/formatTime";
 
 interface OwnerQualityCenterPageProps {
   role: Role;
@@ -53,7 +54,7 @@ function isExportSignal(type: AuditEventType): boolean {
 }
 
 function formatEventTime(value: string): string {
-  return new Date(value).toLocaleString("zh-CN", { hour12: false });
+  return formatBeijingDateTime(value);
 }
 
 // 从结构化 payload 中安全提取人话摘要（curated 字符串，非 raw JSON / debug）。

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listMarketplaceTasks, listMySubmissions } from "../../api/labeler";
 import { Badge, Button, Card, KpiCard } from "../../ui/primitives";
+import { formatBeijingDateTime } from "../../utils/formatTime";
 import type { Role } from "../../app/routes";
 
 interface LabelerSubmissionsPageProps {
@@ -260,7 +261,7 @@ export default function LabelerSubmissionsPage({ role }: LabelerSubmissionsPageP
                   </div>
                   <div className="inset-well">
                     <div className="meta-line">
-                      <span>更新于 {new Date(a.updatedAt).toLocaleString("zh-CN", { hour12: false })}</span>
+                      <span>更新于 {formatBeijingDateTime(a.updatedAt)}</span>
                     </div>
                   </div>
                   <Button

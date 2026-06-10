@@ -6,6 +6,7 @@ import { claimReview, decideReview, getReviewDetail, listReviewQueue } from "../
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Input, Select, Textarea } from "../../ui/primitives";
+import { formatBeijingDateTime } from "../../utils/formatTime";
 import type { AuditEventRecord, ReviewDecisionRequest, ReviewDetailResponse, ReviewPatch } from "@labelhub/contracts";
 import { AiAssistPanel } from "./AiAssistPanel";
 import {
@@ -570,19 +571,19 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
           {detail.history.map((record, index) => (
             <div key={record.id}>
               <strong>第 {index + 1} 轮 · {stageLabelText(record.stage)}</strong>
-              <span>{reviewDecisionLabel(record.decision)} · {new Date(record.createdAt).toLocaleString("zh-CN")}</span>
+              <span>{reviewDecisionLabel(record.decision)} · {formatBeijingDateTime(record.createdAt)}</span>
             </div>
           ))}
           {detail.auditLogs.map((log) => (
             <div key={log.id}>
               <strong>{auditEventLabel(log.action)}</strong>
-              <span>{new Date(log.createdAt).toLocaleString("zh-CN")}</span>
+              <span>{formatBeijingDateTime(log.createdAt)}</span>
             </div>
           ))}
           {auditEvents.map((event) => (
             <div key={event.id}>
               <strong>{auditEventLabel(event.type)}</strong>
-              <span>{new Date(event.createdAt).toLocaleString("zh-CN")} · {actorRoleLabel(event.actor.role)}</span>
+              <span>{formatBeijingDateTime(event.createdAt)} · {actorRoleLabel(event.actor.role)}</span>
             </div>
           ))}
         </div>
