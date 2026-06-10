@@ -400,9 +400,11 @@ def get_review_detail(db: Session, submission_id: str, actor: Any) -> dict:
 
     from app.models.task import Task
     from app.models.schema import SchemaVersion
+    from app.models.dataset import DatasetItem
 
     task = db.query(Task).filter_by(id=submission.task_id).first()
     schema_version = db.query(SchemaVersion).filter_by(id=submission.schema_version_id).first()
+    item = db.query(DatasetItem).filter_by(id=submission.item_id).first()
     all_results = (
         db.query(ReviewResult)
         .filter_by(submission_id=submission.id)
@@ -439,6 +441,7 @@ def get_review_detail(db: Session, submission_id: str, actor: Any) -> dict:
     return {
         "submission": submission,
         "task": task,
+        "item": item,
         "schema_version": schema_version,
         "ai_result": ai_result,
         "ai_trace": ai_trace,

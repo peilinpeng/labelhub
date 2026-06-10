@@ -19,6 +19,8 @@ from app.schemas.review import (
     ReviewResultResponse,
     AuditLogSummary,
 )
+from app.schemas.dataset import DatasetItemResponse
+from app.schemas.task import TaskResponse
 
 router = APIRouter(tags=["review"])
 
@@ -67,13 +69,17 @@ def get_review_detail(
     actor: Actor = Depends(require_roles("REVIEWER", "OWNER", "ADMIN")),
 ) -> ReviewDetailResponse:
     detail = review_domain.get_review_detail(db, submission_id, actor)
+    schema_json = detail["schema_version"].schema_json if detail["schema_version"] else {}
     return ReviewDetailResponse(
         submission=SubmissionSummary.from_orm(detail["submission"]),
+        task=TaskResponse.from_orm(detail["task"]),
+        item=DatasetItemResponse.from_orm(detail["item"]),
+        schema=schema_json,
         taskId=detail["task"].id if detail["task"] else "",
         taskTitle=detail["task"].title if detail["task"] else "",
         itemId=detail["submission"].item_id,
         schemaVersionId=detail["submission"].schema_version_id,
-        schemaJson=detail["schema_version"].schema_json if detail["schema_version"] else {},
+        schemaJson=schema_json,
         aiResult=ReviewResultResponse.from_orm(detail["ai_result"]) if detail["ai_result"] else None,
         aiTrace=AITraceResponse.from_orm(
             detail["ai_trace"],

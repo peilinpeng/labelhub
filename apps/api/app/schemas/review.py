@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
+from app.schemas.dataset import DatasetItemResponse
+from app.schemas.task import TaskResponse
 from app.utils.hashing import sha256_hex
 
 
@@ -219,6 +221,12 @@ class AITraceResponse(BaseModel):
 
 class ReviewDetailResponse(BaseModel):
     submission: SubmissionSummary
+    # 契约 ReviewDetailResponse 要求 task / item / schema 为完整对象，审核详情页
+    # 依赖 item.sourcePayload（原始题面对照）、task.reviewPolicy、schema 渲染。
+    # 下方扁平字段（taskId/taskTitle/itemId/schemaJson）保留以兼容既有调用方。
+    task: TaskResponse
+    item: DatasetItemResponse
+    schema: dict
     taskId: str
     taskTitle: str
     itemId: str
