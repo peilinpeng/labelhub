@@ -263,6 +263,49 @@
         }
       }
     },
+    "/api/v1/tasks/{task_id}/stats": {
+      "get": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "任务概览统计（OWNER 看板：进度 / 各状态计数 / 剩余配额）",
+        "operationId": "get_task_stats_api_v1_tasks__task_id__stats_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tasks/{task_id}/publish": {
       "post": {
         "tags": [
@@ -754,6 +797,50 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SchemaVersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/schema-versions": {
+      "get": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "列出任务的 Schema 版本历史",
+        "description": "列出某任务的全部已发布 Schema 版本（倒序），供版本历史 / 对比 / 回滚显化。",
+        "operationId": "list_schema_versions_api_v1_tasks__task_id__schema_versions_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSchemaVersionsResponse"
                 }
               }
             }
@@ -1918,6 +2005,109 @@
         }
       }
     },
+    "/api/v1/review/submissions/{submission_id}/ai-assist/suggestions": {
+      "get": {
+        "tags": [
+          "ai-assist"
+        ],
+        "summary": "列出某 Submission 的可操作 AI Assist 建议（含当前状态）",
+        "operationId": "list_ai_assist_suggestions_api_v1_review_submissions__submission_id__ai_assist_suggestions_get",
+        "parameters": [
+          {
+            "name": "submission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Submission Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAiAssistSuggestionsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/review/submissions/{submission_id}/ai-assist/{suggestion_id}/actions": {
+      "post": {
+        "tags": [
+          "ai-assist"
+        ],
+        "summary": "对一条 AI Assist 建议执行 accept / edit_accept / dismiss（持久化 + 审计）",
+        "operationId": "submit_ai_assist_action_api_v1_review_submissions__submission_id__ai_assist__suggestion_id__actions_post",
+        "parameters": [
+          {
+            "name": "submission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Submission Id"
+            }
+          },
+          {
+            "name": "suggestion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Suggestion Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiAssistActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAssistActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tasks/{task_id}/exports": {
       "post": {
         "tags": [
@@ -2691,7 +2881,7 @@
           "createdAt"
         ],
         "title": "AITraceResponse",
-        "description": "AI 预审可追溯信息（TC-AI-07）：模型 ID、Prompt 快照哈希、Token 用量、耗时。\n\n§4.4 要求\"查看 AI 评语与原始 Prompt\"：在 hash 之外附上当前 ReviewConfig 的\nPrompt 原文（promptTemplate）。promptSnapshotMatches 表示该原文的 sha256 是否\n与调用时的 promptSnapshotHash 一致——若 Owner 在调用后改过 Prompt 则为 False，\n提示 reviewer 当前展示的原文与本次 AI 调用所用快照可能存在漂移。"
+        "description": "AI 预审可追溯信息（TC-AI-07）：模型 ID、Prompt 快照哈希、Token 用量、耗时。\n\n§4.4 要求\"查看 AI 评语与原始 Prompt\"：在 hash 之外附上当前 ReviewConfig 的\nPrompt 原文（promptTemplate）。promptSnapshotMatches 表示「当前模板原文」是否与\n「本次 AI 调用时捕获的模板原文」一致——若 Owner 在调用后改过 Prompt 则为 False，\n提示 reviewer 当前展示的原文与本次调用所用快照存在漂移。\n\n注意：漂移判定必须 raw-vs-raw。基准是 AIReviewJob.prompt_snapshot_hash（调用时\n对 ReviewConfig.prompt_template 原文取的 SHA-256），由调用方经 snapshot_prompt_hash\n传入；不能用 LLMCallLog.promptSnapshotHash（那是_渲染后_含变量替换的 prompt 哈希，\n与原文模板不同维度，直接比对会恒为 False）。"
       },
       "ActorResponse": {
         "properties": {
@@ -2715,6 +2905,352 @@
           "displayName"
         ],
         "title": "ActorResponse"
+      },
+      "AiAssistActionRecordModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "suggestionId": {
+            "type": "string",
+            "title": "Suggestionid"
+          },
+          "submissionId": {
+            "type": "string",
+            "title": "Submissionid"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "edit_accept",
+              "dismiss"
+            ],
+            "title": "Action"
+          },
+          "resultingStatus": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "ACCEPTED",
+              "EDIT_ACCEPTED",
+              "DISMISSED",
+              "APPLY_FAILED"
+            ],
+            "title": "Resultingstatus"
+          },
+          "appliedPatchFieldNames": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appliedpatchfieldnames"
+          },
+          "patchApplied": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patchapplied"
+          },
+          "patchFailureReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patchfailurereason"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "actor": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Actor"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "suggestionId",
+          "submissionId",
+          "action",
+          "resultingStatus",
+          "actor",
+          "createdAt"
+        ],
+        "title": "AiAssistActionRecordModel"
+      },
+      "AiAssistActionRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "edit_accept",
+              "dismiss"
+            ],
+            "title": "Action"
+          },
+          "editedPatch": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AiAssistPatchOperation"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Editedpatch"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "AiAssistActionRequest"
+      },
+      "AiAssistActionResponse": {
+        "properties": {
+          "suggestion": {
+            "$ref": "#/components/schemas/AiAssistSuggestionModel"
+          },
+          "action": {
+            "$ref": "#/components/schemas/AiAssistActionRecordModel"
+          },
+          "auditEventType": {
+            "type": "string",
+            "title": "Auditeventtype"
+          }
+        },
+        "type": "object",
+        "required": [
+          "suggestion",
+          "action",
+          "auditEventType"
+        ],
+        "title": "AiAssistActionResponse"
+      },
+      "AiAssistPatchOperation": {
+        "properties": {
+          "fieldName": {
+            "type": "string",
+            "title": "Fieldname"
+          },
+          "previousValue": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previousvalue"
+          },
+          "nextValue": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextvalue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fieldName"
+        ],
+        "title": "AiAssistPatchOperation"
+      },
+      "AiAssistSuggestionModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "submissionId": {
+            "type": "string",
+            "title": "Submissionid"
+          },
+          "taskId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taskid"
+          },
+          "itemId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Itemid"
+          },
+          "schemaVersionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schemaversionid"
+          },
+          "nodeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodeid"
+          },
+          "fieldName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fieldname"
+          },
+          "assistType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assisttype"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ],
+            "title": "Severity"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "structuredPatch": {
+            "items": {
+              "$ref": "#/components/schemas/AiAssistPatchOperation"
+            },
+            "type": "array",
+            "title": "Structuredpatch"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "ACCEPTED",
+              "EDIT_ACCEPTED",
+              "DISMISSED",
+              "APPLY_FAILED"
+            ],
+            "title": "Status"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "resolvedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolvedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "submissionId",
+          "severity",
+          "summary",
+          "status",
+          "createdAt"
+        ],
+        "title": "AiAssistSuggestionModel"
       },
       "AppendAuditEventRequest": {
         "properties": {
@@ -2867,7 +3403,8 @@
           "lastReturnReason": {
             "anyOf": [
               {
-                "type": "string"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
                 "type": "null"
@@ -2920,6 +3457,10 @@
           "id": {
             "type": "string",
             "title": "Id"
+          },
+          "assignmentId": {
+            "type": "string",
+            "title": "Assignmentid"
           },
           "taskId": {
             "type": "string",
@@ -2978,6 +3519,7 @@
         "type": "object",
         "required": [
           "id",
+          "assignmentId",
           "taskId",
           "itemId",
           "labelerId",
@@ -4869,6 +5411,19 @@
         "title": "LLMAssistResponse",
         "description": "契约 LLMRuntimeResponse + Quality Layer 元数据（hash 由后端生成）。"
       },
+      "ListAiAssistSuggestionsResponse": {
+        "properties": {
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/AiAssistSuggestionModel"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          }
+        },
+        "type": "object",
+        "title": "ListAiAssistSuggestionsResponse"
+      },
       "ListAssignmentsResponse": {
         "properties": {
           "items": {
@@ -4961,6 +5516,23 @@
           "total"
         ],
         "title": "ListItemsResponse"
+      },
+      "ListSchemaVersionsResponse": {
+        "properties": {
+          "schemaVersions": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaVersionResponse"
+            },
+            "type": "array",
+            "title": "Schemaversions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schemaVersions"
+        ],
+        "title": "ListSchemaVersionsResponse",
+        "description": "GET /tasks/{taskId}/schema-versions 响应体：某任务的版本历史（倒序）。"
       },
       "LoginRequest": {
         "properties": {
@@ -5438,6 +6010,17 @@
           "submission": {
             "$ref": "#/components/schemas/SubmissionSummary"
           },
+          "task": {
+            "$ref": "#/components/schemas/TaskResponse"
+          },
+          "item": {
+            "$ref": "#/components/schemas/DatasetItemResponse"
+          },
+          "schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schema"
+          },
           "taskId": {
             "type": "string",
             "title": "Taskid"
@@ -5462,12 +6045,14 @@
           "aiResult": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ReviewResultResponse"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Airesult"
           },
           "aiTrace": {
             "anyOf": [
@@ -5497,6 +6082,9 @@
         "type": "object",
         "required": [
           "submission",
+          "task",
+          "item",
+          "schema",
           "taskId",
           "taskTitle",
           "itemId",
@@ -6351,6 +6939,88 @@
         ],
         "title": "TaskResponse",
         "description": "契约 §6.1 Task 完整响应，JSON 字段以原始 dict 透传，camelCase 与契约对齐。"
+      },
+      "TaskStatsResponse": {
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "datasetTotal": {
+            "type": "integer",
+            "title": "Datasettotal"
+          },
+          "datasetAvailable": {
+            "type": "integer",
+            "title": "Datasetavailable"
+          },
+          "inProgress": {
+            "type": "integer",
+            "title": "Inprogress"
+          },
+          "inReview": {
+            "type": "integer",
+            "title": "Inreview"
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted"
+          },
+          "returned": {
+            "type": "integer",
+            "title": "Returned"
+          },
+          "rejected": {
+            "type": "integer",
+            "title": "Rejected"
+          },
+          "submittedTotal": {
+            "type": "integer",
+            "title": "Submittedtotal"
+          },
+          "quotaTotal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quotatotal"
+          },
+          "quotaRemaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quotaremaining"
+          },
+          "progressPercent": {
+            "type": "integer",
+            "title": "Progresspercent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "taskId",
+          "datasetTotal",
+          "datasetAvailable",
+          "inProgress",
+          "inReview",
+          "accepted",
+          "returned",
+          "rejected",
+          "submittedTotal",
+          "quotaTotal",
+          "quotaRemaining",
+          "progressPercent"
+        ],
+        "title": "TaskStatsResponse"
       },
       "TaskTransitionResponse": {
         "properties": {

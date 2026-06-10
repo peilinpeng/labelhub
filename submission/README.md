@@ -49,7 +49,7 @@
 
 ## 6. API 文档
 
-- 静态 OpenAPI（41 路径）：[`apps/api/openapi.json`](../apps/api/openapi.json) —— 可直接导入 Postman / Apifox。
+- 静态 OpenAPI（45 路径）：[`apps/api/openapi.json`](../apps/api/openapi.json) —— 可直接导入 Postman / Apifox。
 - 在线 Swagger UI：服务启动后 `http://<host>:3000/docs`。
 
 ---
