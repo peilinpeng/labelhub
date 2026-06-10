@@ -144,8 +144,17 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
     maxRetries,
   }), [dimensions, enabled, maxRetries, model, promptTemplate, returnThreshold, threshold]);
 
+  const weightSum = useMemo(() => dimensions.reduce((acc, d) => acc + d.weight, 0), [dimensions]);
+  // 拖动与加载都已强制归一化为 1，这里作为保存前的安全闸门，避免万一保存出和≠1 的权重。
+  const weightsValid = Math.abs(weightSum - 1) < 0.005;
+
   const saveSettings = async () => {
     if (!selectedTaskId) return;
+    if (!weightsValid) {
+      setDimensions((current) => normalizeWeights(current));
+      setOwnerNotice("维度权重之和需为 1，已自动归一化，请确认后再次保存。");
+      return;
+    }
     try {
       setSaving(true);
       const saved = configId
@@ -300,27 +309,34 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
             <section className="owner-ai-dimensions" aria-label="维度评分">
               <div className="owner-ai-section-title">
                 <strong>维度评分</strong>
-                <span>AI 会逐维度给出评分和理由，各维度权重之和建议为 1</span>
+                <span>拖动任一维度滑块，其余维度按原有比例自动缩放，权重之和始终为 1</span>
               </div>
               {dimensions.map((dimension, index) => (
-                <label className="owner-ai-dimension-row" key={dimension.key}>
-                  <span>{dimension.label}</span>
-                  <Input
-                    type="number"
+                <div className="owner-ai-dimension-row" key={dimension.key}>
+                  <div className="owner-ai-dimension-row__head">
+                    <span className="owner-ai-dimension-row__label">{dimension.label}</span>
+                    <span className="owner-ai-dimension-row__value">{dimension.weight.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    className="owner-ai-weight-slider"
                     min="0"
                     max="1"
-                    step="0.05"
+                    step="0.01"
                     value={dimension.weight}
                     disabled={!enabled}
+                    aria-label={`${dimension.label} 权重`}
                     onChange={(event) => {
-                      const weight = parseFloat(event.target.value);
-                      setDimensions((current) => current.map((item, itemIndex) => (
-                        itemIndex === index ? { ...item, weight } : item
-                      )));
+                      const next = parseFloat(event.target.value);
+                      setDimensions((current) => redistributeWeights(current, index, next));
                     }}
                   />
-                </label>
+                </div>
               ))}
+              <div className="owner-ai-weight-sum">
+                <span>权重总和</span>
+                <strong>{weightSum.toFixed(2)}</strong>
+              </div>
             </section>
             <div className="owner-ai-flow">
               <span>标注员提交</span>
@@ -382,9 +398,67 @@ const defaultPromptTemplate = `你是 LabelHub 的 AI 预审 Agent。
 不要直接修改标注答案；需要人工处理时返回 NEED_HUMAN_REVIEW。`;
 
 function normalizeDimensions(value: ReviewConfigPayload["dimensions"]): ReviewConfigPayload["dimensions"] {
-  return value.length > 0 ? value.map((item) => ({
+  const filled = value.length > 0 ? value.map((item) => ({
     ...item,
     description: item.description ?? "",
     scoreRange: item.scoreRange ?? [0, 1],
   })) : defaultDimensions;
+  // 后端 / mock 返回的权重之和不一定为 1（当前 mock 示例为 0.9），加载后统一归一化为 1，
+  // 不改变各维度的相对比例（不擅自变更业务含义）。
+  return normalizeWeights(filled);
+}
+
+/**
+ * 用「整数百分点 + 最大余数法」把一组权重按比例分配到 totalCents（默认 100），
+ * 结果各项为整数百分点且严格求和为 totalCents，最后由小数部分最大者吸收 rounding error。
+ * 原始和为 0 时平均分配。基于数组实现，对任意维度数量都成立。
+ */
+function distributeCents(weights: number[], totalCents: number): number[] {
+  const n = weights.length;
+  if (n === 0) return [];
+  const safe = weights.map((w) => (Number.isFinite(w) && w > 0 ? w : 0));
+  const sum = safe.reduce((acc, w) => acc + w, 0);
+  const raw = safe.map((w) => (sum > 0 ? (w / sum) * totalCents : totalCents / n));
+  const floors = raw.map((v) => Math.floor(v));
+  let remainder = totalCents - floors.reduce((acc, v) => acc + v, 0);
+  const order = raw
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; k < remainder && k < n; k += 1) {
+    floors[order[k].i] += 1;
+  }
+  remainder = 0;
+  return floors;
+}
+
+/** 把权重数组整体归一化为和=1（两位小数精度），保持相对比例。 */
+function normalizeWeights(
+  dims: ReviewConfigPayload["dimensions"],
+): ReviewConfigPayload["dimensions"] {
+  if (dims.length === 0) return dims;
+  const cents = distributeCents(dims.map((d) => d.weight), 100);
+  return dims.map((d, i) => ({ ...d, weight: cents[i] / 100 }));
+}
+
+/**
+ * 拖动第 index 个维度到 nextValue（钳制到 [0,1]）：该项取 nextValue，剩余 1-nextValue
+ * 按其它维度的原有比例自动缩放；其它原始和为 0 时平均分配；最终严格求和为 1。
+ */
+function redistributeWeights(
+  dims: ReviewConfigPayload["dimensions"],
+  index: number,
+  nextValue: number,
+): ReviewConfigPayload["dimensions"] {
+  if (dims.length <= 1) {
+    return dims.map((d) => ({ ...d, weight: 1 }));
+  }
+  const nextCents = Math.min(100, Math.max(0, Math.round((Number.isFinite(nextValue) ? nextValue : 0) * 100)));
+  const others = dims.map((d, i) => ({ d, i })).filter((x) => x.i !== index);
+  const otherCents = distributeCents(others.map((x) => x.d.weight), 100 - nextCents);
+  const result = dims.map((d) => ({ ...d }));
+  result[index] = { ...result[index], weight: nextCents / 100 };
+  others.forEach((x, k) => {
+    result[x.i] = { ...result[x.i], weight: otherCents[k] / 100 };
+  });
+  return result;
 }

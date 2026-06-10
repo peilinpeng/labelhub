@@ -7509,13 +7509,61 @@ a {
 }
 
 .owner-ai-dimension-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
-  align-items: center;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   color: #334155;
   font-size: 13px;
   font-weight: 850;
+}
+
+.owner-ai-dimension-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.owner-ai-dimension-row__value {
+  min-width: 48px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--lh-border);
+  background: var(--lh-surface);
+  color: var(--lh-text);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.owner-ai-weight-slider {
+  width: 100%;
+  margin: 0;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.owner-ai-weight-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.owner-ai-weight-sum {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--lh-border);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--lh-muted);
+}
+
+.owner-ai-weight-sum strong {
+  font-size: 14px;
+  color: var(--lh-text);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Owner AI 预审页（Corporate Trust 降噪，全部限定在 .owner-ai-page 作用域内）── */
