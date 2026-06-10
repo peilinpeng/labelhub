@@ -272,7 +272,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     void (async () => {
       const [statsResult, itemsResult, configResult] = await Promise.allSettled([
         fetchTaskStats(resolvedAuditTaskId),
-        listItems(resolvedAuditTaskId, 1, 500),
+        listItems(resolvedAuditTaskId, 1, 200),
         getReviewConfig(resolvedAuditTaskId),
       ]);
       if (cancelled) return;
