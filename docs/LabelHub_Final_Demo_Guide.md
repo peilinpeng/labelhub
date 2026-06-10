@@ -1,10 +1,28 @@
 # LabelHub Final Demo Guide
 
-> 版本：2026-06-07（文档收束版）
+> 版本：2026-06-10
 > 适用分支：`integration/joint-test`
-> 适用场景：竞赛答辩、演示、评委评审
 >
-> **阅读前提：** 必须使用 `VITE_ENABLE_MSW=true npm run dev` 启动，普通启动会 404。
+> ## ⚠️ 交付/答辩录制请走「真实后端全链路」
+>
+> **录制最终演示视频、答辩演示，请使用真实后端**（Docker 全栈 + 真实 LLM + 举办方真实数据，
+> 端口 `http://localhost:5173`，账号 `*@labelhub.com / password123`）。
+> 完整步骤见 **[`docs/LabelHub_Demo_Guide.md`](./LabelHub_Demo_Guide.md) → 「真实后端全链路 Demo（录屏用）」**，
+> 现场操作卡见 **[`docs/LabelHub_Delivery_Runbook.md`](./LabelHub_Delivery_Runbook.md)**。
+>
+> 真实后端起栈务必先跑迁移（否则审核详情 AI 建议会 500）：
+> ```bash
+> docker compose build api worker && docker compose up -d
+> docker compose exec -w /workspace/apps/api api alembic upgrade head   # head=c3d4e5f6a7b8
+> ```
+>
+> ---
+>
+> **本指南为「前端 Mock 快速演示」路径（备选）**：不连真实后端，用 MSW 内置假数据，
+> 适合无后端环境时快速过 UI 故事线。Mock 模式下不体现真实后端行为，**不要用它录交付视频**。
+> 适用场景：前端 UI 走查 / 无 Docker 环境的快速预览。
+>
+> **Mock 阅读前提：** 必须使用 `VITE_ENABLE_MSW=true npm run dev` 启动，普通启动会 404。
 
 ---
 
