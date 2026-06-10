@@ -43,9 +43,11 @@
 
 ## 5. 可访问的演示环境说明
 
-- 云部署指引：[`docs/deployment.md`](../docs/deployment.md) → §10 云部署。
-- 本地交付运行手册：[`docs/LabelHub_Delivery_Runbook.md`](../docs/LabelHub_Delivery_Runbook.md)。
-- [ ] 待补：演示环境公网地址 + 演示账号（owner/labeler/reviewer @labelhub.com / password123）。
+- 演示环境采用**本地 Docker 全栈一键复现**（无需云账号，评委可本地起栈，含真实后端 + Celery + MySQL + Redis）：
+  见 [`docs/LabelHub_Delivery_Runbook.md`](../docs/LabelHub_Delivery_Runbook.md) 与本页「验证一键自查」。
+- 云部署说明文档：[`docs/deployment.md`](../docs/deployment.md) → §10（系统已 Docker 化，可部署到任意容器云平台）。
+- 演示账号：owner / labeler / reviewer `@labelhub.com` / `password123`（真实后端，端口 5173）。
+- 说明：本次交付以「本地 Docker 可复现环境 + 云部署说明文档」为准，未提供长期公网托管地址。
 
 ## 6. API 文档
 
@@ -69,4 +71,4 @@ bash apps/api/scripts/e2e_test.sh                                               
 - [x] 架构图
 - [x] AI Coding 过程记录（见 `docs/delivery-drafts/AI_CODING_PROCESS.md`）
 - [x] Demo 截图
-- [ ] 云演示环境地址 + 账号（待部署后填写）
+- [x] 可访问演示环境说明（本地 Docker 一键复现 + `docs/deployment.md` 云部署说明；演示账号见 §5；未提供公网托管地址）
