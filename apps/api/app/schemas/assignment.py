@@ -64,7 +64,7 @@ class AssignmentContextResponse(BaseModel):
     schemaVersionId: str
     schema: dict
     draft: DraftResponse | None
-    lastReturnReason: str | None
+    lastReturnReason: dict | None
 
 
 class ClaimTaskRequest(BaseModel):
