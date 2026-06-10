@@ -481,6 +481,10 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const hasGenericSource = sourceTitle !== "" || sourceBody !== "";
   const sourceMeta = typeof sourcePayload.source === "string" ? sourcePayload.source : "任务数据";
   const itemTitle = getItemTitle(context.item);
+  // 右侧「标注须知」仅在任务配置了说明时才有内容；无内容时整列收起，
+  // 让作答主面板向右展开，避免右侧预留 280px 空列造成的大片空白。
+  const instructionMarkdown = docToMarkdown(context.task.instructionRichText);
+  const hasInstruction = instructionMarkdown.trim() !== "";
   const readonlyNotice = isEditableAssignment ? null : readonlyAssignmentNotice(context.assignment.status);
   const draftBadgeText = !isEditableAssignment
     ? "当前领取记录只读"
@@ -509,7 +513,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
         </div>
       </header>
 
-      <div className="labeler-runner-layout">
+      <div className={hasInstruction ? "labeler-runner-layout" : "labeler-runner-layout labeler-runner-layout--no-side"}>
         <aside className="labeler-runner-nav">
           <div className="labeler-runner-panel-head">
             <div>
@@ -594,13 +598,20 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
             {hasGenericSource ? (
               <section className="labeler-runner-source">
-                <div className="labeler-runner-source-label">原始数据（不可编辑） · {sourceMeta}</div>
+                <div className="labeler-runner-section-head labeler-runner-section-head--muted">
+                  <h2>原始数据</h2>
+                  <span>不可编辑 · {sourceMeta}</span>
+                </div>
                 {sourceTitle !== "" ? <p>{sourceTitle}</p> : null}
                 {sourceBody !== "" ? <small>{sourceBody}</small> : null}
               </section>
             ) : null}
 
             <section className="labeler-runner-form">
+              <div className="labeler-runner-section-head">
+                <h2>标注填写</h2>
+                <span>完成下列字段后提交审核</span>
+              </div>
               {showRendererToggle ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "4px 0" }}>
                   <span style={{ fontSize: 12, color: "#666" }}>表单运行模式</span>
@@ -662,15 +673,14 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           </footer>
         </main>
 
-        <aside className="labeler-runner-side">
-          {docToMarkdown(context.task.instructionRichText).trim() ? (
+        {hasInstruction ? (
+          <aside className="labeler-runner-side">
             <section className="labeler-runner-side-card">
               <h3>标注须知</h3>
-              <MarkdownPreview source={docToMarkdown(context.task.instructionRichText)} />
+              <MarkdownPreview source={instructionMarkdown} />
             </section>
-          ) : null}
-
-        </aside>
+          </aside>
+        ) : null}
       </div>
 
       <ConfirmDialog

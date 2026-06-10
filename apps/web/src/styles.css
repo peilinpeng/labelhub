@@ -5186,9 +5186,14 @@ a {
 .labeler-runner-layout {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) 280px;
-  gap: 12px;
+  gap: 16px;
   min-height: 0;
-  padding: 14px 20px;
+  padding: 16px 24px;
+}
+
+/* 无「标注须知」时收起右侧列，作答主面板向右展开占满剩余空间。 */
+.labeler-runner-layout--no-side {
+  grid-template-columns: auto minmax(0, 1fr);
 }
 
 .labeler-runner-nav,
@@ -5201,7 +5206,7 @@ a {
 .labeler-runner-side-card,
 .labeler-runner-main {
   border: 1px solid var(--lh-border);
-  border-radius: 10px;
+  border-radius: 16px;
   background: #fff;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
 }
@@ -5249,7 +5254,7 @@ a {
 
 .labeler-runner-items {
   display: grid;
-  gap: 3px;
+  gap: 6px;
   max-height: calc(100vh - 155px);
   overflow: auto;
 }
@@ -5260,14 +5265,14 @@ a {
   gap: 8px;
   align-items: center;
   width: 100%;
-  padding: 7px 8px;
+  padding: 9px 10px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 10px;
   background: transparent;
   color: var(--lh-text);
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
 }
 
@@ -5338,6 +5343,10 @@ a {
 .labeler-runner-main {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  /* 主面板向右展开，但上限 1120px 并在所在列内居中：宽屏不贴边、有呼吸感，窄屏占满。 */
+  max-width: 1120px;
+  justify-self: center;
   overflow: hidden;
 }
 
@@ -5346,24 +5355,25 @@ a {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px;
+  padding: 20px 24px;
   border-bottom: 1px solid var(--lh-border);
 }
 
 .labeler-runner-main-head h1 {
   margin: 0;
   color: var(--lh-text);
-  font-size: 17px;
-  font-weight: 950;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.3;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
 .labeler-runner-main-head p {
-  margin: 6px 0 0;
+  margin: 7px 0 0;
   color: var(--lh-muted);
-  font-size: 12px;
-  font-weight: 750;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .labeler-runner-head-actions,
@@ -5378,10 +5388,10 @@ a {
 .labeler-runner-scroll {
   display: grid;
   align-content: start;
-  gap: 14px;
+  gap: 18px;
   min-height: 0;
   overflow: auto;
-  padding: 18px;
+  padding: 24px;
 }
 
 .labeler-runner-alert,
@@ -5462,10 +5472,10 @@ a {
 
 .labeler-runner-source {
   display: grid;
-  gap: 8px;
-  padding: 14px;
+  gap: 12px;
+  padding: 18px 20px;
   border: 1px solid var(--lh-border);
-  border-radius: 8px;
+  border-radius: 16px;
   background: #f8fafc;
 }
 
@@ -5473,6 +5483,42 @@ a {
   color: #64748b;
   font-size: 12px;
   font-weight: 900;
+}
+
+/* 模块分区标题：原始数据 / 标注填写等卡片统一的 section 头部。 */
+.labeler-runner-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.labeler-runner-section-head h2 {
+  margin: 0;
+  color: var(--lh-text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.labeler-runner-section-head span {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.labeler-runner-section-head--muted h2 {
+  font-size: 15px;
+  color: #475569;
+}
+
+/* 标注填写：把动态表单包成一张明确的卡片，与原始数据卡片形成清晰分区。 */
+.labeler-runner-form {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--lh-border);
+  border-radius: 16px;
+  background: #fff;
 }
 
 .labeler-runner-source p {
@@ -5501,30 +5547,70 @@ a {
   background: transparent;
 }
 
-.labeler-runner-form .labeler-schema-renderer-surface form,
-.labeler-runner-form .labeler-schema-renderer-surface [role="form"] {
-  gap: 14px;
+/* 动态表单间距按 formily-v2 真实 DOM 命中：
+   容器 div[data-container-type] 承载各字段块，字段块 div[data-formily-field]
+   内含「标题 label + 控件 + 错误」。上一轮挂在 form / fieldset / legend 上的间距
+   在 formily-v2 下不存在这些元素、不命中，故改用下列 data-* / role 钩子。 */
+
+/* 字段块之间的垂直节奏：相邻问题至少 22px，清晰分隔。 */
+.labeler-runner-form .labeler-schema-renderer-surface [data-container-type] {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
 }
 
-.labeler-runner-form .labeler-schema-renderer-surface fieldset,
-.labeler-runner-form .labeler-schema-renderer-surface section,
-.labeler-runner-form .labeler-schema-renderer-surface .field,
-.labeler-runner-form .labeler-schema-renderer-surface .form-field {
-  padding: 12px;
-  border: 1px solid var(--lh-border);
-  border-radius: 8px;
-  background: #fff;
+/* 单个字段块：标题 ↔ 控件 ↔ 错误之间 9px。 */
+.labeler-runner-form .labeler-schema-renderer-surface [data-formily-field] {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
 }
 
+/* 字段标题 label（仅字段块的直接子 label，不影响 chip label）：降低字号/字重的压迫感。 */
+.labeler-runner-form .labeler-schema-renderer-surface [data-formily-field] > label {
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.4;
+  color: #334155;
+}
+
+/* radio / checkbox 选项组：规整的 chip 间距，换行行距舒适。 */
+.labeler-runner-form .labeler-schema-renderer-surface [role="radiogroup"],
+.labeler-runner-form .labeler-schema-renderer-surface [role="group"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+/* radio / checkbox chip：更轻、更规整，高度克制，不再臃肿（独立于字段标题样式）。 */
+.labeler-runner-form .labeler-schema-renderer-surface label:has(input[type="radio"]),
+.labeler-runner-form .labeler-schema-renderer-surface label:has(input[type="checkbox"]) {
+  gap: 8px;
+  min-height: 30px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+/* select：高度更舒适，不过高。 */
+.labeler-runner-form .labeler-schema-renderer-surface select {
+  min-height: 40px;
+}
+
+/* textarea：保留可读最小高度但不压迫，内边距舒适。 */
 .labeler-runner-form .labeler-schema-renderer-surface textarea {
   width: 100%;
   max-width: 100%;
-  min-height: 150px;
+  min-height: 140px;
+  padding: 12px 14px;
 }
 
 .labeler-runner-actions {
   justify-content: space-between;
-  padding: 12px 18px;
+  /* 空间不足时整组换行到下一行，避免按钮被压窄导致文字断行 / 横向滚动。 */
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 24px;
   border-top: 1px solid var(--lh-border);
   background: rgba(255, 255, 255, 0.96);
 }
@@ -5532,10 +5618,22 @@ a {
 .labeler-runner-actions > div {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
+/* 底部操作区按钮：保持单行文字、不被压缩，避免「返回任务市\n场」这类断行。 */
+.labeler-runner-actions .lh-button,
+.labeler-runner-actions button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
 .labeler-runner-submit-group span {
+  /* 状态说明可收缩 / 换行，优先把空间让给按钮，文字仍可读。 */
+  flex: 1 1 auto;
+  min-width: 0;
   color: #64748b;
   font-size: 11px;
   font-weight: 750;
