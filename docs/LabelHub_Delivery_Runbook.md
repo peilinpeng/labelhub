@@ -25,7 +25,7 @@ b8963d4 fix(web): top-align ai-config rule preview card
 57c724e fix(schema-renderer): allow dismissing blocked ai suggestions
 ```
 
-> 稳定 tag：`stable-after-owner-ai-config-polish-0610`（`7ff8d8a`）。
+> 交付固定点 tag：`final-delivery-0610`（含 2026-06-10 全部真机关键修复）；历史阶段 tag：`stable-after-owner-ai-config-polish-0610`（`7ff8d8a`）。
 
 如果工作区有未提交改动，先确认它们是否为交付收尾文档或 UI 修复；不要直接覆盖。
 

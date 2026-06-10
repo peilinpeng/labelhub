@@ -2,9 +2,10 @@
 
 > 版本：2026-06-10
 > 适用分支：`integration/joint-test`
-> 当前基线：`f30af86`（`integration/joint-test` 最新集成提交）
+> 当前交付基线：`integration/joint-test` 分支最新提交，交付固定点 tag `final-delivery-0610`。
+> 注：`f30af86` 之后又合入 4 项真实后端关键修复（见 §2.1），请勿再以 `f30af86` 作为交付基线。
 > 历史稳定参考点：`demo-stable-p1-0609` -> `09e5bf0`
-> 阶段稳定参考点：`stable-after-owner-ai-config-polish-0610` -> `7ff8d8a`
+> 阶段稳定参考点（历史）：`stable-after-owner-ai-config-polish-0610` -> `7ff8d8a`
 
 本文档是 LabelHub 答辩和交付的总入口，面向评审、维护者和现场演示人员。它只描述当前可交付能力、启动方式、演示路线、验证方式和已知边界；更细的架构设计见文末相关文档。
 
@@ -43,10 +44,17 @@ Schema Governance -> Labeler Runtime -> AI Preflight -> Human Review Diff -> Exp
 | `7f9958b` | Owner Schema 版本管理前端显化 | 已推送 |
 | `b8963d4` | AI config 规则预览卡片贴顶对齐 | 已推送 |
 | `7ff8d8a` | AI 预审权重 slider + 自动归一化为 1 | 已推送 |
+| `f30af86` | 审核员打回意见回传给标注员（RETURNED） | 已推送 |
+| `3fd2551` | 修复打回意见响应模型类型（RETURNED 态 500） | 已推送 |
+| `ef81987` | 审核详情返回契约 task/item/schema（修复详情页白屏） | 已推送 |
+| `2b06eca` | 审核详情 AI 预审维度评分按契约 aiResult 返回（修复不显示） | 已推送 |
+| `eba207c` | 补建 ai_assist_actions 表迁移（修复 AI 建议 500） | 已推送 |
+
+> 后 5 项为 2026-06-10 真实后端逐页手测中发现并修复的关键问题（多为「mock 模式可用、真机白屏/报错」的契约形状或缺表问题）。交付请以 `final-delivery-0610` 为准。
 
 ### 2.2 本地工作区
 
-当前工作区无未提交的源码改动，`HEAD` 已对齐稳定 tag `stable-after-owner-ai-config-polish-0610`（`7ff8d8a`），并与 `origin/integration/joint-test` 同步。
+当前工作区无未提交的源码改动，`HEAD` 为 `integration/joint-test` 最新提交（交付固定点 tag `final-delivery-0610`），并与 `origin/integration/joint-test` 同步。
 
 ---
 

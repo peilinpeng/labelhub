@@ -59,7 +59,7 @@
 ```bash
 docker compose up -d --build
 docker compose exec -w /workspace/apps/api api alembic upgrade head
-docker compose exec -w /workspace/apps/api api pytest -m "not integration" -q   # 153 passed
+docker compose exec -w /workspace/apps/api api pytest -m "not integration" -q   # 170 passed
 bash apps/api/scripts/e2e_test.sh                                               # 21/21
 ```
 

@@ -134,11 +134,11 @@ npm run clean:test
 
 ## 6. 数据库迁移（Alembic）
 
-后端使用 Alembic 管理迁移，迁移链 head 为 `b2c3d4e5f6a7`：
+后端使用 Alembic 管理迁移，迁移链 head 为 `c3d4e5f6a7b8`（新增 `ai_assist_actions` 表）：
 
 ```bash
 docker compose exec -w /workspace/apps/api api alembic upgrade head
-docker compose exec -w /workspace/apps/api api alembic current   # 应显示 b2c3d4e5f6a7 (head)
+docker compose exec -w /workspace/apps/api api alembic current   # 应显示 c3d4e5f6a7b8 (head)
 ```
 
 迁移覆盖 task、schema_drafts、schema_versions、dataset_items、assignments、drafts、submissions、ai_review_jobs、review_results、review_configs、export_jobs、export_records、files、llm_call_logs、audit_logs、audit_events 等表。

@@ -82,7 +82,7 @@ cd /Users/xiongweiluo/LabelHub_Coding/labelhub
 # 1) 真实 DOUBAO key（根 .env 已配 DOUBAO_API_KEY / DOUBAO_MODEL / DOUBAO_BASE_URL）
 # 2) 起服务（web 默认 MSW=false，走真实后端；Vite 代理 → api:3000）
 docker compose build api worker && docker compose up -d
-docker compose exec -w /workspace/apps/api api alembic upgrade head   # head=b2c3d4e5f6a7
+docker compose exec -w /workspace/apps/api api alembic upgrade head   # head=c3d4e5f6a7b8（含 ai_assist_actions 表，缺则 AI 建议 500）
 # 3) 种数据：演示任务 + 举办方真实数据集（两个真实任务）
 docker compose exec -w /workspace/apps/api api python scripts/seed_demo.py
 docker compose exec -w /workspace/apps/api api python scripts/seed_competition.py
