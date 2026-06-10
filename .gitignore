@@ -67,3 +67,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# 本地工具配置 / 内部交接（勿提交）
+.claude/
+交接文档_*.md
