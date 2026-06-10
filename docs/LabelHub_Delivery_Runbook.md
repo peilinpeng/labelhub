@@ -18,12 +18,14 @@ git log --oneline -8
 正常主线应至少包含：
 
 ```txt
+7ff8d8a feat(web): add normalized ai review weight sliders
+b8963d4 fix(web): top-align ai-config rule preview card
+7f9958b feat(web): surface owner schema version management
+64a39ab fix(web): complete reviewer queue and decision flow
 57c724e fix(schema-renderer): allow dismissing blocked ai suggestions
-ecd6dc9 docs: update handoff after p1 fixes
-9dbea2b fix(web): show schema audit timeline
-09e5bf0 style(web): calm owner ai preflight page
-39bc1ca fix(api): prevent stale mysql connections
 ```
+
+> 稳定 tag：`stable-after-owner-ai-config-polish-0610`（`7ff8d8a`）。
 
 如果工作区有未提交改动，先确认它们是否为交付收尾文档或 UI 修复；不要直接覆盖。
 

@@ -2,8 +2,8 @@
 
 > 版本：2026-06-10
 > 适用分支：`integration/joint-test`
-> 当前基线：`57c724e fix(schema-renderer): allow dismissing blocked ai suggestions`
-> 稳定参考点：`demo-stable-p1-0609` -> `09e5bf0`
+> 当前基线：`7ff8d8a feat(web): add normalized ai review weight sliders`
+> 稳定参考点：`stable-after-owner-ai-config-polish-0610` -> `7ff8d8a`
 
 本文档是 LabelHub 答辩和交付的总入口，面向评审、维护者和现场演示人员。它只描述当前可交付能力、启动方式、演示路线、验证方式和已知边界；更细的架构设计见文末相关文档。
 
@@ -33,21 +33,19 @@ Schema Governance -> Labeler Runtime -> AI Preflight -> Human Review Diff -> Exp
 
 | 提交 | 内容 | 状态 |
 |---|---|---|
-| `39bc1ca` | 修复真实后端 MySQL 空闲死连接导致首次请求 500 | 已推送 |
-| `09e5bf0` | Owner AI 预审页视觉统一为更稳的 Corporate Trust 风格 | 已推送 |
-| `9dbea2b` | Owner Schema 页面挂载 Schema Audit Timeline | 已推送 |
-| `ecd6dc9` | 更新 P1 handoff 状态 | 已推送 |
 | `57c724e` | BLOCKED AI 建议支持忽略，复用 DISMISSED action | 已推送 |
+| `1e9338a` | Reviewer 队列布局优化 | 已推送 |
+| `84c6b2b` | Owner 任务配置流程引导 | 已推送 |
+| `71cab37` | Owner 数据与分发流程对齐 | 已推送 |
+| `64a39ab` | Reviewer 队列与终审流程完善 | 已推送 |
+| `625f301` | Labeler 工作台布局优化 | 已推送 |
+| `7f9958b` | Owner Schema 版本管理前端显化 | 已推送 |
+| `b8963d4` | AI config 规则预览卡片贴顶对齐 | 已推送 |
+| `7ff8d8a` | AI 预审权重 slider + 自动归一化为 1 | 已推送 |
 
-### 2.2 本地未提交变更
+### 2.2 本地工作区
 
-当前工作区包含本轮收尾改动，尚未 commit / push：
-
-- `apps/web/src/styles.css`：修复 `/reviewer/items` 底部橙色提示条与“进入人工审核”按钮在窄宽度下挤在一行的问题。
-- `HANDOFF.md`：记录本轮交接状态。
-- `docs/LabelHub_Final_Delivery.md`：本文档。
-- `docs/LabelHub_Delivery_Runbook.md`：现场运行手册。
-- `submission/README.md`：提交物索引更新。
+当前工作区无未提交的源码改动，`HEAD` 已对齐稳定 tag `stable-after-owner-ai-config-polish-0610`（`7ff8d8a`），并与 `origin/integration/joint-test` 同步。
 
 ---
 
