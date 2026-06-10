@@ -27,6 +27,9 @@ interface ReviewDetailPageProps {
 }
 
 type ReviewDecision = "PASS" | "RETURN";
+// 审核动作模式：动态表单思路，不同动作触发不同 UI 与校验。
+// PASS = 直接通过（无需意见/修订）；RETURN = 打回（意见必填）；REVISE = 修订提交（至少一条字段 patch，最终以 PASS 决策携带 patches 入库）。
+type ReviewActionMode = "PASS" | "RETURN" | "REVISE";
 type ReviewDetailWithTrace = ReviewDetailResponse & {
   aiTrace?: {
     modelPolicyId?: string;
@@ -66,7 +69,9 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
   const [loading, setLoading] = useState(true);
   const [deciding, setDeciding] = useState(false);
   const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
-  const [pendingDecision, setPendingDecision] = useState<ReviewDecision | null>(null);
+  const [pendingMode, setPendingMode] = useState<ReviewActionMode | null>(null);
+  // 当前审核动作模式，默认「通过」：选中模式驱动下方模块与校验。
+  const [actionMode, setActionMode] = useState<ReviewActionMode>("PASS");
   // 字段级修订：维护一个修订后的答案对象（按字段编辑），提交时与原答案做 shallow diff 生成 patches。
   const [correctedAnswers, setCorrectedAnswers] = useState<Record<string, unknown>>({});
   // 审计时间线右侧抽屉，默认收起以最大化主内容区。
@@ -173,91 +178,129 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
     [answers, correctedAnswers],
   );
 
-  const handleDecision = async (decision: ReviewDecision) => {
+  const handleSubmit = async (mode: ReviewActionMode) => {
     if (!submissionId || !detail) return;
 
+    const trimmedComment = comments.trim();
     // 字段级修订直接对比原答案与修订对象生成 patches（无需解析 JSON 文本）。
-    const parsedCorrectedAnswers: Record<string, unknown> = correctedAnswers;
-    const patches = computeReviewPatches(answers, parsedCorrectedAnswers);
+    const patches = computeReviewPatches(answers, correctedAnswers);
+
+    // 提交侧 guard（不仅靠按钮 disabled）：打回必须有审核意见；修订提交必须有字段级 patch。
+    if (mode === "RETURN" && trimmedComment.length === 0) {
+      setDecisionMessage("打回前请填写审核意见，便于标注员修正。");
+      return;
+    }
+    if (mode === "REVISE" && patches.length === 0) {
+      setDecisionMessage("修订提交前请至少修改一个字段。");
+      return;
+    }
+
+    const apiDecision: ReviewDecision = mode === "RETURN" ? "RETURN" : "PASS";
+    // 仅「修订提交」携带字段级 patch；纯通过 / 打回不夹带修订。
+    const requestPatches = mode === "REVISE" && patches.length > 0 ? patches : undefined;
+    const sentPatchCount = requestPatches?.length ?? 0;
 
     try {
       setDeciding(true);
-      const requestPatches = patches.length > 0 ? patches : undefined;
       const request: ReviewDecisionRequest =
-        decision === "PASS"
+        apiDecision === "PASS"
           ? {
               submissionId: submissionId as ReviewDecisionRequest["submissionId"],
               stage: "HUMAN_REVIEW",
-              decision,
-              comments: comments ? [{ message: comments }] : undefined,
+              decision: "PASS",
+              comments: trimmedComment ? [{ message: trimmedComment }] : undefined,
               patches: requestPatches,
             }
           : {
               submissionId: submissionId as ReviewDecisionRequest["submissionId"],
               stage: "HUMAN_REVIEW",
-              decision,
-              reason: comments || "需要标注员重新修改后提交。",
-              comments: comments ? [{ message: comments }] : undefined,
-              patches: requestPatches,
+              decision: "RETURN",
+              // 真实审核意见，不再用伪造默认值兜底（此前空意见会被默认文案绕过必填校验）。
+              reason: trimmedComment,
+              comments: [{ message: trimmedComment }],
             };
       await claimReview(submissionId).catch(() => undefined);
       const response = await decideReview(submissionId, request);
-      setDecisionMessage(decision === "PASS" ? "审核通过，结果已进入可导出数据。" : "已打回，等待标注员修改后重新提交。");
+      setDecisionMessage(
+        mode === "RETURN"
+          ? "已打回，等待标注员修改后重新提交。"
+          : mode === "REVISE"
+            ? "已保存字段修订并通过，结果进入可导出数据。"
+            : "审核通过，结果已进入可导出数据。",
+      );
       const reviewDurationMs = Math.max(0, Date.now() - reviewOpenedAtMsRef.current);
       appendReviewSubmittedAuditSafely({
         detail,
-        decision,
+        decision: apiDecision,
         response,
         reviewDurationMs,
-        commentLength: comments.length,
-        patchCount: patches.length,
+        commentLength: trimmedComment.length,
+        patchCount: sentPatchCount,
       });
-      if (patches.length > 0) {
+      if (requestPatches && requestPatches.length > 0) {
         appendReviewDiffGeneratedAuditSafely({
           detail,
-          decision,
+          decision: apiDecision,
           response,
-          patches,
+          patches: requestPatches,
           reviewDurationMs,
-          correctedAnswers: parsedCorrectedAnswers,
+          correctedAnswers,
         });
       }
       window.setTimeout(() => navigate(RoutePath.REVIEWER_QUEUE), 650);
     } catch (error) {
       console.warn("提交审核决策失败：", error);
-      setDecisionMessage("审核提交失败，请稍后重试。");
+      setDecisionMessage(error instanceof Error ? `审核提交失败：${error.message}` : "审核提交失败，请稍后重试。");
     } finally {
       setDeciding(false);
     }
   };
 
-  const requestDecision = (decision: ReviewDecision) => {
-    const suppressKey = decision === "PASS" ? CONFIRM_KEYS.approve : CONFIRM_KEYS.return;
-    if (shouldSuppressConfirm(suppressKey)) {
-      void handleDecision(decision);
+  const requestSubmit = (mode: ReviewActionMode) => {
+    // 确认前再次本地校验，避免确认弹窗后才发现不合法。
+    if (mode === "RETURN" && comments.trim().length === 0) {
+      setDecisionMessage("打回前请填写审核意见，便于标注员修正。");
       return;
     }
-    setPendingDecision(decision);
+    if (mode === "REVISE" && previewPatches.length === 0) {
+      setDecisionMessage("修订提交前请至少修改一个字段。");
+      return;
+    }
+    const suppressKey = mode === "RETURN" ? CONFIRM_KEYS.return : CONFIRM_KEYS.approve;
+    if (shouldSuppressConfirm(suppressKey)) {
+      void handleSubmit(mode);
+      return;
+    }
+    setPendingMode(mode);
   };
 
   const decisionConfirmCopy =
-    pendingDecision === "PASS"
+    pendingMode === "RETURN"
       ? {
-          title: "确认审核通过？",
-          description: "通过后该提交将进入可导出数据。",
-          confirmText: "通过",
-          suppressLabel: "本次会话不再提醒审核通过确认",
-          tone: "primary" as const,
-          suppressKey: CONFIRM_KEYS.approve,
-        }
-      : {
           title: "确认打回提交？",
           description: "打回后标注员需要重新修改并提交。",
           confirmText: "打回",
           suppressLabel: "本次会话不再提醒打回确认",
           tone: "danger" as const,
           suppressKey: CONFIRM_KEYS.return,
-        };
+        }
+      : pendingMode === "REVISE"
+        ? {
+            title: "确认保存修订并通过？",
+            description: "将记录字段级修订，并把该提交标记为通过、进入可导出数据。",
+            confirmText: "保存并通过",
+            suppressLabel: "本次会话不再提醒通过确认",
+            tone: "primary" as const,
+            suppressKey: CONFIRM_KEYS.approve,
+          }
+        : {
+            title: "确认审核通过？",
+            description: "通过后该提交将进入可导出数据。",
+            confirmText: "通过",
+            suppressLabel: "本次会话不再提醒审核通过确认",
+            tone: "primary" as const,
+            suppressKey: CONFIRM_KEYS.approve,
+          };
 
   if (loading) {
     return <Card className="state-panel">加载人工审核详情中...</Card>;
@@ -393,69 +436,117 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
           onActionApplied={() => setRefreshTick((tick) => tick + 1)}
         />
 
-        <Card className="review-human-corrected-answers">
-          <h3>字段级修订</h3>
-          <p className="review-human-corrected-answers__desc">
-            审核员可以按字段修改提交内容，系统会在通过时生成字段级修订记录。
-          </p>
-          <FieldCorrectionPanel
-            original={answers}
-            corrected={correctedAnswers}
-            onChange={setCorrectedAnswers}
-          />
-          <div className="review-human-diff-preview">
-            <strong>本轮修订（{previewPatches.length}）</strong>
-            {previewPatches.length > 0 ? (
-              <ul>
-                {previewPatches.map((patch) => (
-                  <li key={patch.fieldName}>
-                    <span>{patch.fieldName}</span>
-                    <em>{valueText(patch.previousValue)} → {valueText(patch.nextValue)}</em>
-                  </li>
-                ))}
-              </ul>
-            ) : <p>当前未产生字段修订。</p>}
-          </div>
-          <details className="review-human-advanced">
-            <summary>高级：查看原始结构</summary>
-            <pre className="review-human-advanced__json">{JSON.stringify(correctedAnswers, null, 2)}</pre>
-          </details>
-        </Card>
-
         <Card className="review-human-decision-card">
-          <label className="review-human-opinion">
-            <span>审核意见（打回时必填）</span>
-            <Textarea value={comments} onChange={(event) => setComments(event.target.value)} />
-          </label>
+          <div className="review-human-conclusion">
+            <span className="review-human-conclusion__label">审核结论</span>
+            <div className="review-human-modeswitch" role="tablist" aria-label="审核结论">
+              {([
+                ["PASS", "通过"],
+                ["RETURN", "打回"],
+                ["REVISE", "修订提交"],
+              ] as Array<[ReviewActionMode, string]>).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={actionMode === mode}
+                  className={actionMode === mode ? "review-human-modeswitch__btn review-human-modeswitch__btn--active" : "review-human-modeswitch__btn"}
+                  onClick={() => setActionMode(mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {actionMode === "PASS" ? (
+            <p className="review-human-mode-hint">确认字段无误后直接通过，无需填写审核意见或修订。</p>
+          ) : null}
+
+          {actionMode === "RETURN" ? (
+            <div className="review-human-mode-panel">
+              <label className="review-human-opinion">
+                <span>审核意见（打回必填）</span>
+                <Textarea
+                  value={comments}
+                  placeholder="请说明打回原因，便于标注员修正"
+                  onChange={(event) => setComments(event.target.value)}
+                />
+              </label>
+              <div className="review-human-tags">
+                {["关键词缺失", "类目错误", "标题超长", "格式不规范"].map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setComments((current) => current.includes(tag) ? current : `${current}${current ? "；" : ""}${tag}`)}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+              {comments.trim().length === 0 ? (
+                <p className="review-human-mode-warn">未填写审核意见，打回按钮暂不可用。</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {actionMode === "REVISE" ? (
+            <div className="review-human-mode-panel">
+              <p className="review-human-corrected-answers__desc">
+                按字段修改提交内容，系统会在通过时生成字段级修订记录。
+              </p>
+              <FieldCorrectionPanel
+                original={answers}
+                corrected={correctedAnswers}
+                onChange={setCorrectedAnswers}
+              />
+              <div className="review-human-diff-preview">
+                <strong>本轮修订（{previewPatches.length}）</strong>
+                {previewPatches.length > 0 ? (
+                  <ul>
+                    {previewPatches.map((patch) => (
+                      <li key={patch.fieldName}>
+                        <span>{patch.fieldName}</span>
+                        <em>{valueText(patch.previousValue)} → {valueText(patch.nextValue)}</em>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p>当前未产生字段修订，至少修改一个字段才能提交。</p>}
+              </div>
+              <details className="review-human-advanced">
+                <summary>高级：查看原始结构</summary>
+                <pre className="review-human-advanced__json">{JSON.stringify(correctedAnswers, null, 2)}</pre>
+              </details>
+            </div>
+          ) : null}
 
           {decisionMessage ? <Badge tone="success">{decisionMessage}</Badge> : null}
-
-          <div className="review-human-tags">
-            {["关键词缺失", "类目错误", "标题超长", "格式不规范"].map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => setComments((current) => current.includes(tag) ? current : `${current}${current ? "；" : ""}${tag}`)}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
         </Card>
 
         <div className="review-human-actionbar">
-          <Button tone="danger" onClick={() => requestDecision("RETURN")} disabled={deciding}>
-            打回修改
-            <span>返回标注员重新提交</span>
-          </Button>
-          <Button disabled={deciding} onClick={() => requestDecision("PASS")}>
-            保存修订并通过
-            <span>生成修订后入库</span>
-          </Button>
-          <Button tone="success" onClick={() => requestDecision("PASS")} disabled={deciding}>
-            通过入库
-            <span>进入可导出数据</span>
-          </Button>
+          {actionMode === "RETURN" ? (
+            <Button
+              tone="danger"
+              onClick={() => requestSubmit("RETURN")}
+              disabled={deciding || comments.trim().length === 0}
+            >
+              打回修改
+              <span>{comments.trim().length === 0 ? "请先填写审核意见" : "返回标注员重新提交"}</span>
+            </Button>
+          ) : actionMode === "REVISE" ? (
+            <Button
+              onClick={() => requestSubmit("REVISE")}
+              disabled={deciding || previewPatches.length === 0}
+            >
+              保存修订并通过
+              <span>{previewPatches.length === 0 ? "请至少修改一个字段" : "生成修订后入库"}</span>
+            </Button>
+          ) : (
+            <Button tone="success" onClick={() => requestSubmit("PASS")} disabled={deciding}>
+              通过入库
+              <span>进入可导出数据</span>
+            </Button>
+          )}
         </div>
       </main>
 
@@ -506,20 +597,20 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
       ) : null}
 
       <ConfirmDialog
-        open={pendingDecision !== null}
+        open={pendingMode !== null}
         title={decisionConfirmCopy.title}
         description={decisionConfirmCopy.description}
         confirmText={decisionConfirmCopy.confirmText}
         cancelText="取消"
         tone={decisionConfirmCopy.tone}
         suppressLabel={decisionConfirmCopy.suppressLabel}
-        onCancel={() => setPendingDecision(null)}
+        onCancel={() => setPendingMode(null)}
         onConfirm={(suppress) => {
-          const decision = pendingDecision;
-          if (!decision) return;
+          const mode = pendingMode;
+          if (!mode) return;
           if (suppress) suppressConfirmForSession(decisionConfirmCopy.suppressKey);
-          setPendingDecision(null);
-          void handleDecision(decision);
+          setPendingMode(null);
+          void handleSubmit(mode);
         }}
       />
     </div>

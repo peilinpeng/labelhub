@@ -410,8 +410,10 @@ export const handlers = [
       if (body.submissionId !== submissionId) {
         return { body: apiErrorBody("VALIDATION_FAILED", "路径 submissionId 与请求体不一致"), status: 422 };
       }
-      if (body.decision === "RETURN" && body.reason === undefined) {
-        return { body: apiErrorBody("REVIEW_REASON_REQUIRED", "RETURN 决策必须填写 reason"), status: 422 };
+      // 与后端 review_domain.submit_review_decision 对齐：RETURN / REJECT 必须有非空 reason，
+      // 空字符串 / 纯空白也视为缺失（此前仅判 undefined，空意见可绕过必填校验）。
+      if ((body.decision === "RETURN" || body.decision === "REJECT") && (body.reason ?? "").trim() === "") {
+        return { body: apiErrorBody("REVIEW_REASON_REQUIRED", `${body.decision} 决策必须填写 reason`), status: 422 };
       }
       const response = decideReview(body);
       return response === undefined

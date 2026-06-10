@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Role } from "../../app/routes";
-import { batchDecideReview, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
+import { batchDecideReview, claimReview, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
 import type { ReviewDecisionRequest } from "@labelhub/contracts";
-import { Badge, Button, Card } from "../../ui/primitives";
+import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import { getQueueDisplay } from "./review-display";
 
 interface ReviewerWorkspaceProps {
@@ -48,6 +48,8 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
   const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([]);
   const [batchMessage, setBatchMessage] = useState<string | null>(null);
   const [batching, setBatching] = useState(false);
+  // 批量打回统一原因：复用 decision 的 reason / comment 字段，打回必填，不再下发伪造默认文案。
+  const [batchReturnReason, setBatchReturnReason] = useState("");
 
   useEffect(() => {
     void (async () => {
@@ -92,7 +94,7 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
 
   const selected = submissions.find((item) => item.submission.id === selectedId) ?? filteredSubmissions[0] ?? submissions[0];
   const selectedDisplay = selected ? getQueueDisplay(selected) : null;
-  const selectedBatchItems = filteredSubmissions.filter((item) => selectedBatchIds.includes(item.submission.id) && isBatchReviewable(item));
+  const selectedBatchItems = filteredSubmissions.filter((item) => selectedBatchIds.includes(item.submission.id) && isBatchSelectable(item));
 
   const toggleBatchId = (submissionId: string) => {
     setSelectedBatchIds((current) =>
@@ -102,9 +104,34 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
 
   const handleBatchDecision = async (decision: "PASS" | "RETURN") => {
     if (selectedBatchItems.length === 0) return;
+    const trimmedReturnReason = batchReturnReason.trim();
+    // 提交侧 guard：批量打回必须填写统一打回原因，不仅靠按钮 disabled。
+    if (decision === "RETURN" && trimmedReturnReason.length === 0) {
+      setBatchMessage("批量打回前请填写统一打回原因。");
+      return;
+    }
+    const totalAttempted = selectedBatchItems.length;
     try {
       setBatching(true);
-      const items: ReviewDecisionRequest[] = selectedBatchItems.map((item) => {
+      setBatchMessage(null);
+
+      // 状态机要求 NEEDS_HUMAN_REVIEW →(claimReview)→ HUMAN_REVIEWING 后才接受
+      // PASS / RETURN 决策，否则后端/mock 返回 INVALID_STATE_TRANSITION。
+      // 所以批量决策前先认领仍处于 NEEDS_HUMAN_REVIEW 的提交；
+      // HUMAN_REVIEWING / FINAL_REVIEWING 已在审核中，无需认领。
+      const toClaim = selectedBatchItems.filter(
+        (item) => item.submission.status === "NEEDS_HUMAN_REVIEW",
+      );
+      const claimOutcomes = await Promise.allSettled(
+        toClaim.map((item) => claimReview(item.submission.id)),
+      );
+      // 认领失败的项不参与决策、不伪造成功，单独计入失败统计。
+      const claimFailedIds = new Set(
+        toClaim.filter((_, idx) => claimOutcomes[idx].status === "rejected").map((item) => item.submission.id),
+      );
+      const decidable = selectedBatchItems.filter((item) => !claimFailedIds.has(item.submission.id));
+
+      const items: ReviewDecisionRequest[] = decidable.map((item) => {
         const stage: ReviewDecisionRequest["stage"] =
           item.submission.status === "FINAL_REVIEWING" ? "FINAL_REVIEW" : "HUMAN_REVIEW";
         const base = {
@@ -115,8 +142,8 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           return {
             ...base,
             decision: "RETURN",
-            reason: "批量审核打回，等待标注员修改后重新提交。",
-            comments: [{ message: "批量审核打回，等待标注员修改后重新提交。" }],
+            reason: trimmedReturnReason,
+            comments: [{ message: trimmedReturnReason }],
           };
         }
         return {
@@ -125,12 +152,34 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           comments: [],
         };
       });
-      const response = await batchDecideReview({ items });
+
+      const response = items.length > 0 ? await batchDecideReview({ items }) : { results: [] };
       const successCount = response.results.filter((result) => result.success).length;
-      setBatchMessage(`批量${decision === "PASS" ? "通过" : "打回"}完成：成功 ${successCount} / ${response.results.length}`);
+      const decisionFailures = response.results.filter((result) => !result.success);
+
+      // 真实回报：成功数 / 尝试数，并把认领失败与决策失败（含真实 error code/message）显式展示，不吞错误。
+      const failNotes: string[] = [];
+      if (claimFailedIds.size > 0) failNotes.push(`认领失败 ${claimFailedIds.size} 条`);
+      if (decisionFailures.length > 0) {
+        const firstError = decisionFailures[0].error;
+        failNotes.push(
+          `决策失败 ${decisionFailures.length} 条（${firstError?.code ?? "UNKNOWN"}：${firstError?.message ?? "未知错误"}）`,
+        );
+      }
+      setBatchMessage(
+        `批量${decision === "PASS" ? "通过" : "打回"}：成功 ${successCount} / ${totalAttempted}` +
+          (failNotes.length > 0 ? `；${failNotes.join("，")}` : ""),
+      );
+
+      // 刷新队列与统计：复用入口同款脏数据过滤，保证 stats / 渲染读取 item.submission.* 不崩。
       const data = await listReviewQueue({ status: reviewQueueStatusFor(filter) });
-      setSubmissions(data);
+      const safeData = data.filter(
+        (item): item is ReviewQueueItem =>
+          item != null && item.submission != null && typeof item.submission.id === "string",
+      );
+      setSubmissions(safeData);
       setSelectedBatchIds([]);
+      if (decision === "RETURN" && successCount > 0) setBatchReturnReason("");
     } catch (error) {
       setBatchMessage(error instanceof Error ? `批量操作失败：${error.message}` : "批量操作失败。");
     } finally {
@@ -228,25 +277,46 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
             <Button
               type="button"
               tone="danger"
-              disabled={batching || selectedBatchItems.length === 0}
+              disabled={batching || selectedBatchItems.length === 0 || batchReturnReason.trim().length === 0}
               onClick={() => void handleBatchDecision("RETURN")}
             >
               批量打回
             </Button>
           </div>
+          {selectedBatchItems.length > 0 ? (
+            <label className="review-ai-batchbar__reason">
+              <span>统一打回原因（批量打回必填）</span>
+              <Textarea
+                value={batchReturnReason}
+                placeholder="请说明打回原因，将应用到所选全部提交，便于标注员修正"
+                onChange={(event) => setBatchReturnReason(event.target.value)}
+              />
+            </label>
+          ) : null}
           {batchMessage ? <p className="review-ai-batchbar__message">{batchMessage}</p> : null}
 
           <div className="review-ai-list">
             {filteredSubmissions.map((item) => {
               const isActive = item.submission.id === selected?.submission.id;
               const display = getQueueDisplay(item);
-              const reviewable = isBatchReviewable(item);
+              const selectable = isBatchSelectable(item);
+              const isChecked = selectedBatchIds.includes(item.submission.id);
+              const rowClass = [
+                "review-ai-row",
+                isActive ? "review-ai-row--active" : "",
+                isChecked ? "review-ai-row--checked" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
               return (
-                <div className={isActive ? "review-ai-row review-ai-row--active" : "review-ai-row"} key={item.submission.id}>
-                  <label className="review-ai-row__check" title={reviewable ? "选择批量审核" : "需先进入人工审核领取后才能批量提交"}>
+                <div className={rowClass} key={item.submission.id}>
+                  <label
+                    className="review-ai-row__check"
+                    title={selectable ? "选择以加入批量审核" : "该状态不可批量审核"}
+                  >
                     <input
-                      checked={selectedBatchIds.includes(item.submission.id)}
-                      disabled={!reviewable}
+                      checked={isChecked}
+                      disabled={!selectable}
                       type="checkbox"
                       onChange={() => toggleBatchId(item.submission.id)}
                     />
@@ -258,8 +328,9 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                   >
                     <strong className="review-ai-item__title">{display.title}</strong>
                     <span className="review-ai-item__meta">
-                      第 {item.submission.attemptNo} 轮 · {formatTime(item.submission.createdAt)} · {item.submission.labelerId}
+                      第 {item.submission.attemptNo} 轮 · {formatTime(item.submission.createdAt)}
                     </span>
+                    <span className="review-ai-item__sub">标注员 {item.submission.labelerId}</span>
                     <span className="review-ai-item__badges">
                       <Badge tone={statusTone(item.submission.status)}>{statusLabel(item.submission.status)}</Badge>
                       {item.submission.status === "FINAL_REVIEWING" ? <Badge tone="primary">终审</Badge> : <Badge tone="default">复审</Badge>}
@@ -352,8 +423,15 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
   );
 }
 
-function isBatchReviewable(item: ReviewQueueItem): boolean {
-  return item.submission.status === "HUMAN_REVIEWING" || item.submission.status === "FINAL_REVIEWING";
+// 队列里处于「待人工处理」阶段的提交才允许批量勾选：
+// 待人工审核 / 人工审核中 / 终审中。已终态（ACCEPTED / RETURNED / REJECTED）
+// 与仅 AI 通过（AI_PASSED）的项不参与批量人工决策，保持不可选。
+function isBatchSelectable(item: ReviewQueueItem): boolean {
+  return (
+    item.submission.status === "NEEDS_HUMAN_REVIEW" ||
+    item.submission.status === "HUMAN_REVIEWING" ||
+    item.submission.status === "FINAL_REVIEWING"
+  );
 }
 
 // 提交字段的人话标签：把技术 key 映射成审核员可读的中文，未知 key 原样保留。

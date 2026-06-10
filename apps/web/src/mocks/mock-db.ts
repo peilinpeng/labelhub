@@ -1074,8 +1074,9 @@ export function claimReview(submissionId: string): Submission | undefined {
 export function decideReview(command: ReviewCommand): ReviewDecisionResponse | undefined {
   const submission = mockDb.submissions.find((item) => item.id === command.submissionId);
   if (submission === undefined || !isReviewDecisionAllowed(submission.status, command.stage)) return undefined;
-  if (command.decision === "RETURN" && command.reason === undefined) return undefined;
-  if (command.decision === "REJECT" && command.reason === undefined) return undefined;
+  // 与后端对齐：RETURN / REJECT 必须有非空 reason（含批量决策路径，不经 http handler 校验）。
+  // 取代此前仅判 undefined 的弱校验，空串 / 纯空白也视为缺失。
+  if ((command.decision === "RETURN" || command.decision === "REJECT") && (command.reason ?? "").trim() === "") return undefined;
   const task = getTask(submission.taskId);
   const assignment = mockDb.assignments.find((item) => item.id === submission.assignmentId);
   const item = mockDb.datasetItems.find((candidate) => candidate.id === submission.itemId);
