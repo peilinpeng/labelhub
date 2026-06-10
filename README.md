@@ -1,265 +1,350 @@
-# LabelHub 数据标注平台
+# LabelHub
 
-LabelHub 是一个面向 AI 数据生产的全栈标注平台，覆盖「数据生产 → AI 预审 → 人工审核 → 多格式导出」完整生命周期。前端（React + TypeScript）、后端（FastAPI + SQLAlchemy + Celery + MySQL + Redis）、AI 审核 Agent 三端均已端到端实现并跑通真实链路。
+**LabelHub 是一个 Schema-driven 的 AI 数据标注与质量治理平台。**
 
-> Monorepo 结构：`apps/web`（前端）、`apps/api`（后端 + Celery worker）、`packages/*`（contracts / schema-core / schema-renderer / schema-designer / schema-compiler 共享库）。
->
-> 一键体验见下方「快速启动」。完整答辩交付物索引见 [`submission/README.md`](./submission/README.md)。
+它支持任务负责人（Owner）、标注员（Labeler）和审核员（Reviewer）三类角色，覆盖任务配置、Schema 模板搭建、动态标注、AI 辅助质量检查、人工审核、审计追踪和质量导出等流程。整个系统围绕同一套共享契约协作：标注结构由版本化 Schema 驱动，AI 以受校验约束的方式介入，质量决策全程留痕。
 
-## 快速启动（真实后端演示）
+> Monorepo 结构：`apps/web`（前端）、`apps/api`（后端 API + Celery worker）、`packages/*`（contracts / schema-core / schema-compiler / schema-renderer / schema-designer / workflow-core 共享库）。
+
+---
+
+## 1. 项目解决的问题
+
+数据标注生产中有三个反复出现的难题：
+
+1. **如何配置不同任务的标注结构？** 不同任务的字段、选项、必填和联动规则各不相同，硬编码表单无法复用。
+2. **如何让 AI 参与质量检查，但不绕过校验规则？** AI 建议如果直接覆盖人工答案，会破坏数据的可信度和模板约束。
+3. **如何在数据交付前追踪质量决策和审核证据？** 交付的数据需要能回答"这条数据为什么通过、由谁审核、AI 给过什么意见"。
+
+LabelHub 对应的三个回答：
+
+1. **Schema Governance** —— 版本化、可治理的动态标注结构。
+2. **AI suggestedPatch + preflight** —— AI 只给字段级建议，应用前必须通过确定性预检查。
+3. **Quality Evidence Chain** —— 审计、AI 预审、审核决策、导出护照共同构成可追踪的质量证据链。
+
+---
+
+## 2. 核心亮点
+
+- **三角色协作流程**：Owner / Labeler / Reviewer 围绕同一任务与同一提交对象形成闭环。
+- **Schema-driven 动态标注表单**：标注页面由版本化 Schema 在 runtime 动态渲染，而非硬编码。
+- **Schema Version Management**：已发布版本不可变快照、版本历史、兼容性检查（compatibility check）、破坏性变更阻断（breaking change blocking）、历史保留式回滚（history-preserving rollback）、"需要迁移"预览（migration required preview）。
+- **AI Assist**：字段级 `suggestedPatch` + 确定性 `preflight` 检查（`SAFE / WARNING / BLOCKED`）。
+- **Reviewer decision flow**：`PASS / RETURN / REVISE` 结构化决策；`RETURN` 必填理由，`REVISE` 记录字段级 patches。
+- **质量治理三件套**：Quality Center、Audit Trail、Export Passport（Data Quality Passport）。
+- **AI Review 配置**：可配置 Prompt、评分维度、阈值，权重通过滑动条自动归一化为 1。
+
+> **能力边界说明**：本仓库已实现兼容性检查、breaking change 阻断、migration required 预览和历史保留式回滚。但 **持久化的后端 migration execution pipeline、历史答卷批量迁移、migration approval workflow 属于后续计划，未作为已完成能力交付**（详见 §10）。
+
+---
+
+## 3. 系统架构
+```
+        Owner / Labeler / Reviewer
+                   │
+             apps/web (React)
+                   │  HTTP / API
+                   ▼
+          apps/api (FastAPI)
+          │        │
+          │        ├── MySQL（任务 / 提交 / 审核 / 版本 / 审计）
+          │        │
+          │        └── Redis（队列 / broker）
+          │                 │
+          │                 ▼
+          │          worker (Celery, apps/api image)
+          │                 │
+          │                 ▼
+          │          AI Review / Export
+          │
+          └── API Docs / Swagger
+```
+packages/contracts        前后端共享类型与 API 契约
+packages/schema-core      Schema 版本、兼容性、迁移计划纯函数
+packages/schema-renderer  动态表单 Runtime 与 AI preflight
+packages/schema-designer  Owner 侧 Schema 编辑
+packages/schema-compiler  Schema 编译相关能力
+packages/workflow-core    工作流核心能力
+
+各层职责：
+
+- **apps/web**：三角色前端工作台（React + TypeScript + Vite）。
+- **apps/api**：后端 API 服务（Python + FastAPI + SQLAlchemy），承载真实任务、提交、审核、版本和审计数据。
+- **worker**：后台异步任务（Celery），承载 AI Review 与 Export，与 `apps/api` 共用同一镜像，由独立进程启动。
+- **@labelhub/contracts**：前端、后端、Worker、Mock、测试的共享类型唯一来源。
+- **@labelhub/schema-core**：纯 TypeScript 内核，负责兼容性检查、版本冻结、字段废弃和迁移计划相关的确定性纯函数能力（不访问数据库）。
+- **@labelhub/schema-renderer**：动态表单 runtime 渲染层，并承载 AI preflight。
+- **@labelhub/schema-designer**：Owner 侧 Schema 编辑与预览工具。
+- **MySQL / Redis**：分别承载持久化数据与队列。
+- **MSW Mock 层**（`apps/web/src/mocks`）：在真实后端就绪前支持前端演示和并行开发，使用契约类型而非重新定义。
+
+---
+
+## 4. 仓库结构
+
+```
+apps/
+  web/        前端应用（React + Vite）
+  api/        后端 API 服务（FastAPI），同一镜像启动 Celery worker
+
+packages/
+  contracts/        共享类型与 API 契约（唯一类型来源）
+  schema-core/      Schema 版本、兼容性、字段废弃与迁移计划纯函数
+  schema-compiler/  Schema 编译相关能力
+  schema-renderer/  Runtime renderer 与 AI preflight
+  schema-designer/  Owner 侧 Schema 编辑工具
+  workflow-core/    工作流相关核心能力
+
+docs/
+  架构、Schema Governance、交付与 AI Coding 过程文档
+docs/delivery-drafts/
+  交付草稿与过程文件（如 AI_CODING_PROCESS.md）
+
+submission/
+  答辩交付物索引（submission/README.md）
+```
+
+> 说明：worker 不是独立目录，而是基于 `apps/api` 镜像运行的 Celery 进程（见 `docker-compose.yml` 的 `worker` 服务）。
+
+---
+
+## 5. 主要模块
+
+### Owner —— 任务负责人后台（`apps/web/src/features/owner`）
+
+- 任务管理与任务配置引导
+- 数据集导入 / 预览
+- Schema Designer（模板设计）
+- Schema Version Management（版本状态条、兼容性 badge、发布结论 banner）
+- AI 预审配置（Prompt / 维度 / 阈值 / 权重 slider）
+- Quality Center
+- 导出 / Quality Passport
+- Audit timeline
+
+### Labeler —— 标注员工作台（`apps/web/src/features/labeler`）
+
+- 任务市场
+- 标注工作台（Dynamic Schema Runtime 渲染）
+- 草稿自动保存
+- 提交校验
+- AI Assist Panel
+- 被打回任务的继续修改
+
+### Reviewer —— 审核员工作台（`apps/web/src/features/reviewer`）
+
+- 审核队列
+- 批量领取 / 批量审核
+- 审核详情
+- `PASS / RETURN / REVISE` 决策（`RETURN` 必填理由，`REVISE` 字段级修订）
+- AI 预审结果查看
+
+### Shared Governance Layer —— 共享治理层（`packages/*`）
+
+- contracts（共享类型与契约）
+- schema runtime（动态渲染）
+- compatibility check（兼容性检查）
+- preflight（AI 建议预检查）
+- audit（审计）
+- export quality evidence（导出质量证据）
+
+---
+
+## 6. 本地启动指引
+
+### 方式一：Docker Compose（推荐，含真实后端）
 
 ```bash
-# 0) 准备环境变量（含 DOUBAO LLM key；模型用官方提供的 ep-...）
-cp .env.example .env          # 按需填 DOUBAO_API_KEY / DOUBAO_MODEL / DOUBAO_BASE_URL
+# 0) 准备环境变量
+cp .env.example .env          # 按需填 DOUBAO_API_KEY / DOUBAO_MODEL 等
 
 # 1) 构建并启动全部服务（web / api / worker / mysql / redis）
 docker compose up -d --build
 
-# 2) 数据库迁移（迁移链 head: b2c3d4e5f6a7）
+# 2) 数据库迁移
 docker compose exec -w /workspace/apps/api api alembic upgrade head
 
-# 3) 灌入演示数据（演示账号 + 举办方真实数据集两个任务）
+# 3) 灌入演示数据
 docker compose exec -w /workspace/apps/api api python scripts/seed_demo.py
 docker compose exec -w /workspace/apps/api api python scripts/seed_competition.py
 ```
 
-- 前端访问 `http://localhost:5173/`，账号 `owner@labelhub.com` / `labeler@labelhub.com` / `reviewer@labelhub.com`，密码 `password123`。
-- web 默认走真实后端（`VITE_ENABLE_MSW=false`，Vite `/api` 代理至 `api:3000`）；如需纯前端 mock 演示见下方 MSW 章节。
-- 完整录屏剧本见 [`docs/LabelHub_Demo_Guide.md`](./docs/LabelHub_Demo_Guide.md)。
+Compose 包含以下服务：`web`、`api`、`worker`、`mysql`、`redis`。
 
-## 项目定位
+前端访问 `http://localhost:5173/`。web 默认走真实后端（`VITE_ENABLE_MSW=false`，Vite `/api` 代理至 `api:3000`）。
 
-LabelHub 的核心能力包括：
+> **环境变量**：复制 `.env.example` 为 `.env` 并填写本地配置。**不要提交真实 API key、token 或 secret。**
 
-- Owner 创建任务、搭建动态 schema、导入数据集、发布任务、配置审核与导出。
-- Labeler 领取任务、在线作答、自动保存草稿、提交数据、查看打回原因。
-- AI Review Agent 对提交数据进行结构化预审。
-- Reviewer 进行人工审核、打回、通过、终审和批量操作。
-- Export 服务按字段映射导出 JSON、JSONL、CSV、Excel。
-
-## 架构契约
-
-核心架构契约位于：
-
-- [labelhub-architecture-contract.md](./labelhub-architecture-contract.md)
-
-该文档是前端 Designer、前端 Renderer、后端 API、AI Review Agent、导出服务、数据库建模和自动化测试的共同依据。
-
-重要原则：
-
-- 不允许在业务模块重新定义契约类型。
-- 不允许绕过 schema versioning、RuntimeContext、audit logs、command-driven state transitions。
-- 不允许在 schema 中引入任意 JavaScript 函数。
-- 所有接口、状态、错误码、审计动作必须与契约一致。
-
-## AI Coding 规则
-
-本项目允许使用 AI Coding 工具协作，但所有工具必须先阅读：
-
-- [AI_CODING_RULES.md](./AI_CODING_RULES.md)
-
-核心要求：
-
-- 采用 contract-driven 开发。
-- 最高契约是 `labelhub-architecture-contract.md v1.1`。
-- 共享类型唯一来源是 `packages/contracts`。
-- 所有实现必须引用 `@labelhub/contracts`。
-- 禁止重新定义契约类型。
-- 禁止使用 `any`，灵活数据使用 `unknown`。
-- AI 修改代码前必须先输出实现计划，修改后必须总结修改文件、实现内容、运行检查和未解决风险。
-
-## packages/contracts
-
-共享 TypeScript contracts package 位于：
-
-- [packages/contracts](./packages/contracts)
-
-它包含：
-
-- 全局类型、错误码、审计日志。
-- 动态 schema、组件注册表、Designer / Renderer 契约。
-- 工作流、审核、AI Review、导出、文件上传契约。
-- API request / response 类型。
-- 契约工具函数和 33 个契约测试。
-
-运行类型检查：
+### 方式二：前端 + 共享库本地开发
 
 ```bash
-cd packages/contracts
-npm run typecheck
-```
-
-运行契约测试：
-
-```bash
-cd packages/contracts
-npm run test
-```
-
-测试会生成 `packages/contracts/.contract-test-dist`，该目录已被 `.gitignore` 忽略。
-
-## packages/schema-core
-
-动态 Schema 纯 TypeScript 运行时内核位于：
-
-- [packages/schema-core](./packages/schema-core)
-
-它只引用 `@labelhub/contracts`，负责 schema tree 遍历、JsonPath 命名空间校验、Expression 求值、可见性解析、答案归一化、答案校验、schema guard 和演示 schema factory，不包含 React UI、浏览器依赖或后端 service。
-
-运行检查：
-
-```bash
-cd packages/schema-core
+# 共享库（packages/*）依赖与检查
+npm install
 npm run typecheck
 npm run test
+
+# 前端应用（apps/web 为独立 npm 项目）
+cd apps/web
+npm install
+npm run dev          # Vite 开发服务器
 ```
 
-## packages/schema-renderer
-
-动态 Schema React 渲染层位于：
-
-- [packages/schema-renderer](./packages/schema-renderer)
-
-它引用 `@labelhub/contracts` 和 `@labelhub/schema-core`，负责把 `LabelHubSchema` 渲染为 Labeler 作答、Reviewer 只读、Reviewer diff 和 Designer 预览界面，不包含 Designer 拖拽、后端 service 或 Mock 状态流转。
-
-运行检查：
+如需纯前端演示（不依赖后端），可启用 MSW Mock：
 
 ```bash
-cd packages/schema-renderer
-npm run typecheck
-npm run test
-```
-
-## packages/schema-designer
-
-动态 Schema 设计器位于：
-
-- [packages/schema-designer](./packages/schema-designer)
-
-它引用 `@labelhub/contracts`、`@labelhub/schema-core` 和 `@labelhub/schema-renderer`，负责 Owner 侧模板物料、schema tree 编辑、属性配置、校验面板和实时预览。支持**物料拖拽到画布 + 画布节点拖拽重排**（原生 HTML5 DnD），点击添加同时保留。
-
-运行检查：
-
-```bash
-cd packages/schema-designer
-npm run typecheck
-npm run test
-```
-
-## MSW Mock
-
-前端 Mock 层位于：
-
-- [apps/web/src/mocks](./apps/web/src/mocks)
-
-用途：
-
-- 在真实后端完成前，支持 Owner、Labeler、Reviewer 页面并行开发。
-- 使用 `@labelhub/contracts` 类型，不重新定义契约。
-- 模拟 claim、draft、submit、AI review、review decision、export、file upload 等主链路状态流转。
-
-启用方式：
-
-```ts
-if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_MSW === "true") {
-  const { worker } = await import("./mocks/browser");
-  await worker.start({ onUnhandledRequest: "bypass" });
-}
-```
-
-Mock 模式：
-
-```bash
+# apps/web 环境
 VITE_ENABLE_MSW=true
 ```
 
-真实 API 模式：
+---
+
+## 7. 测试与验证命令
 
 ```bash
-VITE_ENABLE_MSW=false
-VITE_API_BASE_URL=http://localhost:3000/api/v1
+# 共享库：根目录 workspace 统一检查（contracts / schema-core / schema-compiler /
+# schema-renderer / schema-designer / workflow-core）
+npm run typecheck
+npm run test
+
+# 单独运行某个共享库测试
+npm run test:contracts
+npm run test:schema-core
+npm run test:schema-renderer
+
+# 前端应用
+cd apps/web
+npm run typecheck
+npm run build
+
+# 后端（在 Docker 环境内）
+docker compose exec -w /workspace/apps/api api pytest -m "not integration" -q
+bash apps/api/scripts/e2e_test.sh
+
+# 交付前检查 whitespace / conflict markers
+git diff --check
 ```
 
-## Docker 启动
+---
 
-复制环境变量：
+## 8. 演示账号与演示路由
 
-```bash
-cp .env.example .env
+演示账号（由 seed / mock 数据提供，也可通过登录页的角色入口直接进入对应工作台）：
+
+| 角色 | 账号 | 密码 |
+| --- | --- | --- |
+| Owner | `owner@labelhub.com` | `password123` |
+| Labeler | `labeler@labelhub.com` | `password123` |
+| Reviewer | `reviewer@labelhub.com` | `password123` |
+
+真实演示路由（来自 `apps/web/src/app/routes.tsx`）：
+
+```txt
+Owner:
+- /owner/tasks                                            任务管理
+- /owner/ai-config                                        AI 预审规则（含权重 slider）
+- /owner/quality                                          Quality Center
+- /owner/tasks/:taskId/designer                           Schema Designer
+- /owner/tasks/:taskId/dataset                            数据集
+- /owner/tasks/:taskId/export                             导出
+
+  Schema Governance 演示任务（mock）:
+- /owner/tasks/task_demo_schema_breaking_change/designer
+- /owner/tasks/task_demo_schema_migration_required/designer
+- /owner/tasks/task_demo_schema_deprecation/designer
+- /owner/tasks/task_demo_schema_safe_publish/designer
+
+Labeler:
+- /labeler/tasks                                          任务市场
+- /labeler/workspace/asn_1001                             标注工作台
+- /labeler/submissions                                    我的提交
+
+Reviewer:
+- /reviewer/items                                         审核队列
+- /reviewer/items/:submissionId                           审核详情
 ```
 
-启动本地开发/演示环境：
+---
 
-```bash
-docker compose up --build
-```
+## 9. 关键设计取舍
 
-服务：
+### 9.1 Contract-first development
 
-- `web`：前端 Vite / React，宿主 `5173`（容器内 Vite 5180）。
-- `api`：后端 FastAPI，宿主 `3000`。
-- `worker`：Celery，承载 AI Review / Export 异步任务。
-- `mysql`：MySQL 8。
-- `redis`：Redis 7（Celery broker/backend）。
+共享契约定义在 `packages/contracts` 中，各层统一引用 `@labelhub/contracts`。这样可以避免重复定义状态码、审核决策和 API shape，保证前端、后端、Worker、Mock 对同一概念的理解一致。
 
-本地与云部署说明见：
+### 9.2 Schema-driven runtime
 
-- [docs/deployment.md](./docs/deployment.md)
+标注页面不是硬编码表单，而是由版本化 Schema 动态生成。字段显示、必填和校验规则在 runtime 中解析（`packages/schema-renderer`、`packages/schema-core`）。
 
-## API 文档
+### 9.3 Schema version freeze
 
-- 静态 OpenAPI（41 路径）：[`apps/api/openapi.json`](./apps/api/openapi.json) —— 可直接导入 Postman / Apifox（Import → File → 选该文件）。
-- 在线 Swagger UI：服务启动后访问 `http://localhost:3000/docs`（ReDoc：`/redoc`）。
-- 重新生成：`docker compose exec -w /workspace/apps/api api python scripts/export_openapi.py`。
+已发布的 Schema 是不可变快照。历史任务和提交绑定到当时的 `schemaVersionId`，避免后续模板修改破坏历史数据。核心原则：默认不迁移，每一次变更都可被识别，每一次迁移都应留下痕迹。
 
-## 测试与验证
+### 9.4 AI as governed suggester
 
-```bash
-# 后端单元 + 集成（SQLite in-memory，无需 MySQL）
-docker compose exec -w /workspace/apps/api api pytest -m "not integration" -q     # 153 passed
-# 并发/行锁（需真实 MySQL）
-docker compose exec -w /workspace/apps/api api pytest -m integration -q            # 1 passed
-# 端到端全链路（建任务→作答→AI 预审→复审→导出带质量护照）
-bash apps/api/scripts/e2e_test.sh                                                  # 21/21
-# 前后端 hash 一致性 test vectors
-docker compose exec -w /workspace/apps/api api pytest tests/unit/test_hash_vectors.py -q  # 后端 11
-node --test packages/schema-core/src/__tests__/canonical-hash-vectors.test.ts            # 前端 10
-# 前端 / 共享库
-npm run typecheck && npm run test && npm --prefix apps/web run typecheck && npm --prefix apps/web run build
-```
+AI 的 `suggestedPatch` 不能直接覆盖答案。应用前必须经过确定性的 preflight 检查（检查字段是否存在、是否产生新的必填缺失、是否符合 Schema Runtime 联动逻辑）；被阻断的建议可以被解释和忽略，但不会被静默应用。
 
-## 三人协作规则
+### 9.5 Human review as decision flow
 
-- 前端负责人：`apps/web`、Designer、Renderer、Owner / Labeler / Reviewer 页面。
-- 后端负责人：`apps/api`、数据库、API、状态机、审计、文件上传。
-- Agent / Worker 负责人：AI Review、LLM 调用、Export worker、异步队列。
+审核不是简单按钮，而是 `PASS / RETURN / REVISE` 结构化决策流。`RETURN` 必须填写理由；`REVISE` 会记录字段级 patches。
 
-协作约定：
+### 9.6 Quality evidence chain
 
-- 禁止直接 push `main`。
-- 所有开发从 `dev` 拉 feature 分支。
-- PR 合并前必须通过 contracts typecheck 和 contracts test。
-- 涉及契约变更时，必须先更新 `labelhub-architecture-contract.md` 和 `packages/contracts`，再改业务模块。
-- 前端、后端、worker 不得重新定义 contracts 类型。
+Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追踪的质量证据链，使交付数据可以回溯其质量与审核过程。
 
-详细 Git 流程见：
+### 9.7 No fake migration execution
 
-- [docs/git-workflow.md](./docs/git-workflow.md)
+系统支持兼容性检查和 "migration required" 预览，`schema-core` 提供了 plan / dry-run / execute 的纯函数构建块。但 **持久化的后端 migration execution pipeline 属于后续计划，不被描述为已完成能力。**
 
-## 已实现能力（对照课题 §4）
+---
 
-- **§4.1 任务管理**：状态机（草稿/发布中/已暂停/已结束）、基础信息（标题/描述/富文本说明/标签/奖励/截止/配额）、数据集导入（JSON/JSONL/Excel）+ 题目预览 + 单条/批量编辑、分发策略（先到先得 + 配额抢单，幂等并发）。
-- **§4.2 动态表单（核心难点）**：Designer/Renderer 解耦、可序列化 canonical JSON Schema、物料拖拽放置 + 节点重排、全部物料（文本/选择/富文本/上传/JSON/LLM/ShowItem）、分组容器 + 多 Tab、字段联动（visibleWhen）+ 运行时校验（必填/长度/正则/conditional）。
-- **§4.3 标注台**：任务广场搜索筛选、上下题/跳题、草稿自动保存、提交校验、题目级 LLM 辅助（真实大模型）、我的贡献统计。
-- **§4.4 AI 预审（核心难点）**：可配置 Prompt + 评分维度 + 阈值、异步入队、真实 LLM 结构化打分、通过/打回/人工复核、失败重试 + 幂等、token/模型/Prompt 可追溯。
-- **§4.5 多角色审核**：状态机 + 双轨审计（audit_logs + audit_events）、初审/复审/终审 stage、批量操作、打回附理由 + 上一轮意见。
-- **§4.6 多格式导出**：JSON/JSONL/CSV/Excel、异步 + 下载历史、字段映射（重命名 / 含审核记录）、导出附 Data Quality Passport。
+## 10. 当前完成状态
 
-## 关键设计取舍
+### 已完成
 
-- **Designer/Renderer 解耦**：LabelHub 自有 canonical Schema（`root` 树 + `kind`）为唯一事实源，前端用统一 schema 同时驱动 Designer 预览与 Labeler 运行时；不把第三方表单库协议暴露进契约。
-- **命令驱动状态机 + 审计**：task/assignment/submission/export 全状态迁移可追溯，审计与业务同事务。
-- **AI 异步预审**：Celery + 真实 LLM（temperature=0 提升评分稳定）+ 结构化 JSON 解析容错 + 人工兜底。
-- **前后端 hash 一致**：`canonical-json-v1 + SHA-256`，后端 `app/utils/hashing.py` 与前端 `packages/schema-core` 用同一组 test vectors 验证逐字节一致。
-- **Schema 版本管理**：已发布版本不可变快照，旧答卷绑定创建时 `schemaVersionId`，默认不迁移。
-- **Quality Layer**：标注/审核/AI/导出统一建模为质量事件，导出数据附带质量证据链（Data Quality Passport）。
+- Owner / Labeler / Reviewer 三角色工作流
+- Dynamic Schema Designer 与 Runtime
+- Schema Version Management UI
+- 版本历史与不可变快照
+- 兼容性检查与 breaking change 阻断
+- Labeler / Reviewer AI Assist preflight
+- Reviewer decision flow（PASS / RETURN / REVISE）
+- Quality Center / Export Passport / Audit
+- AI Review 配置与自动归一化权重 slider
+
+### 后续计划
+
+- 后端 migration execution pipeline（持久化、修改数据库的迁移执行）
+- 历史答卷批量迁移（historical answers batch migration）
+- migration approval workflow（Dry Run → 审批 → 执行 → 不可变记录）
+- 更完整的生产级权限管理
+- 更细粒度的质量分析
+- 部署监控
+
+---
+
+## 11. 相关交付文档
+
+| 文档 | 用途 |
+| --- | --- |
+| [labelhub-architecture-contract.md](./labelhub-architecture-contract.md) | 顶层架构契约（v1.1），各层共同依据 |
+| [AI_CODING_RULES.md](./AI_CODING_RULES.md) | AI Coding 统一规则（contract-driven、禁止事项、验证要求） |
+| [docs/LabelHub_Final_Delivery.md](./docs/LabelHub_Final_Delivery.md) | 最终交付说明 |
+| [docs/LabelHub_Delivery_Runbook.md](./docs/LabelHub_Delivery_Runbook.md) | 交付 / 部署 runbook |
+| [docs/LabelHub_Schema_Version_Management.md](./docs/LabelHub_Schema_Version_Management.md) | Schema 版本管理实施规格 |
+| [docs/delivery-drafts/AI_CODING_PROCESS.md](./docs/delivery-drafts/AI_CODING_PROCESS.md) | AI Coding 过程与开发记录（草稿） |
+| [submission/README.md](./submission/README.md) | 答辩交付物索引 |
+
+---
+
+## 12. 安全说明
+
+- 不要提交 API keys、tokens 或 secrets。
+- 不要暴露私有 LLM provider credentials。
+- 使用本地 `.env` 文件管理密钥（参考 `.env.example`）。
+
+---
+
+## 13. 最终交付说明
+
+- 建议最终交付分支：PR 合并后的 `dev` 或 `main`。
+- 当前稳定集成分支：`integration/joint-test`。
+- 当前稳定 tag：`stable-after-owner-ai-config-polish-0610`。

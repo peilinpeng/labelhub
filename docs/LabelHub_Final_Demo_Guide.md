@@ -1,7 +1,7 @@
 # LabelHub Final Demo Guide
 
 > 版本：2026-06-07（文档收束版）
-> 适用分支：`feature/schema-governance-upgrade`
+> 适用分支：`integration/joint-test`
 > 适用场景：竞赛答辩、演示、评委评审
 >
 > **阅读前提：** 必须使用 `VITE_ENABLE_MSW=true npm run dev` 启动，普通启动会 404。
@@ -13,7 +13,7 @@
 ### 1.1 标准启动
 
 ```bash
-git checkout feature/schema-governance-upgrade
+git checkout integration/joint-test
 git pull
 npm install
 

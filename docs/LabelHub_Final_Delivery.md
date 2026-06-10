@@ -2,8 +2,9 @@
 
 > 版本：2026-06-10
 > 适用分支：`integration/joint-test`
-> 当前基线：`7ff8d8a feat(web): add normalized ai review weight sliders`
-> 稳定参考点：`stable-after-owner-ai-config-polish-0610` -> `7ff8d8a`
+> 当前基线：`f30af86`（`integration/joint-test` 最新集成提交）
+> 历史稳定参考点：`demo-stable-p1-0609` -> `09e5bf0`
+> 阶段稳定参考点：`stable-after-owner-ai-config-polish-0610` -> `7ff8d8a`
 
 本文档是 LabelHub 答辩和交付的总入口，面向评审、维护者和现场演示人员。它只描述当前可交付能力、启动方式、演示路线、验证方式和已知边界；更细的架构设计见文末相关文档。
 

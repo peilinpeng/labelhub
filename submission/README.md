@@ -38,7 +38,7 @@
   - [`docs/final-iteration-plan.md`](../docs/final-iteration-plan.md)（最终迭代规划）
   - [`docs/dataset-test-scenario-plan.md`](../docs/dataset-test-scenario-plan.md)（比赛数据接入方案）
 - [x] 架构图：[`submission/architecture.png`](./architecture.png)（系统架构）+ [`submission/data-quality-flow.png`](./data-quality-flow.png)（数据质量主线）；Mermaid 源 `architecture.mmd` / `data-quality-flow.mmd`。
-- [x] AI Coding 过程记录：[`submission/ai-coding-log.md`](./ai-coding-log.md)（开发思路 / 关键决策 / 工具使用约束）。
+- [x] AI Coding 过程记录：[`submission/ai-coding-log.md`](./ai-coding-log.md)（开发思路 / 关键决策 / 工具使用约束）；完整过程记录见 [`docs/delivery-drafts/AI_CODING_PROCESS.md`](../docs/delivery-drafts/AI_CODING_PROCESS.md)（开发阶段 / AI Coding 使用方式 / 关键迭代记录 / 验证方式）。
 - [x] Demo 截图：[`submission/screenshots/`](./screenshots/)（三角色 6 张关键页 + 索引）。
 
 ## 5. 可访问的演示环境说明
@@ -67,6 +67,6 @@ bash apps/api/scripts/e2e_test.sh                                               
 
 - [ ] 演示视频（由搭档录制）
 - [x] 架构图
-- [x] AI Coding 过程记录
+- [x] AI Coding 过程记录（见 `docs/delivery-drafts/AI_CODING_PROCESS.md`）
 - [x] Demo 截图
 - [ ] 云演示环境地址 + 账号（待部署后填写）
