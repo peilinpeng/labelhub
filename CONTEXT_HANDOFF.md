@@ -27,7 +27,7 @@
 6. 三套 seed：`seed.py`(*@labelhub.test/Seed@1234，E2E 用) / `seed_demo.py`(*@labelhub.com/password123) / `seed_competition.py`(举办方真实数据 2 任务)。另有 `clean_demo.py` 清理测试杂项任务。
 7. **Schema 形状坑**：契约权威是 canonical `root` 树（`kind`/`children`/`title`），**不是扁平 `nodes`**；后端 validate_schema/assignment_domain 已兼容两者，新建 schema 一律用 canonical（参考 `seed_competition.py` 的 `_schema/_field/_show/_container/_llm`）。
 8. hash：`canonical-json-v1 + SHA-256`，后端 `app/utils/hashing.py` 与前端 `packages/schema-core/src/stable-hash.ts` 用同一组 test vectors 验证一致（避开浮点）。
-9. DOUBAO key 已在根 `.env`（用官方提供模型 `ep-20260514105718-jthdm`）；真实 LLM 链路已验证可跑。
+9. DOUBAO key 已在根 `.env`（官方提供模型，接入点 EP 与 key 仅存于本地 `.env`，勿写入仓库）；真实 LLM 链路已验证可跑。
 
 ## 3. 本迭代已完成（commit 在 `integration/joint-test`）
 - 后端优化计划 Part A–E（早期）+ 另一账号的 worker 修复(celery include + AI 解析鲁棒性)、audit-events 契约对齐、publish 前置校验(P2-E)、数据集导入 UI(P1-A)、富文本说明(P2-A)、clean_demo(P2-D)。
