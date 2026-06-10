@@ -518,6 +518,55 @@ describe("LLMAssistRenderer preflight UI", () => {
     expect(onAssistOutcome.mock.calls.some((call) => call[0].action === "DISMISSED")).toBe(false);
   });
 
+  test("BLOCKED 时忽略建议可点击，点击后触发 DISMISSED 并清掉建议块，不应用 patch", async () => {
+    const onAssistOutcome = vi.fn();
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 输出",
+      suggestedPatch: { nonExistent: "x" },
+      callId: "llm_blocked_dismiss",
+    } as LLMRuntimeResponse);
+
+    renderWithSchema(makeSimpleSchema(), { onLLMAssist, onAssistOutcome });
+    await clickAiButton();
+
+    await waitFor(() => document.querySelector("[data-preflight-status='BLOCKED']") !== null);
+
+    // 一键采纳仍禁用、忽略建议可点击
+    expect((screen.getByRole("button", { name: "一键采纳" }) as HTMLButtonElement).disabled).toBe(true);
+    const dismissBtn = screen.getByRole("button", { name: "忽略建议" }) as HTMLButtonElement;
+    expect(dismissBtn.disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(dismissBtn);
+    });
+
+    // 触发 DISMISSED、不触发 ACCEPTED（即未应用 suggestedPatch）
+    const dismissedCalls = onAssistOutcome.mock.calls.filter(
+      (call) => (call[0] as { action: string }).action === "DISMISSED",
+    );
+    expect(dismissedCalls).toHaveLength(1);
+    expect(onAssistOutcome.mock.calls.some((call) => call[0].action === "ACCEPTED")).toBe(false);
+    // 建议块被清掉
+    expect(document.querySelector("[data-preflight-status='BLOCKED']")).toBeNull();
+    expect(screen.queryByRole("button", { name: "忽略建议" })).toBeNull();
+  });
+
+  test("SAFE 时忽略建议与一键采纳并存，且一键采纳仍可用", async () => {
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 输出",
+      suggestedPatch: { fieldA: "v" },
+      callId: "llm_safe_with_dismiss",
+    } as LLMRuntimeResponse);
+
+    renderWithSchema(makeSimpleSchema(), { onLLMAssist });
+    await clickAiButton();
+
+    await waitFor(() => screen.queryByText(/可以一键采纳/) !== null);
+
+    expect((screen.getByRole("button", { name: "一键采纳" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "忽略建议" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   test("重新检查质量时会清空旧 preflightResult", async () => {
     let callCount = 0;
     const onLLMAssist = vi.fn().mockResolvedValue({

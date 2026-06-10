@@ -141,9 +141,26 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
             </button>
           ) : null}
           <button
+            className="ai-quality-panel__dismiss lh-button"
+            type="button"
+            onClick={() => {
+              // 忽略建议：始终可点（不受 preflight / canApply 影响），仅清掉当前建议块，
+              // 不应用 suggestedPatch，并通过已有链路记录 DISMISSED 交互结果。
+              notifyAssistOutcome(renderContext, notifiedOutcomesRef.current, {
+                callId: response?.callId ?? "",
+                nodeId: node.id,
+                action: "DISMISSED",
+              });
+              setResponse(undefined);
+              setPreflightResult(undefined);
+            }}
+          >
+            忽略建议
+          </button>
+          <button
             className="ai-quality-panel__feedback"
             disabled
-            title="反馈功能暂未接入，请先手动调整本题答案。"
+            title="反馈功能暂未接入，请先手动调整本题答案；如需放弃这条建议可点「忽略建议」。"
             type="button"
           >
             反馈问题
