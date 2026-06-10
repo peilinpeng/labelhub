@@ -1,0 +1,21 @@
+%% LabelHub 数据质量主线 — 渲染见 submission/data-quality-flow.png
+%% 答辩主线：结构先可信 → 运行时校验 → AI 不绕过规则 → 人工留痕 → 交付带证据链
+flowchart LR
+    A["Schema Governance<br/>不可变版本快照<br/>发布前兼容性检查<br/>Breaking Change 阻断"]
+    B["Labeler Runtime<br/>动态表单 · visibleWhen 联动<br/>必填/正则/条件校验<br/>(qualityScore=1/2 → factCheckNote)"]
+    C["AI Preflight<br/>异步结构化预审<br/>维度评分 + 阈值<br/>BLOCKED 建议不可直接采纳"]
+    D["Human Review Diff<br/>PASS / RETURN / REVISE<br/>字段级 diff<br/>审计仅记录字段名+patch 数"]
+    E["Export Passport<br/>JSON/JSONL/CSV/Excel<br/>Data Quality Passport<br/>真实 SHA-256 批次 hash"]
+
+    A --> B --> C --> D --> E
+
+    Audit[("审计追踪<br/>audit_logs + audit_events<br/>与业务同事务")]
+    B -.-> Audit
+    C -.-> Audit
+    D -.-> Audit
+    A -.-> Audit
+
+    classDef step fill:#eef2ff,stroke:#6366f1,color:#1e1b4b;
+    classDef audit fill:#f0fdf4,stroke:#22c55e,color:#14532d;
+    class A,B,C,D,E step;
+    class Audit audit;

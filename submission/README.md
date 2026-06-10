@@ -37,9 +37,9 @@
   - [`docs/backend-optimization-plan.md`](../docs/backend-optimization-plan.md)（后端优化与测试方案）
   - [`docs/final-iteration-plan.md`](../docs/final-iteration-plan.md)（最终迭代规划）
   - [`docs/dataset-test-scenario-plan.md`](../docs/dataset-test-scenario-plan.md)（比赛数据接入方案）
-- [ ] 架构图：待补 `submission/architecture.png`。
-- [ ] AI Coding 过程记录：待整理 `submission/ai-coding-log.md`（开发思路 / 关键决策 / 过程截图）。
-- [ ] Demo 截图：待补 `submission/screenshots/`。
+- [x] 架构图：[`submission/architecture.png`](./architecture.png)（系统架构）+ [`submission/data-quality-flow.png`](./data-quality-flow.png)（数据质量主线）；Mermaid 源 `architecture.mmd` / `data-quality-flow.mmd`。
+- [x] AI Coding 过程记录：[`submission/ai-coding-log.md`](./ai-coding-log.md)（开发思路 / 关键决策 / 工具使用约束）。
+- [x] Demo 截图：[`submission/screenshots/`](./screenshots/)（三角色 6 张关键页 + 索引）。
 
 ## 5. 可访问的演示环境说明
 
@@ -65,8 +65,8 @@ bash apps/api/scripts/e2e_test.sh                                               
 
 ## 待办勾选（提交前补齐）
 
-- [ ] 演示视频
-- [ ] 架构图
-- [ ] AI Coding 过程记录
-- [ ] Demo 截图
-- [ ] 云演示环境地址 + 账号
+- [ ] 演示视频（由搭档录制）
+- [x] 架构图
+- [x] AI Coding 过程记录
+- [x] Demo 截图
+- [ ] 云演示环境地址 + 账号（待部署后填写）
