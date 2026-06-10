@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { listTasks } from "../../api/owner";
-import { Badge, Card, Input, Select } from "../../ui/primitives";
+import { archiveTask, endTask, listTasks } from "../../api/owner";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
+import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
 import type { Task } from "@labelhub/contracts";
 
 interface OwnerWorkspaceProps {
@@ -42,6 +43,18 @@ function DownloadIcon() {
       <path d="M12 3.5v11" />
       <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
       <path d="M4.5 18.5h15" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M4 7h16" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M6 7l1 13h10l1-13" />
+      <path d="M9 7V4h6v3" />
     </svg>
   );
 }
@@ -99,6 +112,9 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const [status, setStatus] = useState("ALL");
   const [strategy, setStrategy] = useState("ALL");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState<{ tone: "success" | "danger" | "warning"; text: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,7 +123,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       try {
         setLoading(true);
         const data = await listTasks();
-        setTasks(data.filter((task) => !isPlaceholderTask(task)));
+        setTasks(data.filter((task) => task.status !== "ARCHIVED" && !isPlaceholderTask(task)));
         setError(null);
       } catch (cause) {
         setTasks([]);
@@ -152,6 +168,40 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const draftCount = draftTasks.length;
   const totalQuota = tasks.reduce((sum, task) => sum + task.quota.total, 0);
 
+  const handleDeleteTask = async () => {
+    if (!deleteTarget || deleting) return;
+
+    const reason = "Owner 在任务管理页确认删除任务。";
+    try {
+      setDeleting(true);
+      if (deleteTarget.status === "DRAFT") {
+        throw new Error("当前后端暂未开放草稿任务删除接口，任务未删除。");
+      }
+      if (deleteTarget.status === "PUBLISHED" || deleteTarget.status === "PAUSED") {
+        await endTask(deleteTarget.id, reason);
+      }
+      await archiveTask(deleteTarget.id, reason);
+      setTasks((current) => current.filter((task) => task.id !== deleteTarget.id));
+      setSelectedTaskId((current) => (current === deleteTarget.id ? null : current));
+      setDeleteMessage({ tone: "success", text: `任务「${deleteTarget.title}」已删除，并保留后端审计记录。` });
+      setDeleteTarget(null);
+    } catch (cause) {
+      setDeleteMessage({
+        tone: "danger",
+        text: cause instanceof Error ? `删除失败：${cause.message}` : "删除失败：后端未完成该操作。",
+      });
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const deleteDialogDescription = deleteTarget
+    ? deleteTarget.status === "DRAFT"
+      ? `当前任务「${deleteTarget.title}」仍是草稿。现有后端只允许删除已发布后结束的任务，因此确认后如果后端不支持草稿删除，任务会保留在列表中。`
+      : `确定要删除任务「${deleteTarget.title}」吗？删除会通过后端状态机结束并归档任务，任务将从当前列表隐藏，已有标注、审核和审计记录仍会保留。`
+    : "";
+
   if (loading) {
     return <Card className="state-panel">加载任务中...</Card>;
   }
@@ -162,6 +212,13 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
         <Card className="owner-fallback-notice">
           <Badge tone="danger">加载失败</Badge>
           <span>未加载任何占位数据。{error}</span>
+        </Card>
+      ) : null}
+
+      {deleteMessage ? (
+        <Card className="owner-fallback-notice">
+          <Badge tone={deleteMessage.tone}>{deleteMessage.tone === "success" ? "已删除" : "删除失败"}</Badge>
+          <span>{deleteMessage.text}</span>
         </Card>
       ) : null}
 
@@ -302,7 +359,11 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                       </div>
                     </td>
                     <td>
-                      <div className="owner-row-actions" onClick={(event) => event.stopPropagation()}>
+                      <div
+                        className="owner-row-actions"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
                         <Link
                           to={`/owner/tasks/${task.id}`}
                           className="owner-icon-action"
@@ -335,6 +396,18 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                         >
                           <DownloadIcon />
                         </Link>
+                        <button
+                          type="button"
+                          className="owner-icon-action owner-icon-action--danger"
+                          aria-label={`删除 ${task.title}`}
+                          data-tooltip="删除"
+                          onClick={() => {
+                            setDeleteMessage(null);
+                            setDeleteTarget(task);
+                          }}
+                        >
+                          <TrashIcon />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -417,10 +490,33 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
               <Link to={`/owner/tasks/${selectedTask.id}/export`} className="lh-button">
                 导出数据
               </Link>
+              <Button
+                type="button"
+                tone="danger"
+                onClick={() => {
+                  setDeleteMessage(null);
+                  setDeleteTarget(selectedTask);
+                }}
+              >
+                删除任务
+              </Button>
             </div>
           </aside>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="确认删除任务"
+        description={deleteDialogDescription}
+        confirmText={deleting ? "删除中" : "确认删除"}
+        cancelText="取消"
+        tone="danger"
+        onCancel={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        onConfirm={() => void handleDeleteTask()}
+      />
     </div>
   );
 }

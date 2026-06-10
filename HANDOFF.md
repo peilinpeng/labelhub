@@ -11,6 +11,56 @@
 
 ---
 
+## 2026-06-10 Owner 任务删除入口（Codex，未提交）
+
+- 当前实际分支：`integration/joint-test`
+- 当前基线：`22d1f05 fix(web): respect dataset item page size limit`
+- 修改范围：
+  - `apps/web/src/api/owner.ts`
+  - `apps/web/src/features/owner/OwnerWorkspace.tsx`
+  - `apps/web/src/styles.css`
+- 本轮修改：
+  - Owner 任务管理页新增删除入口：任务列表操作列新增红色删除图标按钮，任务详情弹窗 actions 新增“删除任务”按钮。
+  - 点击删除会先打开 `ConfirmDialog` 确认弹窗，不会直接执行。
+  - 删除逻辑复用真实后端已有状态机接口：`PUBLISHED/PAUSED` 任务先调用 `POST /api/v1/tasks/:taskId/end`，再调用 `POST /api/v1/tasks/:taskId/archive`；`ENDED` 任务直接归档。
+  - 列表加载时过滤 `ARCHIVED` 任务；删除成功后从当前列表移除，并显示保留后端审计记录的成功提示。
+  - `DRAFT` 草稿任务没有后端删除/归档路径，本轮不假删；确认后显示“当前后端暂未开放草稿任务删除接口，任务未删除。”。
+  - 操作列宽度与按钮样式已补齐，删除按钮 hover 保持红色危险态；键盘触发操作按钮时不再冒泡打开任务详情。
+- 边界：
+  - 未修改 `apps/api`。
+  - 未修改 `packages/contracts`。
+  - 未修改 `schema-core` 核心逻辑。
+  - 未伪造删除成功；草稿删除需要后端新增真实接口后才能完全闭环。
+- 验证：
+  - `npm.cmd --prefix apps/web run typecheck` 通过。
+  - `npm.cmd --prefix apps/web run build` 通过；仍保留既有 `Circular chunk: vendor -> vendor-react -> vendor` 提示。
+  - `git diff --check` 通过，仅显示既有 LF/CRLF warning。
+  - Codex 内置浏览器连接层两次失败于本地 `spawn setup refresh`，未完成截图式浏览器复验。
+- 收班状态：
+  - 本轮代码与交接文档尚未 commit / push。
+
+## 2026-06-10 Owner 任务管理移动端裁切修复（Codex，未提交）
+
+- 当前实际分支：`integration/joint-test`
+- 当前基线：`22d1f05 fix(web): respect dataset item page size limit`
+- 修改范围：
+  - `apps/web/src/styles.css`
+- 本轮修改：
+  - 修复 `/owner/tasks` 移动端顶部错误/状态提示条长文本不换行导致右侧裁切的问题：`owner-fallback-notice` 文本现在允许收缩并按任意位置换行。
+  - Owner 任务筛选栏在移动端改为单列，避免 `minmax(240px, 1fr) 150px 170px` 固定列宽撑出横向宽度。
+  - Owner 任务表在移动端继续使用卡片式表格，并补充 `tbody`、操作区、表头统计区的 `min-width: 0` / 单列布局，减少横向溢出。
+  - 任务表内的 5 个图标操作按钮在手机端改为可换行横向图标组，不再继承全局“操作区单列”导致布局异常。
+  - 任务草稿卡标题、说明和“继续配置”按钮补充移动端收缩/换行规则，避免长任务名或按钮撑宽卡片。
+- 边界：
+  - 未修改 `apps/api`。
+  - 未修改 `packages/contracts`。
+  - 未修改业务逻辑，仅调整 Owner 任务管理页和通用移动端 CSS。
+- 验证：
+  - `npm.cmd --prefix apps/web run typecheck` 通过。
+  - `npm.cmd --prefix apps/web run build` 通过；仍保留既有 `Circular chunk: vendor -> vendor-react -> vendor` 提示。
+  - `git diff --check` 通过，仅显示既有 LF/CRLF warning。
+  - Codex 内置浏览器连接层仍失败于本地 `spawn setup refresh`，未完成截图式浏览器复验。
+
 ## 2026-06-10 追加修复：Owner 模板页数据导入状态与数据管理页同步（Codex，已提交并准备推送）
 
 - 当前实际分支：`integration/joint-test`
