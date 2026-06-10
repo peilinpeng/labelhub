@@ -322,7 +322,7 @@ function OwnerQualityCenterContent() {
             error={eventsError}
             emptyText="暂无 AI 质量线索。AI 预审产出或审核员处理 AI 建议后，这里会显示相关记录。"
             secondary={resolvedTaskId
-              ? { to: `/owner/tasks/${resolvedTaskId}/ai-config`, label: "配置 AI 预审规则" }
+              ? { to: `/owner/tasks/${resolvedTaskId}/ai-precheck`, label: "配置 AI 预审规则" }
               : { label: "配置 AI 预审规则", disabledHint: "请先创建任务后再配置 AI 预审规则。" }}
             taskTitleOf={taskTitleOf}
           />

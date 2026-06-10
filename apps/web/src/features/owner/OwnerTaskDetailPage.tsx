@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
 import { fetchTask, fetchTaskStats, type TaskStats } from "../../api/owner";
+import { getReviewConfig } from "../../api/reviewer";
 import { Badge, Card } from "../../ui/primitives";
 import { MarkdownPreview, docToMarkdown } from "../../ui/markdown";
 import type { Task } from "@labelhub/contracts";
+import { buildTaskSetupSteps, PublishReadinessPanel, TaskSetupStepper, type ReadinessItem } from "./TaskSetupGuide";
 
 interface OwnerTaskDetailPageProps {
   role: Role;
@@ -17,9 +19,10 @@ function statusTone(status: Task["status"]): "success" | "warning" | "default" {
 }
 
 function statusLabel(status: Task["status"]): string {
-  if (status === "PUBLISHED") return "已发布";
-  if (status === "DRAFT") return "草稿";
+  if (status === "PUBLISHED") return "发布中";
+  if (status === "DRAFT") return "草稿任务";
   if (status === "PAUSED") return "已暂停";
+  if (status === "ARCHIVED") return "已归档";
   return "已结束";
 }
 
@@ -45,6 +48,8 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
   const { taskId } = useParams<{ taskId: string }>();
   const [task, setTask] = useState<Task | null>(null);
   const [stats, setStats] = useState<TaskStats | null>(null);
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,6 +73,15 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
     if (!taskId) return;
     // 统计是看板增强项，失败不影响任务详情主体渲染。
     void fetchTaskStats(taskId).then(setStats).catch(() => setStats(null));
+    void getReviewConfig(taskId)
+      .then((config) => {
+        setAiConfigured(true);
+        setAiEnabled(config.enabled);
+      })
+      .catch(() => {
+        setAiConfigured(false);
+        setAiEnabled(null);
+      });
   }, [taskId]);
 
   if (loading) {
@@ -79,6 +93,65 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
   }
 
   const activeVersionLabel = task.activeSchemaVersionId ?? "尚未绑定版本";
+  const hasData = (stats?.datasetTotal ?? 0) > 0;
+  const hasAvailableData = (stats?.datasetAvailable ?? 0) > 0;
+  const templateReady = Boolean(task.activeSchemaVersionId);
+  const distributionReady = isDistributionReady(task);
+  const setupSteps = buildTaskSetupSteps({
+    taskId: task.id,
+    currentStep: "basic",
+    hasData,
+    templateReady,
+    aiReady: aiConfigured,
+    distributionReady,
+    dataMeta: stats ? `已导入 ${stats.datasetTotal} 条，可领取 ${stats.datasetAvailable} 条` : "数据状态待检查",
+    templateMeta: templateReady ? "已发布模板" : "待配置模板",
+    aiMeta: aiConfigured ? (aiEnabled ? "AI 预审已启用" : "已明确不启用 AI 预审") : "待配置规则",
+  });
+  const readinessItems: ReadinessItem[] = [
+    {
+      key: "basic",
+      label: "基础信息",
+      state: task.title.trim() && task.quota.total > 0 ? "done" : "error",
+      detail: task.title.trim() && task.quota.total > 0 ? "任务名称、配额和基础设置已填写。" : "基础信息不完整。",
+    },
+    {
+      key: "data",
+      label: "数据管理",
+      state: hasData && hasAvailableData ? "done" : "error",
+      detail: stats
+        ? hasData
+          ? hasAvailableData
+            ? `已导入 ${stats.datasetTotal} 条，其中 ${stats.datasetAvailable} 条可领取。`
+            : `已导入 ${stats.datasetTotal} 条，但暂无可领取数据。`
+          : "发布前需要先导入标注数据。"
+        : "数据状态待检查。",
+      href: `/owner/tasks/${task.id}/data`,
+      actionLabel: "去导入数据",
+    },
+    {
+      key: "template",
+      label: "模板配置",
+      state: templateReady ? "done" : "error",
+      detail: templateReady ? "已绑定发布模板。" : "发布前需要完成标注模板配置。",
+      href: `/owner/tasks/${task.id}/designer`,
+      actionLabel: "去配置模板",
+    },
+    {
+      key: "ai",
+      label: "AI 预审",
+      state: aiConfigured ? "done" : "error",
+      detail: aiConfigured ? (aiEnabled ? "AI 预审已启用。" : "已明确选择不启用 AI 预审。") : "发布前需要配置 AI 预审规则。",
+      href: `/owner/tasks/${task.id}/ai-precheck`,
+      actionLabel: "去配置 AI 预审",
+    },
+    {
+      key: "distribution",
+      label: "分发设置",
+      state: distributionReady ? "done" : "error",
+      detail: distributionReady ? "分发策略和配额已满足发布要求。" : "分发策略或配额设置不完整。",
+    },
+  ];
 
   return (
     <div className="page-stack owner-task-board-page">
@@ -98,17 +171,23 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
           <Link to={RoutePath.OWNER_TASKS} className="lh-button">
             返回任务
           </Link>
-          <Link to={`/owner/tasks/${task.id}/dataset`} className="lh-button">
-            管理数据集
+          <Link to={`/owner/tasks/${task.id}/data`} className="lh-button">
+            数据管理
           </Link>
           <Link to={`/owner/tasks/${task.id}/designer`} className="lh-button lh-button--primary">
             配置模板
+          </Link>
+          <Link to={`/owner/tasks/${task.id}/ai-precheck`} className="lh-button">
+            AI 预审配置
           </Link>
           <Link to={`/owner/tasks/${task.id}/export`} className="lh-button">
             导出数据
           </Link>
         </div>
       </div>
+
+      <TaskSetupStepper steps={setupSteps} />
+      <PublishReadinessPanel items={readinessItems} />
 
       <section className="owner-task-board-grid" aria-label="任务看板">
         <Card className="owner-board-card owner-board-card--primary">
@@ -210,8 +289,11 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
               <div><span>已打回</span><strong>{stats?.returned ?? "-"}</strong></div>
             </div>
             <div className="owner-task-actions-grid">
-              <Link to={`/owner/tasks/${task.id}/dataset`} className="lh-button">
-                管理数据集
+              <Link to={`/owner/tasks/${task.id}/data`} className="lh-button">
+                数据管理
+              </Link>
+              <Link to={`/owner/tasks/${task.id}/ai-precheck`} className="lh-button">
+                AI 预审配置
               </Link>
               <Link to={`/owner/tasks/${task.id}/export`} className="lh-button">
                 查看交付
@@ -269,4 +351,15 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
       </div>
     </div>
   );
+}
+
+function isDistributionReady(task: Task): boolean {
+  if (!task.title.trim() || task.quota.total < 1) return false;
+  if (task.distributionStrategy.type === "ASSIGNMENT") {
+    return task.distributionStrategy.assigneeIds.length > 0;
+  }
+  if (task.distributionStrategy.type === "QUOTA_CLAIM") {
+    return task.distributionStrategy.claimBatchSize > 0;
+  }
+  return true;
 }

@@ -13,17 +13,24 @@
 ## 2. README（架构 / 模块划分 / 启动 / 取舍）
 
 - 根 [`README.md`](../README.md)：架构全景、快速启动、已实现能力（对照 §4）、关键设计取舍、测试与验证、API 文档入口。
+- 最终交付说明：[`docs/LabelHub_Final_Delivery.md`](../docs/LabelHub_Final_Delivery.md)：当前稳定状态、交付范围、演示路线、验收点、已知边界。
+- 现场运行手册：[`docs/LabelHub_Delivery_Runbook.md`](../docs/LabelHub_Delivery_Runbook.md)：启动命令、账号、演示操作卡、故障排查。
 - 后端 [`apps/api/README.md`](../apps/api/README.md)。
 
 ## 3. 演示视频（5–10 分钟，覆盖三角色完整链路）
 
 - [ ] 待录制并放置：`submission/demo-video.mp4`（或外链）。
-- 录屏剧本：[`docs/LabelHub_Demo_Guide.md`](../docs/LabelHub_Demo_Guide.md) → 「真实后端全链路 Demo」一节（建任务→搭模板拖拽→发布→作答→AI 辅助→提交→AI 预审→人工审核→导出带质量护照）。
+- 录屏剧本：
+  - 真实后端全链路：[`docs/LabelHub_Demo_Guide.md`](../docs/LabelHub_Demo_Guide.md)
+  - 最终交付主线摘要：[`docs/LabelHub_Final_Delivery.md`](../docs/LabelHub_Final_Delivery.md) → 「推荐演示路线」
+  - 现场操作卡：[`docs/LabelHub_Delivery_Runbook.md`](../docs/LabelHub_Delivery_Runbook.md) → 「演示操作卡」
 
 ## 4. 相关文档（架构图 / 关键技术点 / 截图 / AI Coding 记录）
 
 - 架构契约：[`labelhub-architecture-contract.md`](../labelhub-architecture-contract.md)（v1.1）
 - 关键技术设计：
+  - [`docs/LabelHub_Final_Delivery.md`](../docs/LabelHub_Final_Delivery.md)（最终交付总说明）
+  - [`docs/LabelHub_Delivery_Runbook.md`](../docs/LabelHub_Delivery_Runbook.md)（现场运行手册）
   - [`docs/labelhub_schema_runtime_engine.md`](../docs/labelhub_schema_runtime_engine.md)（Schema Runtime Engine）
   - [`docs/LabelHub_Schema_Version_Management.md`](../docs/LabelHub_Schema_Version_Management.md)（Schema 版本管理）
   - [`docs/Labelhub_Quality_Layer.md`](../docs/Labelhub_Quality_Layer.md)（质量治理层）
@@ -37,6 +44,7 @@
 ## 5. 可访问的演示环境说明
 
 - 云部署指引：[`docs/deployment.md`](../docs/deployment.md) → §10 云部署。
+- 本地交付运行手册：[`docs/LabelHub_Delivery_Runbook.md`](../docs/LabelHub_Delivery_Runbook.md)。
 - [ ] 待补：演示环境公网地址 + 演示账号（owner/labeler/reviewer @labelhub.com / password123）。
 
 ## 6. API 文档

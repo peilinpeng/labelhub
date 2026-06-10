@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Task } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
-import { listTasks } from "../../api/owner";
+import { fetchTaskStats, listTasks, type TaskStats } from "../../api/owner";
 import {
   createReviewConfig,
   getReviewConfig,
@@ -10,6 +10,7 @@ import {
   type ReviewConfigPayload,
 } from "../../api/reviewer";
 import { AIReviewPanel, Badge, Button, Card, Input, Select } from "../../ui/primitives";
+import { buildTaskSetupSteps, TaskSetupStepper } from "./TaskSetupGuide";
 
 interface OwnerAIPageProps {
   role: Role;
@@ -30,6 +31,9 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
   const [promptTemplate, setPromptTemplate] = useState(defaultPromptTemplate);
   const [dimensions, setDimensions] = useState(defaultDimensions);
   const [configId, setConfigId] = useState<string | null>(null);
+  const [triggerTiming, setTriggerTiming] = useState("AFTER_SUBMIT");
+  const [reviewFlowMode, setReviewFlowMode] = useState("AI_THEN_HUMAN");
+  const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [ownerNotice, setOwnerNotice] = useState<string | null>(null);
@@ -108,6 +112,21 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
     };
   }, [selectedTaskId]);
 
+  useEffect(() => {
+    if (!selectedTaskId) return;
+    let cancelled = false;
+    void fetchTaskStats(selectedTaskId)
+      .then((stats) => {
+        if (!cancelled) setTaskStats(stats);
+      })
+      .catch(() => {
+        if (!cancelled) setTaskStats(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTaskId]);
+
   const payload = useMemo<ReviewConfigPayload>(() => ({
     enabled,
     modelPolicyId: model,
@@ -142,18 +161,33 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
   };
 
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
+  const hasData = (taskStats?.datasetTotal ?? 0) > 0;
+  const setupSteps = selectedTaskId
+    ? buildTaskSetupSteps({
+        taskId: selectedTaskId,
+        currentStep: "ai",
+        hasData,
+        templateReady: Boolean(selectedTask?.activeSchemaVersionId),
+        aiReady: Boolean(configId),
+        dataMeta: taskStats ? `已导入 ${taskStats.datasetTotal} 条` : "数据状态待检查",
+        templateMeta: selectedTask?.activeSchemaVersionId ? "已发布模板" : "待配置模板",
+        aiMeta: configId ? (enabled ? "AI 预审已启用" : "已明确不启用 AI 预审") : "待保存配置",
+      })
+    : [];
 
   return (
     <div className="page-stack owner-ai-page">
       <div className="page-header">
         <div>
-          <h2 className="page-title">AI 预审设置</h2>
-          <p className="page-subtitle">任务负责人维护 AI Agent 配置：异步队列、结构化评分、Prompt 模板、失败重试与人工兜底。审核员只查看预审结果并提交人工决策。</p>
+          <h2 className="page-title">AI 预审配置</h2>
+          <p className="page-subtitle">配置本任务在提交前或审核前需要执行的 AI 质量检查规则。保存后再回到发布前检查完成发布。</p>
         </div>
         <Link to={RoutePath.OWNER_TASKS} className="lh-button">
           返回任务列表
         </Link>
       </div>
+
+      {setupSteps.length > 0 ? <TaskSetupStepper steps={setupSteps} /> : null}
 
       <Card className="soft-panel">
         <label className="field-label">
@@ -164,7 +198,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
             onChange={(event) => {
               const nextTaskId = event.target.value;
               setSelectedTaskId(nextTaskId);
-              navigate(`/owner/tasks/${nextTaskId}/ai-config`);
+              navigate(`/owner/tasks/${nextTaskId}/ai-precheck`);
             }}
           >
             {tasks.length === 0 ? <option value="">暂无可配置任务</option> : null}
@@ -200,6 +234,22 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
                 <option value="doubao-pro-32k">doubao-pro-32k</option>
                 <option value="gpt-4o">GPT-4o</option>
                 <option value="gpt-4">GPT-4</option>
+              </Select>
+            </label>
+            <label className="field-label">
+              检查触发时机
+              <Select value={triggerTiming} onChange={(event) => setTriggerTiming(event.target.value)} disabled={!enabled}>
+                <option value="AFTER_SUBMIT">提交后进入预审队列</option>
+                <option value="BEFORE_HUMAN_REVIEW">审核前自动预审</option>
+              </Select>
+              <small className="field-hint">当前后端按任务 ReviewConfig 执行预审；此处用于明确本任务的流程说明，不写入未支持的 contracts 字段。</small>
+            </label>
+            <label className="field-label">
+              检查结果如何进入审核流
+              <Select value={reviewFlowMode} onChange={(event) => setReviewFlowMode(event.target.value)} disabled={!enabled}>
+                <option value="AI_THEN_HUMAN">AI 预审后进入人工复核</option>
+                <option value="AUTO_PASS_RETURN">高分自动通过，低分自动打回，中间转人工</option>
+                <option value="HUMAN_REVIEW_ONLY">只生成 AI 质检提示，由审核员决策</option>
               </Select>
             </label>
             <label className="field-label">
@@ -286,6 +336,13 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
               <Badge tone={ownerNotice.includes("失败") ? "danger" : ownerNotice.includes("尚未配置") ? "warning" : "success"}>
                 {ownerNotice}
               </Badge>
+            ) : null}
+            {configId ? (
+              <div className="owner-ai-next-actions">
+                <Link to={`/owner/tasks/${selectedTaskId}/designer`} className="lh-button lh-button--primary">
+                  下一步：发布任务
+                </Link>
+              </div>
             ) : null}
           </div>
         </Card>

@@ -26,8 +26,20 @@ import type {
   Task,
 } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
-import { fetchSchemaDraft, fetchSchemaVersion, fetchServerRegistry, fetchTask, publishSchema, publishTask, saveSchemaDraft, type SchemaVersionHistoryItem } from "../../api/owner";
+import {
+  fetchSchemaDraft,
+  fetchSchemaVersion,
+  fetchServerRegistry,
+  fetchTask,
+  fetchTaskStats,
+  publishSchema,
+  publishTask,
+  saveSchemaDraft,
+  type SchemaVersionHistoryItem,
+  type TaskStats,
+} from "../../api/owner";
 import { queryAuditEvents } from "../../api/audit";
+import { getReviewConfig } from "../../api/reviewer";
 import { AuditTimelinePanel } from "./AuditTimelinePanel";
 import { SchemaVersionPanel } from "./SchemaVersionPanel";
 import { Badge, Button, Card } from "../../ui/primitives";
@@ -42,6 +54,7 @@ import {
 import { localServerComponentRegistry } from "./localComponentRegistry";
 import { PublishPreviewDialog } from "./PublishPreviewDialog";
 import { createSchemaFromPreset, schemaPresetSummaries } from "./schemaPresetLibrary";
+import { buildTaskSetupSteps, PublishReadinessPanel, TaskSetupStepper, type ReadinessItem } from "./TaskSetupGuide";
 
 interface OwnerSchemaPageProps {
   role: Role;
@@ -54,7 +67,7 @@ interface QuickMaterial {
   icon: string;
 }
 
-type NoticeTone = "success" | "danger" | "info";
+type NoticeTone = "success" | "danger" | "info" | "warning";
 
 type ConditionOperator = "eq" | "ne" | "contains" | "empty" | "notEmpty";
 type ConditionAction = "show" | "hide" | "disable";
@@ -159,6 +172,10 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [serverRegistry, setServerRegistry] = useState<ServerComponentRegistryItem[]>(localServerComponentRegistry);
   const [schema, setSchema] = useState<LabelHubSchema>(() => createFallbackSchema(taskId));
   const [task, setTask] = useState<Task | undefined>();
+  const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
+  const [taskStatsLoaded, setTaskStatsLoaded] = useState(false);
+  const [aiConfigStatus, setAiConfigStatus] = useState<"loading" | "configured" | "missing" | "error">("loading");
+  const [aiConfigEnabled, setAiConfigEnabled] = useState<boolean | null>(null);
   const [, setValidation] = useState<SchemaValidationResult | undefined>();
   const [statusMessage, setStatusMessage] = useState("正在加载模板编辑器");
   const [loading, setLoading] = useState(true);
@@ -239,6 +256,40 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   }, [taskId]);
 
   const resolvedAuditTaskId = resolveTaskId(taskId, schema.meta.taskId);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTaskStatsLoaded(false);
+    setAiConfigStatus("loading");
+    setAiConfigEnabled(null);
+
+    void (async () => {
+      const [statsResult, configResult] = await Promise.allSettled([
+        fetchTaskStats(resolvedAuditTaskId),
+        getReviewConfig(resolvedAuditTaskId),
+      ]);
+      if (cancelled) return;
+
+      if (statsResult.status === "fulfilled") {
+        setTaskStats(statsResult.value);
+      } else {
+        setTaskStats(null);
+      }
+      setTaskStatsLoaded(true);
+
+      if (configResult.status === "fulfilled") {
+        setAiConfigStatus("configured");
+        setAiConfigEnabled(configResult.value.enabled);
+      } else {
+        const message = configResult.reason instanceof Error ? configResult.reason.message : "";
+        setAiConfigStatus(message.includes("404") || message.includes("尚未配置") ? "missing" : "error");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedAuditTaskId, versionRefreshKey]);
 
   // 读取当前任务的 schema 治理审计事件（草稿保存、兼容性检查、阻断、废弃、发布等），只读展示。
   const loadAuditTimeline = async (): Promise<void> => {
@@ -321,7 +372,97 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     () => createPublishValidationResult(schema, publishConfigurationIssues),
     [schema, publishConfigurationIssues],
   );
-  const publishBlockedByDataset = publishNotice?.includes("可领取数据") ?? false;
+  const datasetImportedCount = taskStats?.datasetTotal ?? 0;
+  const datasetAvailableCount = taskStats?.datasetAvailable ?? 0;
+  const hasDataset = datasetImportedCount > 0;
+  const hasAvailableDataset = datasetAvailableCount > 0;
+  const templateReady = publishValidationResult.valid && publishConfigurationIssues.length === 0 && fieldNodes.length > 0;
+  const aiReady = aiConfigStatus === "configured";
+  const basicReady = Boolean(task?.title?.trim()) && (task?.quota.total ?? 0) > 0;
+  const distributionReady = task === undefined ? false : isDistributionReady(task);
+  const setupSteps = buildTaskSetupSteps({
+    taskId: resolvedAuditTaskId,
+    currentStep: "template",
+    basicReady,
+    hasData: hasDataset,
+    templateReady,
+    aiReady,
+    distributionReady,
+    dataMeta: taskStatsLoaded
+      ? hasDataset
+        ? `已导入 ${datasetImportedCount} 条，可领取 ${datasetAvailableCount} 条`
+        : "还未导入数据"
+      : "正在读取数据状态",
+    templateMeta: templateReady ? "模板检查已通过" : "模板配置待完成",
+    aiMeta: aiReady ? (aiConfigEnabled ? "AI 预审已启用" : "已明确不启用 AI 预审") : "待配置规则",
+  });
+  const publishReadinessItems = useMemo<ReadinessItem[]>(() => [
+    {
+      key: "basic",
+      label: "基础信息",
+      state: basicReady ? "done" : "error",
+      detail: basicReady ? "任务名称、配额和基础设置已填写。" : "发布前需要补齐任务名称、配额等基础信息。",
+      href: `/owner/tasks/${resolvedAuditTaskId}`,
+      actionLabel: "查看基础信息",
+    },
+    {
+      key: "data",
+      label: "数据管理",
+      state: hasDataset && hasAvailableDataset ? "done" : "error",
+      detail: taskStatsLoaded
+        ? hasDataset
+          ? hasAvailableDataset
+            ? `已导入 ${datasetImportedCount} 条，其中 ${datasetAvailableCount} 条可领取。`
+            : `已导入 ${datasetImportedCount} 条，但暂无可领取数据。`
+          : "发布前需要先导入标注数据。"
+        : "正在读取数据导入状态。",
+      href: `/owner/tasks/${resolvedAuditTaskId}/data`,
+      actionLabel: "去导入数据",
+    },
+    {
+      key: "template",
+      label: "模板配置",
+      state: templateReady ? "done" : "error",
+      detail: templateReady ? "模板检查已通过，可以进入下一步。" : "发布前需要完成标注模板配置。",
+      href: `/owner/tasks/${resolvedAuditTaskId}/designer`,
+      actionLabel: "去配置模板",
+    },
+    {
+      key: "ai",
+      label: "AI 预审",
+      state: aiReady ? "done" : "error",
+      detail: aiReady
+        ? (aiConfigEnabled ? "AI 预审已启用。" : "已明确选择不启用 AI 预审。")
+        : "发布前需要配置 AI 预审规则，或明确选择不启用 AI 预审。",
+      href: `/owner/tasks/${resolvedAuditTaskId}/ai-precheck`,
+      actionLabel: "去配置 AI 预审",
+    },
+    {
+      key: "distribution",
+      label: "分发设置",
+      state: distributionReady ? "done" : "error",
+      detail: distributionReady ? "分发策略和配额已满足发布要求。" : "分发策略或配额设置不完整。",
+      href: `/owner/tasks/${resolvedAuditTaskId}`,
+      actionLabel: "查看分发设置",
+    },
+  ], [
+    aiConfigEnabled,
+    aiReady,
+    basicReady,
+    datasetAvailableCount,
+    datasetImportedCount,
+    distributionReady,
+    hasAvailableDataset,
+    hasDataset,
+    resolvedAuditTaskId,
+    taskStatsLoaded,
+    templateReady,
+  ]);
+  const publishBlockedByDataset =
+    publishNotice?.includes("导入标注数据") ||
+    publishNotice?.includes("数据管理") ||
+    publishNotice?.includes("可领取数据") ||
+    false;
   const publishBlockedByAiConfig = publishNotice?.includes("AI 预审") ?? false;
   const nodeErrorMap = useMemo<Record<string, string[]>>(() => {
     const result: Record<string, string[]> = {};
@@ -505,9 +646,44 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   };
 
   const handlePublish = async (): Promise<void> => {
+    if (!basicReady) {
+      showNotice("发布前需要先补齐任务基础信息。", "warning");
+      window.requestAnimationFrame(() => {
+        publishIssueListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return;
+    }
+    if (!hasDataset) {
+      showNotice("发布前需要先导入标注数据。", "warning");
+      window.requestAnimationFrame(() => {
+        publishIssueListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return;
+    }
+    if (!hasAvailableDataset) {
+      showNotice("发布前需要至少 1 条可领取数据。请在数据管理中启用或重新导入数据。", "warning");
+      window.requestAnimationFrame(() => {
+        publishIssueListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return;
+    }
     if (publishConfigurationIssues.length > 0) {
       setPublishFailureDetails([]);
-      showNotice("发布失败：模板参数不完整", "danger");
+      showNotice("发布前需要完成标注模板配置。", "warning");
+      window.requestAnimationFrame(() => {
+        publishIssueListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return;
+    }
+    if (!aiReady) {
+      showNotice("发布前需要配置 AI 预审规则，或明确选择不启用 AI 预审。", "warning");
+      window.requestAnimationFrame(() => {
+        publishIssueListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return;
+    }
+    if (!distributionReady) {
+      showNotice("发布前需要完成分发策略和配额设置。", "warning");
       window.requestAnimationFrame(() => {
         publishIssueListRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       });
@@ -744,28 +920,44 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       </div>
       <p className="schema-builder-status-hint">{templateStatus.hint}</p>
 
+      <TaskSetupStepper steps={setupSteps} />
+
+      {!hasDataset ? (
+        <Card className="labeler-return-card owner-flow-warning-card">
+          <Badge tone="warning">数据待导入</Badge>
+          <p>当前任务还未导入数据，请先完成数据管理。</p>
+          <div className="schema-builder-notice-actions">
+            <Link to={`/owner/tasks/${resolvedAuditTaskId}/data`} className="lh-button lh-button--primary">
+              去导入数据
+            </Link>
+          </div>
+        </Card>
+      ) : null}
+
+      <PublishReadinessPanel items={publishReadinessItems} />
+
       {publishNotice ? (
         <div className="schema-builder-notice-slot" ref={publishIssueListRef}>
           <Card className={`labeler-return-card schema-builder-notice schema-builder-notice--${publishNoticeTone}`}>
-            <Badge tone={publishNoticeTone === "danger" ? "danger" : publishNoticeTone === "success" ? "success" : "primary"}>
-              {publishNoticeTone === "danger" ? "操作失败" : publishNoticeTone === "success" ? "已更新" : "提示"}
+            <Badge tone={noticeBadgeTone(publishNoticeTone)}>
+              {publishNoticeTone === "danger" ? "操作失败" : publishNoticeTone === "success" ? "已更新" : publishNoticeTone === "warning" ? "待完成" : "提示"}
             </Badge>
             <p>{publishNotice}</p>
             {publishBlockedByDataset || publishBlockedByAiConfig ? (
               <div className="schema-builder-notice-actions">
                 {publishBlockedByDataset ? (
-                  <Link to={`/owner/tasks/${resolveTaskId(taskId, schema.meta.taskId)}/dataset`} className="lh-button lh-button--primary">
-                    去导入数据集
+                  <Link to={`/owner/tasks/${resolvedAuditTaskId}/data`} className="lh-button lh-button--primary">
+                    去导入数据
                   </Link>
                 ) : null}
                 {publishBlockedByAiConfig ? (
-                  <Link to={`/owner/tasks/${resolveTaskId(taskId, schema.meta.taskId)}/ai-config`} className="lh-button">
+                  <Link to={`/owner/tasks/${resolvedAuditTaskId}/ai-precheck`} className="lh-button">
                     去配置 AI 预审
                   </Link>
                 ) : null}
               </div>
             ) : null}
-            {publishNoticeTone === "danger" && publishConfigurationIssues.length > 0 ? (
+            {(publishNoticeTone === "danger" || publishNoticeTone === "warning") && publishConfigurationIssues.length > 0 ? (
               <div className="schema-builder-publish-issues">
                 <strong>请先修复以下问题：</strong>
                 <ul>
@@ -780,7 +972,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
                 </ul>
               </div>
             ) : null}
-            {publishNoticeTone === "danger" && publishConfigurationIssues.length === 0 && publishFailureDetails.length > 0 ? (
+            {(publishNoticeTone === "danger" || publishNoticeTone === "warning") && publishConfigurationIssues.length === 0 && publishFailureDetails.length > 0 ? (
               <div className="schema-builder-publish-issues">
                 <strong>建议处理：</strong>
                 <ul>
@@ -1032,6 +1224,14 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
               ))}
             </div>
           )}
+          {templateReady ? (
+            <div className="owner-template-next-step">
+              <span>当前模板已通过发布前检查，下一步配置本任务的 AI 预审规则。</span>
+              <Link to={`/owner/tasks/${resolvedAuditTaskId}/ai-precheck`} className="lh-button lh-button--primary">
+                继续配置 AI 预审
+              </Link>
+            </div>
+          ) : null}
         </Card>
 
         <Card className="schema-config-card schema-config-card--wide">
@@ -1148,6 +1348,24 @@ function SelectField({
       </select>
     </label>
   );
+}
+
+function noticeBadgeTone(tone: NoticeTone): "success" | "danger" | "primary" | "warning" {
+  if (tone === "success") return "success";
+  if (tone === "danger") return "danger";
+  if (tone === "warning") return "warning";
+  return "primary";
+}
+
+function isDistributionReady(task: Task): boolean {
+  if (!task.title.trim() || task.quota.total < 1) return false;
+  if (task.distributionStrategy.type === "ASSIGNMENT") {
+    return task.distributionStrategy.assigneeIds.length > 0;
+  }
+  if (task.distributionStrategy.type === "QUOTA_CLAIM") {
+    return task.distributionStrategy.claimBatchSize > 0;
+  }
+  return true;
 }
 
 function collectPublishConfigurationIssues(
@@ -1342,7 +1560,7 @@ function getPublishFailureMessage(error: unknown, stage: OwnerPublishFailureStag
     || message.includes("schemaDraftRevision")
     || message.includes("校验失败")
   ) {
-    return "发布失败：模板参数不完整，请检查字段名称、字段类型与必填配置。";
+    return "发布前需要完成标注模板配置。请检查字段名称、字段类型与必填配置。";
   }
 
   if (stage === "SAVE_DRAFT") {

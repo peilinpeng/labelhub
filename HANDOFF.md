@@ -11,6 +11,79 @@
 
 ---
 
+## 2026-06-10 Owner 任务创建后配置流程引导（Codex，本轮未 commit）
+
+- 当前实际分支：`integration/joint-test`
+  - 用户消息指定 `fix/joint-test-web-shell`，本地该分支存在但未包含当前 `integration/joint-test @ 57c724e` 之后的主线提交；接手时工作区已有未提交文档/CSS改动，因此本轮未切分支，避免带脏改跨分支或触发冲突。
+- 当前基线：`57c724e fix(schema-renderer): allow dismissing blocked ai suggestions`
+- 修改范围：
+  - `apps/web/src/app/App.tsx`
+  - `apps/web/src/app/routes.tsx`
+  - `apps/web/src/features/owner/TaskSetupGuide.tsx`（新增）
+  - `apps/web/src/features/owner/OwnerNewTaskPage.tsx`
+  - `apps/web/src/features/owner/OwnerDatasetPage.tsx`
+  - `apps/web/src/features/owner/OwnerSchemaPage.tsx`
+  - `apps/web/src/features/owner/OwnerAIPage.tsx`
+  - `apps/web/src/features/owner/OwnerTaskDetailPage.tsx`
+  - `apps/web/src/features/owner/OwnerWorkspace.tsx`
+  - `apps/web/src/features/owner/OwnerQualityCenterPage.tsx`
+  - `apps/web/src/styles.css`
+- 本轮修改：
+  - 新增任务配置向导组件 `TaskSetupGuide`，统一展示 `[基础信息 → 数据管理 → 模板配置 → AI 预审配置 → 发布任务]` 五步状态，并提供发布前检查面板。
+  - 新增推荐路由别名 `/owner/tasks/:taskId/data` 与 `/owner/tasks/:taskId/ai-precheck`；保留旧 `/dataset`、`/ai-config` 路由兼容。
+  - 新建任务成功后从 `/owner/tasks/:taskId/designer` 改为跳转 `/owner/tasks/:taskId/data`；按钮文案改为“创建任务并导入数据”。
+  - `OwnerDatasetPage` 复用现有真实导入逻辑，补充任务名称、格式说明、已导入数量、最近导入时间、字段预览、预览表格和“继续配置模板”按钮；无数据时按钮禁用并提示“请先导入至少 1 条标注数据”。
+  - `OwnerSchemaPage` 顶部接入 stepper 和发布前检查；发布按钮点击前先检查基础信息、数据、可领取数据、模板、AI 预审配置和分发设置，缺失时给出明确人话提示和跳转按钮，不再先触发后端 422 才显示“模板参数不完整”。
+  - 模板检查通过后显示“继续配置 AI 预审”入口，跳转 `/owner/tasks/:taskId/ai-precheck`。
+  - `OwnerAIPage` 改为任务级“AI 预审配置”语境，加入 stepper、触发时机/审核流说明、保存后“下一步：发布任务”入口；不向后端写入未支持的触发时机字段。
+  - `OwnerTaskDetailPage` 与 `OwnerWorkspace` 增加数据管理、AI 预审配置入口，并把草稿任务续配入口调整为先进入数据管理。
+  - `OwnerQualityCenterPage` 的任务级 AI 配置跳转改为 `/ai-precheck`。
+- 边界：
+  - 未修改 `packages/contracts`。
+  - 未修改 `apps/api`。
+  - 未修改 `schema-core` 核心逻辑。
+  - 未绕过现有发布校验；仅在前端发布入口前增加更清晰的完整性检查。
+  - 未伪造导入数据、未伪装发布成功；CSV 仅作为说明提示“请先另存为 Excel 或 JSON 后导入”，不假装后端已支持。
+- 验证：
+  - `npm.cmd --prefix apps/web run typecheck` 通过。
+  - `npm.cmd --prefix apps/web run build` 通过；沙箱内首次被 esbuild 上层目录读取权限阻断，提权重跑通过，仅保留既有 circular chunk 提示。
+  - `git diff --check` 通过，仅有既有 LF/CRLF warning。
+  - `Invoke-WebRequest http://localhost:5180/` 返回 `HTTP 200 OK`。
+  - Codex 内置浏览器连接层仍因本地 `spawn setup refresh` 失败无法截图式实测；未改动浏览器或 dev server 状态。
+- 当前工作区：
+  - dirty，包含本轮前端流程改动，以及接手前已有的 `HANDOFF.md`、`submission/README.md`、`docs/LabelHub_Final_Delivery.md`、`docs/LabelHub_Delivery_Runbook.md` 等未提交改动。
+  - 未 commit / 未 push。
+
+---
+
+## 2026-06-10 Reviewer 队列页底部操作区布局修复 + 交付文档生成（Codex，本轮未 commit）
+
+- 当前分支：`integration/joint-test`
+- 当前基线：`57c724e fix(schema-renderer): allow dismissing blocked ai suggestions`
+- 接手核对：
+  - 已定向刷新 `origin/integration/joint-test`，远端主线包含 `39bc1ca` / `09e5bf0` / `9dbea2b` / `ecd6dc9` / `57c724e`。
+  - P2-2「BLOCKED AI 建议可忽略」已作为 `57c724e` 落到主线；接手时工作区干净，无需补交 `LLMAssistRenderer.tsx` 与 `LLMAssistPreflight.test.tsx`。
+- 本轮修改：
+  - `apps/web/src/styles.css`
+  - 修复 `/reviewer/items` 右侧详情底部 `.review-ai-comment` 布局：由 `标题 / 说明 / 按钮` 三列改为左侧标题+说明、右侧按钮的两列布局；640px 以下按钮独占整行，避免橙色提示条和「进入人工审核」按钮在窄宽度下挤在同一行。
+  - `docs/LabelHub_Final_Delivery.md`：新增最终交付说明，集中说明当前稳定状态、交付范围、启动方式、演示路线、核心验收点、自动化验证、已知边界和交付物索引。
+  - `docs/LabelHub_Delivery_Runbook.md`：新增现场运行手册，包含真实后端 / Mock 模式启动命令、账号、演示操作卡、验证命令和故障排查。
+  - `submission/README.md`：补充最终交付说明与现场运行手册入口，更新录屏剧本和演示环境说明索引。
+- 边界：
+  - 未修改 `packages/contracts`。
+  - 未修改 `apps/api`。
+  - 未修改 Reviewer 审核业务逻辑、队列筛选、批量审核、人工审核提交链路。
+- 验证：
+  - `npm.cmd --prefix apps/web run typecheck` 通过。
+  - `npm.cmd --prefix apps/web run build` 首次在沙箱内被 esbuild 上层目录读取权限阻断；提权重跑后通过，仅保留既有 circular chunk 提示。
+  - `git diff --check` 通过，仅有既有 LF/CRLF warning。
+  - 曾尝试启动 Vite dev server 做浏览器验证；服务可启动到 `http://127.0.0.1:5182/`，但 Codex 内置浏览器连接层两次因本地沙箱 `spawn setup refresh` 失败，未完成截图式实测。为避免残留，已停止本轮启动的 Vite/npm 子进程并清理 `.tmp-vite.log`。
+- 当前工作区：
+  - dirty，包含本轮 `apps/web/src/styles.css`、`docs/LabelHub_Final_Delivery.md`、`docs/LabelHub_Delivery_Runbook.md`、`submission/README.md` 与本段 `HANDOFF.md` 修改。
+  - 未 commit / 未 push。
+
+---
+
 ## 2026-06-09 P1/P2 前置修复进度（优先于下方所有记录）
 
 - **P1-1** MySQL stale connection（缺陷 #1）：已修复并推送（`create_engine` 加 `pool_pre_ping` / `pool_recycle`）。

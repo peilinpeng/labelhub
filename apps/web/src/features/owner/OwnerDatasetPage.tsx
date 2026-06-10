@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import type { DatasetItem, Task } from "@labelhub/contracts";
 import { Role } from "../../app/routes";
+import { fetchTask } from "../../api/owner";
 import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
 import {
   importDataset,
@@ -9,7 +11,8 @@ import {
   inferFormat,
   type DatasetFormat,
 } from "../../api/dataset";
-import type { DatasetItem } from "@labelhub/contracts";
+import { getReviewConfig } from "../../api/reviewer";
+import { buildTaskSetupSteps, TaskSetupStepper } from "./TaskSetupGuide";
 
 interface OwnerDatasetPageProps {
   role: Role;
@@ -32,8 +35,11 @@ function previewPayload(payload: Record<string, unknown>): string {
 
 export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps) {
   const { taskId = "" } = useParams<{ taskId: string }>();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [task, setTask] = useState<Task | null>(null);
+  const [aiConfigured, setAiConfigured] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [format, setFormat] = useState<DatasetFormat>("JSON");
   const [externalKeyPath, setExternalKeyPath] = useState("");
@@ -46,6 +52,32 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!taskId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [taskResult, configResult] = await Promise.allSettled([
+          fetchTask(taskId),
+          getReviewConfig(taskId),
+        ]);
+        if (cancelled) return;
+        if (taskResult.status === "fulfilled") {
+          setTask(taskResult.value);
+        }
+        setAiConfigured(configResult.status === "fulfilled");
+      } catch {
+        if (!cancelled) {
+          setTask(null);
+          setAiConfigured(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId]);
 
   const refresh = useCallback(async () => {
     try {
@@ -112,12 +144,27 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
     }
   };
 
+  const availableCount = items.filter((item) => item.status === "AVAILABLE").length;
+  const hasData = total > 0;
+  const latestImportTime = formatLatestItemTime(items);
+  const fieldPreview = collectPayloadFields(items);
+  const setupSteps = buildTaskSetupSteps({
+    taskId,
+    currentStep: "data",
+    hasData,
+    templateReady: Boolean(task?.activeSchemaVersionId),
+    aiReady: aiConfigured,
+    dataMeta: hasData ? `已导入 ${total} 条，可领取 ${availableCount} 条` : "还未导入数据",
+    templateMeta: task?.activeSchemaVersionId ? "已发布模板" : "待配置模板",
+    aiMeta: aiConfigured ? "已保存配置" : "待配置规则",
+  });
+
   return (
     <div className="page-stack">
       <div className="page-header">
         <div>
-          <h2 className="page-title">数据集管理</h2>
-          <p className="page-subtitle">任务 {taskId}：导入题目（JSON / JSONL / Excel）、预览与批量启用/禁用。</p>
+          <h2 className="page-title">数据管理</h2>
+          <p className="page-subtitle">导入标注数据。请先导入本任务需要标注的数据，再继续配置标注模板。</p>
         </div>
         <div className="page-actions">
           <Link to={`/owner/tasks/${taskId}`} className="lh-button">返回任务详情</Link>
@@ -125,9 +172,48 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
         </div>
       </div>
 
-      {/* 导入区 */}
+      <TaskSetupStepper steps={setupSteps} />
+
+      <Card className="soft-panel owner-data-summary-card">
+        <div className="owner-section-heading">
+          <div>
+            <h3>{task?.title ?? "当前任务"}</h3>
+            <p>数据会作为标注员领取的题目来源，发布任务前至少需要 1 条可领取数据。</p>
+          </div>
+          <Badge tone={hasData ? "success" : "warning"}>{hasData ? `已导入 ${total} 条` : "待导入"}</Badge>
+        </div>
+        <div className="owner-data-summary-grid">
+          <div>
+            <span>已导入数据数量</span>
+            <strong>{loading ? "加载中..." : total.toLocaleString()}</strong>
+            <small>当前可领取 {availableCount.toLocaleString()} 条</small>
+          </div>
+          <div>
+            <span>最近导入时间</span>
+            <strong>{latestImportTime}</strong>
+            <small>按题目更新时间推断</small>
+          </div>
+          <div>
+            <span>数据字段预览</span>
+            <strong>{fieldPreview.length > 0 ? fieldPreview.join(" / ") : "暂无字段"}</strong>
+            <small>来自前 {Math.min(items.length, 20)} 条题目</small>
+          </div>
+        </div>
+        <div className="owner-data-next-actions">
+          <Button
+            type="button"
+            tone="primary"
+            disabled={!hasData}
+            onClick={() => navigate(`/owner/tasks/${taskId}/designer`)}
+          >
+            继续配置模板
+          </Button>
+          {!hasData ? <span>请先导入至少 1 条标注数据。</span> : null}
+        </div>
+      </Card>
+
       <Card className="soft-panel">
-        <h3 className="soft-panel__title">导入数据集</h3>
+        <h3 className="soft-panel__title">导入标注数据</h3>
         <div className="form-stack">
           <label className="field-label">
             选择文件（.json / .jsonl / .xlsx）
@@ -145,6 +231,7 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
               <option value="JSONL">JSONL（每行一条）</option>
               <option value="EXCEL">Excel（.xlsx）</option>
             </Select>
+            <small className="field-hint">支持 JSON / JSONL / Excel。CSV 请先另存为 Excel 或 JSON 后导入，避免前端伪装后端尚未支持的格式。</small>
           </label>
           <label className="field-label">
             外部主键路径（可选，如 id 或 meta.id）
@@ -163,10 +250,9 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
         </div>
       </Card>
 
-      {/* 题目列表 */}
       <Card className="soft-panel">
         <div className="page-header">
-          <h3 className="soft-panel__title">题目列表（共 {total} 条）</h3>
+          <h3 className="soft-panel__title">数据预览表格（共 {total} 条）</h3>
           <div className="page-actions">
             <Button onClick={() => void refresh()} disabled={loading}>刷新</Button>
             <Button onClick={() => void setStatus([...selected], "DISABLED")} disabled={busy || selected.size === 0}>
@@ -226,4 +312,25 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
       </Card>
     </div>
   );
+}
+
+function collectPayloadFields(items: DatasetItem[]): string[] {
+  const fields = new Set<string>();
+  for (const item of items.slice(0, 20)) {
+    for (const key of Object.keys(item.sourcePayload)) {
+      fields.add(key);
+      if (fields.size >= 6) return [...fields];
+    }
+  }
+  return [...fields];
+}
+
+function formatLatestItemTime(items: DatasetItem[]): string {
+  const latest = items
+    .map((item) => item.updatedAt || item.createdAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  if (!latest) return "暂无导入记录";
+  return new Date(latest).toLocaleString("zh-CN", { hour12: false });
 }

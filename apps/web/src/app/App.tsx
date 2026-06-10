@@ -248,8 +248,10 @@ function AppRoutes({ role }: { role: Role }) {
       <Route path={RoutePath.OWNER_TASKS_NEW} element={<OwnerNewTaskPage role={role} />} />
       <Route path={RoutePath.OWNER_AI_CONFIG} element={<OwnerAIPage role={role} />} />
       <Route path={RoutePath.OWNER_TASK_DETAIL} element={<OwnerTaskDetailPage role={role} />} />
+      <Route path={RoutePath.OWNER_TASKS_DATA} element={<OwnerDatasetPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_DATASET} element={<OwnerDatasetPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_DESIGNER} element={<OwnerSchemaPage role={role} />} />
+      <Route path={RoutePath.OWNER_TASKS_AI_PRECHECK} element={<OwnerAIPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_AI_CONFIG} element={<OwnerAIPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_EXPORT} element={<OwnerExportPage role={role} />} />
       <Route path="/owner/quality" element={<OwnerQualityCenterPage role={role} />} />

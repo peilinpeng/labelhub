@@ -7,6 +7,7 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card, Input, Select, Textarea } from "../../ui/primitives";
 import { markdownToDoc } from "../../ui/markdown";
+import { TaskSetupStepper, type TaskSetupStep } from "./TaskSetupGuide";
 
 interface OwnerNewTaskPageProps {
   role: Role;
@@ -14,6 +15,39 @@ interface OwnerNewTaskPageProps {
 
 type DistributionType = "FIRST_COME_FIRST_SERVED" | "ASSIGNMENT" | "QUOTA_CLAIM";
 type ReviewPolicyType = "SINGLE_REVIEW" | "DOUBLE_REVIEW";
+
+const newTaskSteps: TaskSetupStep[] = [
+  {
+    key: "basic",
+    title: "基础信息",
+    description: "填写任务名称、说明、配额与分发策略",
+    state: "current",
+  },
+  {
+    key: "data",
+    title: "数据管理",
+    description: "创建成功后先导入标注数据",
+    state: "pending",
+  },
+  {
+    key: "template",
+    title: "模板配置",
+    description: "基于数据字段搭建标注模板",
+    state: "pending",
+  },
+  {
+    key: "ai",
+    title: "AI 预审配置",
+    description: "保存质量检查规则或明确关闭",
+    state: "pending",
+  },
+  {
+    key: "publish",
+    title: "发布任务",
+    description: "完成发布前检查后开放领取",
+    state: "pending",
+  },
+];
 
 export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
   const navigate = useNavigate();
@@ -82,12 +116,12 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
       // 缺少 id 时不跳转到 undefined 路径、不回 home，停留当前页并提示。
       if (!task.id) {
         setNoticeTone("danger");
-        setNotice("任务已创建但缺少任务 ID，无法进入模板搭建，请刷新任务列表后重试。");
+        setNotice("任务已创建但缺少任务 ID，无法进入数据管理，请刷新任务列表后重试。");
         return;
       }
       setNoticeTone("success");
-      setNotice("任务草稿已创建，正在打开模板搭建。");
-      navigate(`/owner/tasks/${task.id}/designer`);
+      setNotice("任务草稿已创建，正在打开数据管理。");
+      navigate(`/owner/tasks/${task.id}/data`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "任务创建失败，请检查后端服务。";
       setNoticeTone("danger");
@@ -113,7 +147,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
       <div className="page-header">
         <div>
           <h2 className="page-title">新建任务</h2>
-          <p className="page-subtitle">当前角色：{role}。填写任务基础信息。点击后会先创建任务草稿，然后进入模板搭建；模板发布后任务才能进入分发与标注。</p>
+          <p className="page-subtitle">当前角色：{role}。请先填写任务基础信息；创建成功后会进入数据管理，再继续配置模板、AI 预审和发布检查。</p>
         </div>
         <Link to={RoutePath.OWNER_TASKS} className="lh-button">
           返回任务列表
@@ -133,6 +167,8 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
           <p>{notice}</p>
         </Card>
       ) : null}
+
+      <TaskSetupStepper steps={newTaskSteps} />
 
       <Card className="soft-panel">
         <div className="form-stack">
@@ -203,7 +239,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
               取消
             </Button>
             <Button type="button" tone="primary" onClick={requestCreateDraft} disabled={loading}>
-              {loading ? "创建中..." : "下一步：配置模板"}
+              {loading ? "创建中..." : "创建任务并导入数据"}
             </Button>
           </div>
         </div>
@@ -212,7 +248,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
       <ConfirmDialog
         open={publishConfirmOpen}
         title="确认创建任务草稿？"
-        description="将创建任务草稿并进入模板搭建。模板发布后，任务才能进入分发与标注流程。"
+        description="将创建任务草稿并进入数据管理。请先导入本任务需要标注的数据，再继续配置模板、AI 预审和发布检查。"
         confirmText="创建草稿"
         cancelText="取消"
         suppressLabel="本次会话不再提醒创建确认"

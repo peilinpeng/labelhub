@@ -26,6 +26,16 @@ function TemplateIcon() {
   );
 }
 
+function DataIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <ellipse cx="12" cy="5.5" rx="7" ry="3" />
+      <path d="M5 5.5v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+      <path d="M5 11.5v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+    </svg>
+  );
+}
+
 function DownloadIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -45,9 +55,10 @@ function statusTone(status: Task["status"]): BadgeTone {
 }
 
 function statusLabel(status: Task["status"]): string {
-  if (status === "PUBLISHED") return "已发布";
-  if (status === "DRAFT") return "草稿";
+  if (status === "PUBLISHED") return "发布中";
+  if (status === "DRAFT") return "草稿任务";
   if (status === "PAUSED") return "已暂停";
+  if (status === "ARCHIVED") return "已归档";
   return "已结束";
 }
 
@@ -179,8 +190,8 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       <Card className="soft-panel owner-draft-card">
         <div className="owner-draft-head">
           <div>
-            <h3>任务草稿 · 待配置模板</h3>
-            <p>创建任务后在这里继续配置模板；模板发布后任务才能进入分发与标注。</p>
+            <h3>任务草稿 · 待完成配置流程</h3>
+            <p>创建任务后先导入数据，再配置模板、AI 预审和发布检查。</p>
           </div>
           <Badge tone="warning">{draftCount} 个草稿</Badge>
         </div>
@@ -199,8 +210,8 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                     </Badge>
                   </div>
                 </div>
-                <Link className="lh-button lh-button--primary" to={`/owner/tasks/${task.id}/designer`}>
-                  继续配置模板
+                <Link className="lh-button lh-button--primary" to={`/owner/tasks/${task.id}/data`}>
+                  继续数据管理
                 </Link>
               </div>
             ))}
@@ -301,6 +312,14 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                           <EyeIcon />
                         </Link>
                         <Link
+                          to={`/owner/tasks/${task.id}/data`}
+                          className="owner-icon-action"
+                          aria-label="数据管理"
+                          data-tooltip="数据"
+                        >
+                          <DataIcon />
+                        </Link>
+                        <Link
                           to={`/owner/tasks/${task.id}/designer`}
                           className="owner-icon-action"
                           aria-label="模板"
@@ -386,8 +405,14 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
             </div>
 
             <div className="owner-detail-actions">
+              <Link to={`/owner/tasks/${selectedTask.id}/data`} className="lh-button">
+                数据管理
+              </Link>
               <Link to={`/owner/tasks/${selectedTask.id}/designer`} className="lh-button lh-button--primary">
                 配置模板
+              </Link>
+              <Link to={`/owner/tasks/${selectedTask.id}/ai-precheck`} className="lh-button">
+                AI 预审配置
               </Link>
               <Link to={`/owner/tasks/${selectedTask.id}/export`} className="lh-button">
                 导出数据
