@@ -256,10 +256,10 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                     type="button"
                     onClick={() => setSelectedId(item.submission.id)}
                   >
+                    <strong className="review-ai-item__title">{display.title}</strong>
                     <span className="review-ai-item__meta">
-                      {item.submission.id} · 第 {item.submission.attemptNo} 轮 · {item.submission.labelerId} · {formatTime(item.submission.createdAt)}
+                      第 {item.submission.attemptNo} 轮 · {formatTime(item.submission.createdAt)} · {item.submission.labelerId}
                     </span>
-                    <strong>{display.title}</strong>
                     <span className="review-ai-item__badges">
                       <Badge tone={statusTone(item.submission.status)}>{statusLabel(item.submission.status)}</Badge>
                       {item.submission.status === "FINAL_REVIEWING" ? <Badge tone="primary">终审</Badge> : <Badge tone="default">复审</Badge>}
@@ -278,10 +278,11 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           <main className="review-ai-detail">
             <section className="review-ai-detail__heading">
               <div>
-                <h2>{selected.submission.id} · {selectedDisplay?.title}</h2>
+                <h2>{selectedDisplay?.title ?? selected.taskTitle}提交复核</h2>
                 <p>
-                  提交于 {formatTime(selected.submission.createdAt)} · 标注员{" "}
-                  {selectedDisplay?.labeler ?? selected.submission.labelerId} · {selectedDisplay?.taskTitle ?? selected.taskTitle}
+                  提交编号：{selected.submission.id} · 第 {selected.submission.attemptNo} 轮 · 提交于{" "}
+                  {formatTime(selected.submission.createdAt)} · 标注员{" "}
+                  {selectedDisplay?.labeler ?? selected.submission.labelerId}
                 </p>
               </div>
               <Badge tone={statusTone(selected.submission.status)}>AI 建议：{statusLabel(selected.submission.status)}</Badge>
@@ -300,18 +301,44 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                   <h3>提交内容</h3>
                   <span>字段视图</span>
                 </div>
-                <pre className="review-ai-json">{JSON.stringify(selectedDisplay?.payload ?? {}, null, 2)}</pre>
+                {Object.keys(selectedDisplay?.payload ?? {}).length > 0 ? (
+                  <dl className="review-field-list">
+                    {Object.entries(selectedDisplay?.payload ?? {}).map(([key, value]) => (
+                      <div className="review-field" key={key}>
+                        <dt>{fieldLabel(key)}</dt>
+                        <dd>{formatFieldValue(value)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  <div className="review-ai-empty">
+                    <strong>暂无提交字段</strong>
+                    <span>本条提交未携带可展示的字段内容。</span>
+                  </div>
+                )}
               </Card>
 
               <Card className="review-ai-block">
-                <div className="empty-state">队列接口未提供维度评分时不展示模拟分数</div>
+                <div className="review-ai-block__head">
+                  <h3>AI 预审代理</h3>
+                  <span>维度评分</span>
+                </div>
+                <div className="review-ai-empty">
+                  <strong>暂无维度评分</strong>
+                  <span>本条提交需要人工确认字段完整性和审核结论。</span>
+                </div>
               </Card>
             </div>
 
-            <Card className="review-ai-comment">
-              <strong>{selectedDisplay?.recommendation ?? statusLabel(selected.submission.status)}</strong>
-              <span>{selectedDisplay?.issue ?? "该提交需要人工确认字段完整性和审核结论。"}</span>
-              <Link className="lh-button lh-button--primary" to={`/reviewer/items/${selected.submission.id}`}>
+            <Card className="review-ai-actionbar">
+              <div className="review-ai-actionbar__status">
+                <strong>{selectedDisplay?.recommendation ?? statusLabel(selected.submission.status)}</strong>
+                <span>{selectedDisplay?.issue ?? "该提交需要人工确认字段完整性和审核结论。"}</span>
+              </div>
+              <Link
+                className="lh-button lh-button--primary review-ai-actionbar__btn"
+                to={`/reviewer/items/${selected.submission.id}`}
+              >
                 进入人工审核
               </Link>
             </Card>
@@ -327,4 +354,24 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
 
 function isBatchReviewable(item: ReviewQueueItem): boolean {
   return item.submission.status === "HUMAN_REVIEWING" || item.submission.status === "FINAL_REVIEWING";
+}
+
+// 提交字段的人话标签：把技术 key 映射成审核员可读的中文，未知 key 原样保留。
+const FIELD_LABELS: Record<string, string> = {
+  title: "标题",
+  itemId: "数据编号",
+  taskTitle: "所属任务",
+  labeler: "标注员",
+};
+
+function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? key;
+}
+
+function formatFieldValue(value: unknown): string {
+  if (value == null || value === "") return "—";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
 }

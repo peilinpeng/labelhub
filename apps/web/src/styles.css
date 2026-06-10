@@ -7419,7 +7419,7 @@ a {
 
 .review-ai-layout {
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
   min-height: calc(100vh - 138px);
   border: 1px solid var(--lh-border);
   border-radius: 12px;
@@ -7557,21 +7557,25 @@ a {
   border-left: 3px solid #2563eb;
 }
 
-.review-ai-item__meta,
-.review-ai-item strong,
-.review-ai-item__badges {
+.review-ai-item__meta {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.review-ai-item__meta {
   color: #64748b;
   font-size: 12px;
 }
 
+.review-ai-item__title {
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .review-ai-item__badges {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -7710,6 +7714,104 @@ a {
 
 .review-ai-score-fill--success {
   background: #16a34a;
+}
+
+/* 提交内容字段卡片：把 raw JSON 换成审核员可读的字段列表。 */
+.review-field-list {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.review-field {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--lh-border);
+  border-radius: 12px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.review-field dt {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.review-field dd {
+  margin: 0;
+  color: var(--lh-text);
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 产品化空态：替代“接口未提供”等工程说明。 */
+.review-ai-empty {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 16px 18px;
+  border: 1px dashed var(--lh-border-strong);
+  border-radius: 12px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.review-ai-empty strong {
+  color: var(--lh-text);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.review-ai-empty span {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 底部操作栏：状态提示与主按钮左右分布，窄屏换行不贴边。 */
+.review-ai-actionbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid rgba(37, 99, 235, 0.24);
+  border-radius: 16px;
+  background: #f8fbff;
+  box-sizing: border-box;
+}
+
+.review-ai-actionbar__status {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.review-ai-actionbar__status strong {
+  color: var(--lh-text);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.review-ai-actionbar__status span {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.review-ai-actionbar__btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .review-ai-comment {
