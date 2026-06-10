@@ -39,6 +39,7 @@ import {
   type TaskStats,
 } from "../../api/owner";
 import { queryAuditEvents } from "../../api/audit";
+import { listItems } from "../../api/dataset";
 import { getReviewConfig } from "../../api/reviewer";
 import { AuditTimelinePanel } from "./AuditTimelinePanel";
 import { SchemaVersionPanel } from "./SchemaVersionPanel";
@@ -173,6 +174,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [schema, setSchema] = useState<LabelHubSchema>(() => createFallbackSchema(taskId));
   const [task, setTask] = useState<Task | undefined>();
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
+  const [datasetItemStats, setDatasetItemStats] = useState<{ total: number; available: number } | null>(null);
   const [taskStatsLoaded, setTaskStatsLoaded] = useState(false);
   const [aiConfigStatus, setAiConfigStatus] = useState<"loading" | "configured" | "missing" | "error">("loading");
   const [aiConfigEnabled, setAiConfigEnabled] = useState<boolean | null>(null);
@@ -260,12 +262,14 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   useEffect(() => {
     let cancelled = false;
     setTaskStatsLoaded(false);
+    setDatasetItemStats(null);
     setAiConfigStatus("loading");
     setAiConfigEnabled(null);
 
     void (async () => {
-      const [statsResult, configResult] = await Promise.allSettled([
+      const [statsResult, itemsResult, configResult] = await Promise.allSettled([
         fetchTaskStats(resolvedAuditTaskId),
+        listItems(resolvedAuditTaskId, 1, 500),
         getReviewConfig(resolvedAuditTaskId),
       ]);
       if (cancelled) return;
@@ -274,6 +278,15 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         setTaskStats(statsResult.value);
       } else {
         setTaskStats(null);
+      }
+
+      if (itemsResult.status === "fulfilled") {
+        setDatasetItemStats({
+          total: itemsResult.value.total,
+          available: itemsResult.value.items.filter((item) => item.status === "AVAILABLE").length,
+        });
+      } else {
+        setDatasetItemStats(null);
       }
       setTaskStatsLoaded(true);
 
@@ -372,8 +385,8 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     () => createPublishValidationResult(schema, publishConfigurationIssues),
     [schema, publishConfigurationIssues],
   );
-  const datasetImportedCount = taskStats?.datasetTotal ?? 0;
-  const datasetAvailableCount = taskStats?.datasetAvailable ?? 0;
+  const datasetImportedCount = Math.max(taskStats?.datasetTotal ?? 0, datasetItemStats?.total ?? 0);
+  const datasetAvailableCount = Math.max(taskStats?.datasetAvailable ?? 0, datasetItemStats?.available ?? 0);
   const hasDataset = datasetImportedCount > 0;
   const hasAvailableDataset = datasetAvailableCount > 0;
   const templateReady = publishValidationResult.valid && publishConfigurationIssues.length === 0 && fieldNodes.length > 0;

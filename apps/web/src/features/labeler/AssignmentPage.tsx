@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { runSchemaPreflight } from "@labelhub/schema-compiler";
 import { collectFieldNodes } from "@labelhub/schema-core";
 import { SchemaRenderer, type LLMAssistOutcome } from "@labelhub/schema-renderer";
 import { Role } from "../../app/routes";
-import { callLLMAssist, getAssignmentContext, listAssignmentItems, saveDraft, submitAssignment } from "../../api/labeler";
+import { callLLMAssist, getAssignmentContext, saveDraft, submitAssignment } from "../../api/labeler";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card } from "../../ui/primitives";
@@ -20,6 +20,7 @@ import { useLabelingTelemetry } from "./useLabelingTelemetry";
 import type {
   AnswerPayload,
   AssignmentContextResponse,
+  AssignmentStatus,
   DatasetItem,
   LabelHubRuntimeContext,
   LLMAssistNode,
@@ -31,8 +32,6 @@ import type {
 interface AssignmentPageProps {
   role: Role;
 }
-
-type LabelerNavigationStatus = "Submitted" | "Returned" | "Current" | "Draft" | "Pending";
 
 interface AcceptedAiAssistPatch {
   callId: string;
@@ -62,17 +61,45 @@ function getItemTitle(item: DatasetItem): string {
   return rawTitle.length > 12 ? `${rawTitle.slice(0, 12)}...` : rawTitle;
 }
 
-function getNavigationStatus(
-  item: DatasetItem,
-  currentItemId: string,
-  index: number,
-  submittedItemIds: Set<string>,
-): LabelerNavigationStatus {
-  if (item.id === currentItemId) return "Current";
-  if (submittedItemIds.has(item.id)) return "Submitted";
-  if (item.status === "COMPLETED") return "Submitted";
-  if (item.status === "LOCKED") return index === 0 ? "Draft" : "Pending";
-  return "Pending";
+const EDITABLE_ASSIGNMENT_STATUSES = new Set<AssignmentStatus>(["CLAIMED", "DRAFTING", "RETURNED"]);
+
+function isEditableAssignmentStatus(status: AssignmentStatus): boolean {
+  return EDITABLE_ASSIGNMENT_STATUSES.has(status);
+}
+
+function assignmentStatusLabel(status: AssignmentStatus): string {
+  if (status === "CLAIMED") return "已领取";
+  if (status === "DRAFTING") return "草稿中";
+  if (status === "SUBMITTED") return "已提交";
+  if (status === "RETURNED") return "已打回";
+  if (status === "ACCEPTED") return "已通过";
+  if (status === "CANCELED") return "已取消";
+  if (status === "EXPIRED") return "已过期";
+  return "待处理";
+}
+
+function assignmentStatusTone(status: AssignmentStatus): "default" | "primary" | "success" | "warning" | "danger" {
+  if (status === "ACCEPTED") return "success";
+  if (status === "SUBMITTED") return "primary";
+  if (status === "RETURNED") return "warning";
+  if (status === "CANCELED" || status === "EXPIRED") return "danger";
+  return "default";
+}
+
+function readonlyAssignmentNotice(status: AssignmentStatus): string {
+  if (status === "SUBMITTED") return "当前领取记录已经提交，不能重复提交。请回任务市场领取下一条数据。";
+  if (status === "ACCEPTED") return "当前领取记录已审核通过，不能继续编辑。请回任务市场领取下一条数据。";
+  if (status === "CANCELED") return "当前领取记录已取消，不能继续编辑。请回任务市场重新领取数据。";
+  if (status === "EXPIRED") return "当前领取记录已过期，不能继续编辑。请回任务市场重新领取数据。";
+  return "当前领取记录暂不可编辑。";
+}
+
+function submitFailureNotice(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("不允许提交") || message.includes("SUBMITTED")) {
+    return "当前领取记录已经提交，不能重复提交。请回任务市场领取下一条数据。";
+  }
+  return message.trim() ? `提交失败：${message}` : "提交失败，请稍后重试。";
 }
 
 export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
@@ -87,7 +114,6 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const rendererEngine = showRendererToggle ? toggleEngine : urlEngine;
   const [context, setContext] = useState<AssignmentContextResponse | null>(null);
   const [answers, setAnswers] = useState<AnswerPayload>({});
-  const [answersByItemId, setAnswersByItemId] = useState<Record<string, AnswerPayload>>({});
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -97,9 +123,8 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const [submitFailed, setSubmitFailed] = useState(false);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [pendingSubmitAnswers, setPendingSubmitAnswers] = useState<AnswerPayload | null>(null);
-  const [taskItems, setTaskItems] = useState<DatasetItem[]>([]);
-  const [submittedItemIds, setSubmittedItemIds] = useState<string[]>([]);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const isEditableAssignment = context ? isEditableAssignmentStatus(context.assignment.status) : false;
   // 已保存内容的基线快照：用于自动保存的脏检查，避免把"刚载入的草稿"重复回存
   const savedSnapshotRef = useRef<string | null>(null);
   const aiAssistMetadataByCallIdRef = useRef<Map<string, AiAssistResponseMetadata>>(new Map());
@@ -121,17 +146,10 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           const data = await getAssignmentContext(assignmentId);
           setContext(data);
           setAnswers(data.draft?.answers ?? {});
-          try {
-            const items = await listAssignmentItems(assignmentId);
-            setTaskItems(items.length > 0 ? items : [data.item]);
-          } catch {
-            setTaskItems([data.item]);
-          }
         }
       } catch (e) {
         console.error("Failed to fetch assignment:", e);
         setContext(null);
-        setTaskItems([]);
       } finally {
         setLoading(false);
       }
@@ -143,15 +161,14 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     acceptedAiAssistPatchesRef.current.clear();
     aiAssistCallAttemptCounterRef.current = 0;
     aiAssistAcceptedOrderCounterRef.current = 0;
-    // 切题/换 assignment：重置自动保存基线，下一次 effect 以当前题答案重新建基线，
-    // 避免把"导航切换导致的 answers 变化"误判为脏数据触发保存。
+    // 换 assignment：重置自动保存基线，下一次 effect 以当前答案重新建基线。
     savedSnapshotRef.current = null;
   }, [assignmentId, context?.item.id]);
 
   // 草稿自动保存：答案变化且与上次已保存内容不同时，空闲 1.2s 后回存草稿（防丢失）。
   // 首次载入草稿时仅建立基线快照、不触发保存；保存成功后刷新基线与时间戳。
   useEffect(() => {
-    if (!assignmentId || loading) return;
+    if (!assignmentId || loading || !isEditableAssignment) return;
     const snapshot = JSON.stringify(answers);
     if (savedSnapshotRef.current === null) {
       savedSnapshotRef.current = snapshot; // 建立基线（载入的草稿）
@@ -175,7 +192,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       })();
     }, 1200);
     return () => window.clearTimeout(timer);
-  }, [answers, assignmentId, loading]);
+  }, [answers, assignmentId, loading, isEditableAssignment]);
 
   const runtimeContext: LabelHubRuntimeContext = context
     ? {
@@ -252,6 +269,12 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
   const handleSaveDraft = async () => {
     if (!assignmentId) return;
+    if (!isEditableAssignment) {
+      setSaveFailed(false);
+      setSubmitFailed(true);
+      setSubmitNotice(context ? readonlyAssignmentNotice(context.assignment.status) : "当前领取记录暂不可编辑。");
+      return;
+    }
     try {
       setSaving(true);
       setSaveFailed(false);
@@ -268,6 +291,11 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
   const handleSubmit = async (submitAnswers: AnswerPayload, validation: ValidationResult) => {
     if (!assignmentId) return;
+    if (!isEditableAssignment) {
+      setSubmitFailed(true);
+      setSubmitNotice(context ? readonlyAssignmentNotice(context.assignment.status) : "当前领取记录暂不可编辑。");
+      return;
+    }
     if (!validation.valid) {
       setErrors(validation.errors);
       return;
@@ -277,49 +305,44 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
   const confirmSubmit = async (submitAnswers: AnswerPayload = answers) => {
     if (!context || !assignmentId) return;
+    if (!isEditableAssignment) {
+      setSubmitFailed(true);
+      setSubmitNotice(readonlyAssignmentNotice(context.assignment.status));
+      return;
+    }
     const preflight = runSchemaPreflight({ schema: context.schema, currentAnswers: submitAnswers, patch: [] });
     if (preflight.requiredMissingFieldNames.length > 0) return;
+    let response: Awaited<ReturnType<typeof submitAssignment>>;
     try {
       setSubmitting(true);
       setSubmitFailed(false);
-      await submitAssignment(assignmentId, { answers: submitAnswers, clientRevision: 0 });
+      response = await submitAssignment(assignmentId, { answers: submitAnswers, clientRevision: 0 });
     } catch (error) {
       console.warn("提交标注失败：", error);
       setSubmitFailed(true);
-      setSubmitNotice("提交失败，请稍后重试。");
+      setSubmitNotice(submitFailureNotice(error));
       return;
     } finally {
       setSubmitting(false);
     }
     setSubmitFailed(false);
     telemetry.appendSubmissionSummary(submitAnswers);
-    const currentItemId = context.item.id;
-    const nextAnswersByItem = { ...answersByItemId, [currentItemId]: submitAnswers };
-    const nextItem = navigationItems[currentItemIndex + 1];
-
-    setAnswersByItemId(nextAnswersByItem);
-    setSubmittedItemIds((current) => (current.includes(currentItemId) ? current : [...current, currentItemId]));
-    setTaskItems((current) =>
-      current.map((item) =>
-        item.id === currentItemId ? { ...item, status: "COMPLETED", updatedAt: new Date().toISOString() } : item,
-      ),
+    savedSnapshotRef.current = JSON.stringify(submitAnswers);
+    setContext((current) => (current ? { ...current, assignment: response.assignment } : current));
+    setErrors([]);
+    setSubmitNotice(
+      response.nextStatus === "NEEDS_HUMAN_REVIEW" || response.nextStatus === "HUMAN_REVIEWING"
+        ? "标注已提交，已进入人工审核队列。可回任务市场继续领取下一条数据。"
+        : "标注已提交，已进入 AI 预审/审核流程。可回任务市场继续领取下一条数据。",
     );
-
-    if (nextItem) {
-      setSubmitNotice("标注已提交，已进入审核队列。");
-      window.setTimeout(() => {
-        setContext((current) => (current ? { ...current, item: nextItem } : current));
-        setAnswers(nextAnswersByItem[nextItem.id] ?? {});
-        setErrors([]);
-        setSubmitNotice(null);
-      }, 450);
-      return;
-    }
-
-    setSubmitNotice("标注已提交，已进入审核队列。当前任务所有题目已完成！");
   };
 
   const requestSubmit = (submitAnswers: AnswerPayload = answers) => {
+    if (context && !isEditableAssignment) {
+      setSubmitFailed(true);
+      setSubmitNotice(readonlyAssignmentNotice(context.assignment.status));
+      return;
+    }
     if (shouldSuppressConfirm(CONFIRM_KEYS.submit)) {
       void confirmSubmit(submitAnswers);
       return;
@@ -335,6 +358,9 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   ): Promise<LLMRuntimeResponse> => {
     if (!assignmentId || !context) {
       return { output: { summary: "请先选择任务" }, suggestedPatch: {}, callId: "llm_unavailable" };
+    }
+    if (!isEditableAssignment) {
+      return { output: { summary: readonlyAssignmentNotice(context.assignment.status) }, suggestedPatch: {}, callId: "llm_readonly" };
     }
     const callAttemptId = String((aiAssistCallAttemptCounterRef.current += 1));
     appendAiAssistTriggeredAuditSafely({
@@ -389,6 +415,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   };
 
   const handleRendererAnswersChange = (nextAnswers: AnswerPayload) => {
+    if (!isEditableAssignment) return;
     const changedFieldNames = collectChangedAnswerFields(answers, nextAnswers);
     telemetry.handleAnswersChange(nextAnswers);
     reportAiAssistEditedFields(changedFieldNames);
@@ -453,46 +480,17 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
         : "";
   const hasGenericSource = sourceTitle !== "" || sourceBody !== "";
   const sourceMeta = typeof sourcePayload.source === "string" ? sourcePayload.source : "任务数据";
-  const navigationItems = taskItems.length > 0 ? taskItems : [context.item];
-  const currentItemIndex = Math.max(0, navigationItems.findIndex((item) => item.id === context.item.id));
-  const currentItemNumber = currentItemIndex + 1;
-  const totalItems = navigationItems.length;
-  const previousItem = currentItemIndex > 0 ? navigationItems[currentItemIndex - 1] : null;
-  const nextItem = currentItemIndex < navigationItems.length - 1 ? navigationItems[currentItemIndex + 1] : null;
-  const progressPercent = Math.round((currentItemNumber / totalItems) * 100);
-  const submittedItemSet = new Set(submittedItemIds);
-  const switchToItem = (item: DatasetItem) => {
-    if (!context || item.id === context.item.id) return;
-    const nextAnswersByItem = { ...answersByItemId, [context.item.id]: answers };
-    setAnswersByItemId(nextAnswersByItem);
-    setContext({ ...context, item });
-    setAnswers(nextAnswersByItem[item.id] ?? {});
-    setErrors([]);
-    setSubmitNotice(null);
-    setSubmitFailed(false);
-  };
-  const itemStatusLabel = (status: LabelerNavigationStatus) =>
-    status === "Submitted" ? "已提交" : status === "Returned" ? "已打回" : status === "Current" ? "进行中" : status === "Draft" ? "草稿" : "待标";
-  const itemStatusClass = (status: LabelerNavigationStatus) =>
-    status === "Submitted"
-      ? "labeler-runner-dot--success"
-      : status === "Returned"
-        ? "labeler-runner-dot--danger"
-        : status === "Current"
-          ? "labeler-runner-dot--primary"
-          : status === "Draft"
-            ? "labeler-runner-dot--warning"
-            : "";
-  const itemNav = navigationItems.map((item, index) => {
-    const status = getNavigationStatus(item, context.item.id, index, submittedItemSet);
-    return {
-      id: item.id,
-      item,
-      label: `#${String(index + 1).padStart(3, "0")}`,
-      title: getItemTitle(item),
-      status,
-    };
-  });
+  const itemTitle = getItemTitle(context.item);
+  const readonlyNotice = isEditableAssignment ? null : readonlyAssignmentNotice(context.assignment.status);
+  const draftBadgeText = !isEditableAssignment
+    ? "当前领取记录只读"
+    : saving
+      ? "保存中..."
+      : saveFailed
+        ? "保存失败，请稍后重试"
+        : lastSavedAt
+          ? `草稿已自动保存 ${formatClock(lastSavedAt)}`
+          : "草稿未保存";
 
   return (
     <div className="labeler-runner" onClick={telemetry.handleActivity} onPaste={telemetry.handlePaste}>
@@ -500,17 +498,11 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
         <div className="labeler-runner-brand">
           <span className="brand-mark brand-mark--small" />
           <strong>LabelHub</strong>
-          <span>标注员工作台 / 任务市场 · {context.task.title} / 第 {currentItemNumber} / {totalItems} 题</span>
+          <span>标注员工作台 / 任务市场 · {context.task.title} / 当前领取数据</span>
         </div>
         <div className="labeler-runner-user">
-          <Badge tone={saving ? "warning" : saveFailed ? "danger" : lastSavedAt ? "success" : "default"}>
-            {saving
-              ? "保存中..."
-              : saveFailed
-                ? "保存失败，请稍后重试"
-                : lastSavedAt
-                  ? `草稿已自动保存 ${formatClock(lastSavedAt)}`
-                  : "草稿未保存"}
+          <Badge tone={!isEditableAssignment ? "primary" : saving ? "warning" : saveFailed ? "danger" : lastSavedAt ? "success" : "default"}>
+            {draftBadgeText}
           </Badge>
           <span className="labeler-runner-avatar">标</span>
           <span>标注员</span>
@@ -521,45 +513,47 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
         <aside className="labeler-runner-nav">
           <div className="labeler-runner-panel-head">
             <div>
-              <h3>题目导航</h3>
-              <p>{currentItemNumber} / {totalItems} · 进度 {progressPercent}%</p>
+              <h3>当前数据</h3>
+              <p>一个领取记录只绑定一条真实数据</p>
             </div>
           </div>
           <div className="labeler-runner-items">
-            {itemNav.map((item) => (
-              <button
-                className={["labeler-runner-item", item.status === "Current" ? "labeler-runner-item--current" : ""]
-                  .filter(Boolean)
-                  .join(" ")}
-                key={item.id}
-                onClick={() => switchToItem(item.item)}
-                type="button"
-              >
-                <span>{item.label} {item.title}</span>
-                <span className="labeler-runner-status">
-                  <span className={["labeler-runner-dot", itemStatusClass(item.status)].filter(Boolean).join(" ")} />
-                  {itemStatusLabel(item.status)}
-                </span>
-              </button>
-            ))}
-            {totalItems > itemNav.length ? <p className="labeler-runner-more">还有 {totalItems - itemNav.length} 题</p> : null}
-            {totalItems === 1 ? <p className="labeler-runner-more">当前任务仅包含 1 条可标注数据</p> : null}
+            <div className="labeler-runner-item labeler-runner-item--current labeler-runner-item--static">
+              <span>#001 {itemTitle}</span>
+              <span className="labeler-runner-status">
+                <span className="labeler-runner-dot labeler-runner-dot--primary" />
+                {assignmentStatusLabel(context.assignment.status)}
+              </span>
+            </div>
+            <p className="labeler-runner-more">提交后请回任务市场重新领取下一条数据。</p>
           </div>
         </aside>
 
         <main className="labeler-runner-main">
           <section className="labeler-runner-main-head">
-            <div title={`题目 ${context.item.id}`}>
-              <h1>{context.task.title} · 第 {currentItemNumber} 题</h1>
-              <p>模板 r{context.schema.schemaVersionNo ?? "-"} · 第 {currentItemNumber} / {totalItems} 题</p>
+            <div title={`数据 ${context.item.id}`}>
+              <h1>{context.task.title} · 当前领取数据</h1>
+              <p>模板 r{context.schema.schemaVersionNo ?? "-"} · 领取记录 {context.assignment.id}</p>
             </div>
             <div className="labeler-runner-head-actions">
-              <Button disabled title="跳过功能暂未接入，可使用下方「下一题」切换题目">跳过</Button>
-              <Button disabled title="题目反馈功能暂未接入">报告题目</Button>
+              <Badge tone={assignmentStatusTone(context.assignment.status)}>
+                {assignmentStatusLabel(context.assignment.status)}
+              </Badge>
+              <Link className="lh-button" to="/labeler/tasks">任务市场</Link>
+              <Link className="lh-button" to="/labeler/submissions">我的提交</Link>
             </div>
           </section>
 
           <div className="labeler-runner-scroll">
+            {readonlyNotice ? (
+              <div className="labeler-runner-alert" role="status">
+                <div className="labeler-runner-alert-head">
+                  <span className="labeler-runner-alert-tag">只读</span>
+                  <strong>{readonlyNotice}</strong>
+                </div>
+              </div>
+            ) : null}
+
             {returnNotice ? (
               <div className="labeler-runner-alert" role="status">
                 <div className="labeler-runner-alert-head">
@@ -623,7 +617,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                   context={runtimeContext}
                   answers={answers}
                   mode="LABELING"
-                  readonly={false}
+                  readonly={!isEditableAssignment}
                   errors={errors}
                   engine={rendererEngine}
                   onAnswersChange={handleRendererAnswersChange}
@@ -637,38 +631,32 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
 
           <footer className="labeler-runner-actions">
             <div>
-              <Button
-                disabled={!previousItem}
-                title={!previousItem ? "已经是第一题" : undefined}
-                onClick={() => previousItem && switchToItem(previousItem)}
-              >
-                ← 上一题
-              </Button>
-              <Button
-                disabled={!nextItem}
-                title={!nextItem ? (totalItems === 1 ? "当前任务仅包含 1 条可标注数据" : "已经是最后一题") : undefined}
-                onClick={() => nextItem && switchToItem(nextItem)}
-              >
-                下一题 →
-              </Button>
+              <Link className="lh-button" to="/labeler/tasks">返回任务市场</Link>
+              <Link className="lh-button" to="/labeler/submissions">查看我的提交</Link>
             </div>
             <div className="labeler-runner-submit-group">
-              <span>⌘+Enter 提交 · ⌘+S 保存草稿</span>
+              <span>{isEditableAssignment ? "当前领取记录可保存草稿并提交审核" : "当前领取记录已锁定为只读"}</span>
               {missingRequiredFields.length > 0 ? (
                 <span className="labeler-runner-required-warning">
                   请补充必填字段：{missingRequiredFields.map((f) => f.title).join("、")}
                 </span>
               ) : null}
-              <Button onClick={handleSaveDraft} disabled={saving || submitting}>
+              <Button onClick={handleSaveDraft} disabled={!isEditableAssignment || saving || submitting}>
                 {saving ? "保存中..." : "保存草稿"}
               </Button>
               <Button
                 tone="primary"
-                disabled={missingRequiredFields.length > 0 || submitting}
-                title={missingRequiredFields.length > 0 ? "请先补全必填字段再提交" : undefined}
+                disabled={!isEditableAssignment || missingRequiredFields.length > 0 || submitting}
+                title={
+                  !isEditableAssignment
+                    ? readonlyAssignmentNotice(context.assignment.status)
+                    : missingRequiredFields.length > 0
+                      ? "请先补全必填字段再提交"
+                      : undefined
+                }
                 onClick={() => requestSubmit()}
               >
-                {submitting ? "提交中..." : "提交本题 →"}
+                {submitting ? "提交中..." : "提交当前数据"}
               </Button>
             </div>
           </footer>

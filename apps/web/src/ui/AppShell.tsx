@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import type { Role } from "../app/routes";
 
@@ -44,6 +44,32 @@ export function AppShell({ role, title, subtitle: _subtitle, navItems, onSwitchR
   const location = useLocation();
   const user = getCurrentUser(role);
   const currentNavLabel = getCurrentNavLabel(location.pathname, navItems);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setAccountMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAccountMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [accountMenuOpen]);
 
   return (
     <div className="app-shell">
@@ -60,15 +86,55 @@ export function AppShell({ role, title, subtitle: _subtitle, navItems, onSwitchR
           </div>
         </div>
         <div className="app-global-topbar__right">
-          <span className="app-user-avatar" aria-hidden="true">
-            {user.avatar}
-          </span>
-          <span className="app-user-name">
-            {user.name} · {roleLabel[role]}
-          </span>
-          <button className="app-account-switch" type="button" onClick={onSwitchRole}>
-            切换账号
-          </button>
+          <div className="app-account-menu-wrap" ref={accountMenuRef}>
+            <button
+              className="app-account-trigger"
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={accountMenuOpen}
+              onClick={() => setAccountMenuOpen((open) => !open)}
+            >
+              <span className="app-user-avatar" aria-hidden="true">
+                {user.avatar}
+              </span>
+              <span className="app-account-trigger__text">
+                <strong>{user.name}</strong>
+                <small>{roleLabel[role]}</small>
+              </span>
+            </button>
+            {accountMenuOpen ? (
+              <div className="app-account-menu" role="menu">
+                <div className="app-account-menu__header">
+                  <span className="app-user-avatar" aria-hidden="true">
+                    {user.avatar}
+                  </span>
+                  <div>
+                    <strong>{user.name}</strong>
+                    <small>{roleLabel[role]}</small>
+                  </div>
+                </div>
+                <div className="app-account-menu__meta">
+                  <span>当前工作台</span>
+                  <strong>{title}</strong>
+                </div>
+                <div className="app-account-menu__meta">
+                  <span>当前位置</span>
+                  <strong>{currentNavLabel}</strong>
+                </div>
+                <button
+                  className="app-account-switch"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    onSwitchRole();
+                  }}
+                >
+                  切换账号
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 

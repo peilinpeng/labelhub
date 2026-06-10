@@ -11,7 +11,103 @@
 
 ---
 
-## 2026-06-10 Owner 任务创建后配置流程引导（Codex，本轮未 commit）
+## 2026-06-10 追加修复：Owner 模板页数据导入状态与数据管理页同步（Codex，已提交并准备推送）
+
+- 当前实际分支：`integration/joint-test`
+- 当前基线：`84c6b2b feat(web): guide owner task setup flow`
+- 修改范围：
+  - `apps/web/src/features/owner/OwnerSchemaPage.tsx`
+- 问题现象：
+  - `/owner/tasks/:taskId/data` 显示已导入多条数据，且“继续配置模板”可点击。
+  - 跳到 `/owner/tasks/:taskId/designer` 后，模板页顶部流程和发布前检查仍显示“数据管理：还未导入数据 / 去导入数据”，导致用户在数据页和模板页之间反复横跳。
+- 根因：
+  - 数据管理页的完成状态来自 `listItems(taskId)`。
+  - 模板页的完成状态只依赖 `fetchTaskStats(taskId)` 的 `datasetTotal/datasetAvailable`。
+  - 当前真实场景中 `fetchTaskStats` 可能滞后或返回 0，而 `listItems` 已能读到真实导入的 3 条数据，导致两个页面判断不同步。
+- 本轮修改：
+  - `OwnerSchemaPage` 在加载任务统计和 AI 配置时，同时调用数据管理页同源接口 `listItems(taskId, 1, 500)`。
+  - 模板页的 `datasetImportedCount/datasetAvailableCount` 改为取 `fetchTaskStats` 与 `listItems` 两个真实来源的较大值。
+  - 因此只要真实题目列表里已有可领取数据，模板页 stepper、发布前检查和“数据待导入”提示都会同步显示已完成，不再误拦“继续配置模板”。
+- 边界：
+  - 未修改 `packages/contracts`。
+  - 未修改 `apps/api`。
+  - 未修改 `schema-core` 核心逻辑。
+  - 未伪造导入数据；只用已有真实接口 `listItems` 兜底修正前端状态判断。
+- 验证：
+  - `npm.cmd --prefix apps/web run typecheck` 通过。
+  - `npm.cmd --prefix apps/web run build` 沙箱内被 esbuild 上层目录读取权限阻断；提权重跑通过，仅保留既有 circular chunk 提示。
+  - `git diff --check` 通过，仅有既有 LF/CRLF warning。
+- 收班状态：
+  - 本段改动已纳入本轮最终提交，准备推送到 `origin/integration/joint-test`。
+  - 工作区在提交后应保持 clean。
+
+---
+
+## 2026-06-10 追加完成：Labeler 真实 assignment 单条链路 + 移动端账号菜单（Codex，已提交并准备推送）
+
+- 当前实际分支：`integration/joint-test`
+- 当前基线：`84c6b2b feat(web): guide owner task setup flow`
+- 修改范围：
+  - `apps/web/src/features/labeler/AssignmentPage.tsx`
+  - `apps/web/src/ui/AppShell.tsx`
+  - `apps/web/src/styles.css`
+  - `apps/web/src/mocks/mock-db.ts`（接手前/前序已修改，本轮保留其 assignment 单条 item 修正）
+- 本轮修改：
+  - `AssignmentPage` 不再调用 `/api/v1/assignments/:assignmentId/items` 拉同任务所有数据，也不再维护 `answersByItemId`、`taskItems`、`previousItem/nextItem` 或前端切题状态。
+  - 标注工作台语义改为“当前领取数据”：一个 assignment 只展示 `getAssignmentContext(assignmentId)` 返回的真实 `context.item`。
+  - `CLAIMED` / `DRAFTING` / `RETURNED` 状态可编辑；`SUBMITTED` / `ACCEPTED` / `CANCELED` / `EXPIRED` 状态只读，禁用自动保存、保存草稿、AI 辅助和重复提交。
+  - 提交成功后使用后端 `submitAssignment` 返回的 `assignment` 更新页面状态，不在前端伪造 dataset item 完成、不自动切到下一条；提示用户回任务市场重新领取下一条真实数据。
+  - 如果后端返回“Assignment 当前状态 'SUBMITTED' 不允许提交”，页面显示“当前领取记录已经提交，不能重复提交。请回任务市场领取下一条数据。”，不再只给泛化失败提示。
+  - 顶部和底部操作区移除“上一题 / 下一题 / 第 X 题”文案，替换为“任务市场”“我的提交”“返回任务市场”等真实链路入口。
+  - `AppShell` 右上角头像改为可点击账号菜单，菜单内显示当前账号、角色、工作台、当前位置，并提供“切换账号”；移动端保留头像入口，不再把账号切换能力隐藏掉。
+  - `styles.css` 增加账号菜单样式，并补充 Labeler 工作台移动端防溢出：长标题换行、按钮组可换行、表单输入/文本域最大宽度受控、当前数据卡片不再撑出横向宽度。
+- 边界：
+  - 未修改 `packages/contracts`。
+  - 未修改 `apps/api`。
+  - 未修改 `schema-core` 核心逻辑。
+  - 未绕过提交校验或 assignment 状态机；后端拒绝已提交 assignment 二次提交仍是正确防护。
+  - 未伪造“下一题”或发布/提交成功；下一条数据必须通过任务市场真实领取。
+- 验证：
+  - `npm.cmd --prefix apps/web run typecheck` 通过。
+  - `npm.cmd --prefix apps/web run build` 沙箱内会被 esbuild 上层目录读取权限阻断；提权重跑通过，仅保留既有 circular chunk 提示。
+  - `git diff --check` 通过，仅有既有 LF/CRLF warning。
+- 收班状态：
+  - 本段改动已纳入本轮最终提交，准备推送到 `origin/integration/joint-test`。
+  - `docs/LabelHub_2026-06-10_Team_Handoff.md` 已纳入版本管理。
+  - 工作区在提交后应保持 clean。
+
+---
+
+## 2026-06-10 追加完成：AI 建议完整 patch + mock 审核导出闭环（Codex，已提交并准备推送）
+
+- 当前实际分支：`integration/joint-test`
+- 当前基线：`84c6b2b feat(web): guide owner task setup flow`
+- 修改范围：
+  - `apps/web/src/mocks/mock-db.ts`
+- 本轮修改：
+  - `callLLMAssist` 的 mock 低分建议从仅返回 `qualityScore: "1"` 改为同时返回非空 `factCheckNote`，让低质量评分建议形成完整 `suggestedPatch`，继续走现有 schema preflight，不绕过 `qualityScore=1/2 -> factCheckNote 必填` 规则。
+  - 保留 renderer/preflight 行为不变：如果低分 patch 缺少 `factCheckNote`，仍会被现有 preflight 识别为 BLOCKED；本轮只修 mock AI 输出的完整性。
+  - `decideReview` 对齐 mock 审核状态流转：人工审核 PASS 后 submission 进入 `ACCEPTED`、assignment 进入 `ACCEPTED`、dataset item 进入 `COMPLETED`，因此 Owner 导出默认 `ACCEPTED` 过滤能选中审核通过记录。
+  - mock 审核决策现在允许 `AI_PASSED` / `NEEDS_HUMAN_REVIEW` / `HUMAN_REVIEWING` 走人工审核决策，终审仍要求 `FINAL_REVIEWING`，避免 mock 队列状态没有先领取时直接决策失败。
+  - REJECT 路径按 contracts 既有约定把 dataset item 回到 `AVAILABLE`，并清理 `currentAssignmentId`；双审首轮 PASS 的 audit summary 改为 `FINAL_REVIEW_REQUESTED`。
+- 边界：
+  - 未修改 `packages/contracts`。
+  - 未修改 `apps/api`。
+  - 未修改 `schema-core` 核心逻辑。
+  - 未绕过提交校验、AI preflight 或导出过滤；只修 mock 输出与 mock 状态副作用。
+  - 未改 `qualityScore=1/2 -> factCheckNote 必填` 与 `qualityScore=3/4/5 -> factCheckNote 隐藏并清空` 的 schema 规则。
+- 验证：
+  - `npm.cmd --prefix apps/web run typecheck` 通过。
+  - `npm.cmd --prefix apps/web run build` 沙箱内首次被 esbuild 上层目录读取权限阻断；提权重跑通过，仅保留既有 circular chunk 提示。
+  - `git diff --check` 通过，仅有既有 LF/CRLF warning。
+- 收班状态：
+  - 本段改动已纳入本轮最终提交，准备推送到 `origin/integration/joint-test`。
+  - 未跟踪文档已纳入版本管理。
+  - 工作区在提交后应保持 clean。
+
+---
+
+## 2026-06-10 Owner 任务创建后配置流程引导（Codex，已提交）
 
 - 当前实际分支：`integration/joint-test`
   - 用户消息指定 `fix/joint-test-web-shell`，本地该分支存在但未包含当前 `integration/joint-test @ 57c724e` 之后的主线提交；接手时工作区已有未提交文档/CSS改动，因此本轮未切分支，避免带脏改跨分支或触发冲突。
@@ -50,13 +146,13 @@
   - `git diff --check` 通过，仅有既有 LF/CRLF warning。
   - `Invoke-WebRequest http://localhost:5180/` 返回 `HTTP 200 OK`。
   - Codex 内置浏览器连接层仍因本地 `spawn setup refresh` 失败无法截图式实测；未改动浏览器或 dev server 状态。
-- 当前工作区：
-  - dirty，包含本轮前端流程改动，以及接手前已有的 `HANDOFF.md`、`submission/README.md`、`docs/LabelHub_Final_Delivery.md`、`docs/LabelHub_Delivery_Runbook.md` 等未提交改动。
-  - 未 commit / 未 push。
+- 收班状态：
+  - 本段前端流程改动已提交。
+  - 后续追加的 Owner 数据状态同步修复已纳入本轮最终提交。
 
 ---
 
-## 2026-06-10 Reviewer 队列页底部操作区布局修复 + 交付文档生成（Codex，本轮未 commit）
+## 2026-06-10 Reviewer 队列页底部操作区布局修复 + 交付文档生成（Codex，已提交）
 
 - 当前分支：`integration/joint-test`
 - 当前基线：`57c724e fix(schema-renderer): allow dismissing blocked ai suggestions`
@@ -78,9 +174,9 @@
   - `npm.cmd --prefix apps/web run build` 首次在沙箱内被 esbuild 上层目录读取权限阻断；提权重跑后通过，仅保留既有 circular chunk 提示。
   - `git diff --check` 通过，仅有既有 LF/CRLF warning。
   - 曾尝试启动 Vite dev server 做浏览器验证；服务可启动到 `http://127.0.0.1:5182/`，但 Codex 内置浏览器连接层两次因本地沙箱 `spawn setup refresh` 失败，未完成截图式实测。为避免残留，已停止本轮启动的 Vite/npm 子进程并清理 `.tmp-vite.log`。
-- 当前工作区：
-  - dirty，包含本轮 `apps/web/src/styles.css`、`docs/LabelHub_Final_Delivery.md`、`docs/LabelHub_Delivery_Runbook.md`、`submission/README.md` 与本段 `HANDOFF.md` 修改。
-  - 未 commit / 未 push。
+- 收班状态：
+  - 本段 Reviewer 布局修复与交付文档已提交。
+  - 后续追加的 Labeler、Owner 数据状态与 mock 闭环修复已纳入本轮最终提交。
 
 ---
 

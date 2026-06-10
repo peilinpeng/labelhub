@@ -707,7 +707,8 @@ export function getAssignmentContext(assignmentId: string): AssignmentContextRes
 export function listAssignmentDatasetItems(assignmentId: string): DatasetItem[] {
   const assignment = mockDb.assignments.find((item) => item.id === assignmentId);
   if (assignment === undefined) return [];
-  return mockDb.datasetItems.filter((item) => item.taskId === assignment.taskId);
+  const item = mockDb.datasetItems.find((candidate) => candidate.id === assignment.itemId);
+  return item === undefined ? [] : [item];
 }
 
 export function saveDraft(assignmentId: string, answers: AnswerPayload, clientRevision: number): SaveDraftResponse | undefined {
@@ -786,10 +787,11 @@ export async function callLLMAssist(request: LLMAssistMockRequest = {}): Promise
     summary: "建议检查新闻来源是否充分，并补充事实依据。",
   };
   // 同时建议低质量评分（"1"），触发 R-low-quality-requires-note 联动：
-  // factCheckNote 变为 required 但值为空 → preflight BLOCKED，演示 FE-8 阻断效果
+  // mock 响应同步给出事实核查说明，走现有 preflight 校验通过完整 patch。
   const suggestedPatch = {
     rewriteSuggestion: "建议补充统计口径、来源链接和第三方证据。",
     qualityScore: "1",
+    factCheckNote: "AI 判断该样本来源不足，需补充统计口径、来源链接和第三方佐证后再通过审核。",
   };
   const callId = nextId("llm");
   const [promptSnapshotHash, outputHash] = await Promise.all([
@@ -1071,8 +1073,9 @@ export function claimReview(submissionId: string): Submission | undefined {
 
 export function decideReview(command: ReviewCommand): ReviewDecisionResponse | undefined {
   const submission = mockDb.submissions.find((item) => item.id === command.submissionId);
-  if (submission === undefined || !["HUMAN_REVIEWING", "FINAL_REVIEWING"].includes(submission.status)) return undefined;
+  if (submission === undefined || !isReviewDecisionAllowed(submission.status, command.stage)) return undefined;
   if (command.decision === "RETURN" && command.reason === undefined) return undefined;
+  if (command.decision === "REJECT" && command.reason === undefined) return undefined;
   const task = getTask(submission.taskId);
   const assignment = mockDb.assignments.find((item) => item.id === submission.assignmentId);
   const item = mockDb.datasetItems.find((candidate) => candidate.id === submission.itemId);
@@ -1094,7 +1097,8 @@ export function decideReview(command: ReviewCommand): ReviewDecisionResponse | u
   if (command.decision === "REJECT") {
     submission.status = "REJECTED";
     assignment.status = "CANCELED";
-    item.status = "DISABLED";
+    item.status = "AVAILABLE";
+    delete item.currentAssignmentId;
   }
 
   submission.updatedAt = now();
@@ -1120,11 +1124,24 @@ export function decideReview(command: ReviewCommand): ReviewDecisionResponse | u
   if (command.comments !== undefined) reviewResult.comments = command.comments;
   if (command.patches !== undefined) reviewResult.patches = command.patches;
   mockDb.reviewResults.push(reviewResult);
+  const auditAction =
+    command.decision === "PASS"
+      ? task.reviewPolicy.type === "DOUBLE_REVIEW" && command.stage === "HUMAN_REVIEW"
+        ? "FINAL_REVIEW_REQUESTED"
+        : "REVIEW_ACCEPTED"
+      : command.decision === "RETURN"
+        ? "REVIEW_RETURNED"
+        : "REVIEW_REJECTED";
   return {
     submission,
     reviewResult,
-    auditLog: audit(command.decision === "PASS" ? "REVIEW_ACCEPTED" : command.decision === "RETURN" ? "REVIEW_RETURNED" : "REVIEW_REJECTED"),
+    auditLog: audit(auditAction),
   };
+}
+
+function isReviewDecisionAllowed(status: Submission["status"], stage: ReviewCommand["stage"]): boolean {
+  if (stage === "FINAL_REVIEW") return status === "FINAL_REVIEWING";
+  return ["AI_PASSED", "NEEDS_HUMAN_REVIEW", "HUMAN_REVIEWING"].includes(status);
 }
 
 export function batchDecideReview(commands: ReviewCommand[]): BatchReviewResponse {
