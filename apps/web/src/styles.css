@@ -2491,6 +2491,9 @@ a {
 
 .owner-ai-page .lh-ai-panel {
   display: grid;
+  /* 在 split-layout 中被拉伸到与左侧等高时，按内容顶对齐排列网格行，
+     标题/说明不再被均分到中部，多余空白留在底部而非顶部。 */
+  align-content: start;
   gap: 14px;
   padding: 18px;
   border: 1px solid var(--lh-border);
