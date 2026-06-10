@@ -19,7 +19,9 @@ from app.middleware.error_handler import (
 from app.models.assignment import Assignment, Draft
 from app.models.dataset import DatasetItem
 from app.models.llm import LLMCallLog
+from app.models.review import ReviewResult
 from app.models.schema import SchemaVersion
+from app.models.submission import Submission
 from app.models.task import Task
 from app.utils.hashing import hash_canonical_json
 from app.schemas.assignment import (
@@ -192,6 +194,36 @@ def get_assignment_context(db: Session, assignment_id: str, actor: object) -> di
     schema_version = db.query(SchemaVersion).filter_by(id=assignment.schema_version_id).first()
     draft = db.query(Draft).filter_by(assignment_id=assignment_id).first()
 
+    # 打回意见：仅当当前 assignment 处于「已打回」状态时，回传最近一次
+    # RETURN/REJECT 的审核结果，供 Labeler 看到审核员意见后修改重提；
+    # 重新提交后状态流转，旧意见自动不再展示，避免误导。
+    # 序列化为契约 ReviewResult（HumanReviewResultRecord）形状：comments/patches/reason
+    # 提升到顶层，与前端 AssignmentPage 读取的 review.comments 对齐。
+    last_return_reason = None
+    if assignment.status == "RETURNED":
+        rr = (
+            db.query(ReviewResult)
+            .join(Submission, Submission.id == ReviewResult.submission_id)
+            .filter(Submission.assignment_id == assignment_id)
+            .filter(ReviewResult.decision.in_(["RETURN", "REJECT"]))
+            .order_by(ReviewResult.created_at.desc())
+            .first()
+        )
+        if rr is not None:
+            result_json = rr.result_json or {}
+            last_return_reason = {
+                "id": rr.id,
+                "submissionId": rr.submission_id,
+                "schemaVersionId": rr.schema_version_id,
+                "stage": rr.stage,
+                "decision": rr.decision,
+                "comments": result_json.get("comments", []),
+                "patches": result_json.get("patches", []),
+                "reason": result_json.get("reason"),
+                "actorId": rr.actor_id,
+                "createdAt": rr.created_at,
+            }
+
     return {
         "assignment": assignment,
         "task": task,
@@ -199,7 +231,7 @@ def get_assignment_context(db: Session, assignment_id: str, actor: object) -> di
         "schema_version_id": schema_version.id,
         "schema_json": schema_version.schema_json,
         "draft": draft,
-        "last_return_reason": None,
+        "last_return_reason": last_return_reason,
     }
 
 
