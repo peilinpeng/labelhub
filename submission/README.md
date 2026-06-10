@@ -19,7 +19,7 @@
 
 ## 3. 演示视频（5–10 分钟，覆盖三角色完整链路）
 
-- [ ] 待录制并放置：`submission/demo-video.mp4`（或外链）。
+- [x] 演示视频（百度网盘）：<https://pan.baidu.com/s/1ry55Bgb1j0AuaVhqx6wi8Q>　提取码：`9eev`
 - 录屏剧本：
   - 真实后端全链路：[`docs/LabelHub_Demo_Guide.md`](../docs/LabelHub_Demo_Guide.md)
   - 最终交付主线摘要：[`docs/LabelHub_Final_Delivery.md`](../docs/LabelHub_Final_Delivery.md) → 「推荐演示路线」
@@ -67,7 +67,7 @@ bash apps/api/scripts/e2e_test.sh                                               
 
 ## 待办勾选（提交前补齐）
 
-- [ ] 演示视频（由搭档录制）
+- [x] 演示视频（百度网盘，链接见 §3；提取码 9eev）
 - [x] 架构图
 - [x] AI Coding 过程记录（见 `docs/delivery-drafts/AI_CODING_PROCESS.md`）
 - [x] Demo 截图
