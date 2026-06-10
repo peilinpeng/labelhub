@@ -14,7 +14,6 @@
 
 - [docs/LabelHub_Final_Demo_Guide.md](LabelHub_Final_Demo_Guide.md)：最终演示脚本。
 - [docs/LabelHub_Demo_Guide.md](LabelHub_Demo_Guide.md)：真实后端全链路录屏剧本。
-- [docs/QA_TEST_RECORD.md](QA_TEST_RECORD.md)：QA 测试记录与缺陷清单。
 - [docs/test-cases.md](test-cases.md)：测试用例。
 - [docs/dataset-test-scenario-plan.md](dataset-test-scenario-plan.md)：数据集测试场景计划。
 
@@ -29,7 +28,7 @@
 ## 4. AI Coding 与开发过程
 
 - [AI_CODING_RULES.md](../AI_CODING_RULES.md)：AI Coding 统一规则（contract-driven、禁止事项、验证要求）。
-- [docs/delivery-drafts/AI_CODING_PROCESS.md](delivery-drafts/AI_CODING_PROCESS.md)：AI Coding 过程与开发记录（草稿，最终目录待定）。
+- [docs/AI_CODING_PROCESS.md](AI_CODING_PROCESS.md)：AI Coding 过程与开发记录（开发阶段 / 工具使用 / 关键迭代 / 验证方式）。
 
 ## 5. 运行 / 部署 / 协作参考
 
@@ -39,22 +38,15 @@
 - [docs/optimization-checklist.md](optimization-checklist.md)：优化检查清单。
 - [docs/backend-optimization-plan.md](backend-optimization-plan.md)：后端优化计划。
 
-## 6. 历史计划与交接文档
+## 6. 历史计划
 
-> 这些文档反映特定阶段的上下文（含旧分支名如 `feature/schema-governance-upgrade`），
-> 作为历史记录保留，阅读时请以 README 与 Final Delivery 中的当前状态为准。
+> 反映特定阶段的上下文，作为历史记录保留；阅读时请以 README 与 Final Delivery 中的当前状态为准。
 
 - [docs/final-iteration-plan.md](final-iteration-plan.md)：最终迭代计划。
-- [docs/LabelHub_2026-06-10_Team_Handoff.md](LabelHub_2026-06-10_Team_Handoff.md)：团队交接。
-- [HANDOFF.md](../HANDOFF.md) / [HANDOFF_FOR_PARTNERS.md](../HANDOFF_FOR_PARTNERS.md)：交接文档。
-- [CONTEXT_HANDOFF.md](../CONTEXT_HANDOFF.md)：上下文交接。
-- [SCHEMA_ARCH_AGENT.md](../SCHEMA_ARCH_AGENT.md) / [AGENTS.md](../AGENTS.md)：Agent / Schema 架构工作约定。
-- [PROGRESS_full_quality_center_ai_assist.md](../PROGRESS_full_quality_center_ai_assist.md)：质量中心 / AI Assist 进度记录。
-- [LabelHub_前端_UI_功能交接文档_更新优化版.md](../LabelHub_前端_UI_功能交接文档_更新优化版.md)：前端 UI 功能交接。
 
 ## 7. 阅读建议
 
 - 评委 / 第一次看项目：README → Final Delivery → Final Demo Guide。
 - 本地复现：README → Delivery Runbook → deployment.md。
 - 技术评审：Architecture Contract → Schema Runtime Engine → Schema Version Management → Quality Layer。
-- 接手开发：AI_CODING_RULES → HANDOFF_FOR_PARTNERS → QA_TEST_RECORD → git-workflow。
+- 接手开发：AI_CODING_RULES → git-workflow → CONTRIBUTING。

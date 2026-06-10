@@ -71,3 +71,13 @@ __pycache__/
 # 本地工具配置 / 内部交接（勿提交）
 .claude/
 交接文档_*.md
+# 内部 AI 轮班 / 交接 / 进度 / 任务文档（仅本地保留，不进交付仓库）
+HANDOFF.md
+HANDOFF_FOR_PARTNERS.md
+CONTEXT_HANDOFF.md
+SCHEMA_ARCH_AGENT.md
+AGENTS.md
+PROGRESS_full_quality_center_ai_assist.md
+LabelHub_前端_UI_功能交接文档_更新优化版.md
+docs/LabelHub_2026-06-10_Team_Handoff.md
+tasks/

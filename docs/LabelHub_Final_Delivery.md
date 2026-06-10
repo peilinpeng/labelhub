@@ -287,7 +287,6 @@ git diff --check                         通过，仅 LF/CRLF warning
 | 现场运行手册 | `docs/LabelHub_Delivery_Runbook.md` |
 | 真实后端演示剧本 | `docs/LabelHub_Demo_Guide.md` |
 | Mock / Schema Governance 演示剧本 | `docs/LabelHub_Final_Demo_Guide.md` |
-| QA 记录 | `docs/QA_TEST_RECORD.md` |
 | 部署说明 | `docs/deployment.md` |
 | API 文档 | `apps/api/openapi.json`，运行时 `/docs` |
 | 架构契约 | `labelhub-architecture-contract.md` |

@@ -38,7 +38,7 @@
   - [`docs/final-iteration-plan.md`](../docs/final-iteration-plan.md)（最终迭代规划）
   - [`docs/dataset-test-scenario-plan.md`](../docs/dataset-test-scenario-plan.md)（比赛数据接入方案）
 - [x] 架构图：[`submission/architecture.png`](./architecture.png)（系统架构）+ [`submission/data-quality-flow.png`](./data-quality-flow.png)（数据质量主线）；Mermaid 源 `architecture.mmd` / `data-quality-flow.mmd`。
-- [x] AI Coding 过程记录：[`submission/ai-coding-log.md`](./ai-coding-log.md)（开发思路 / 关键决策 / 工具使用约束）；完整过程记录见 [`docs/delivery-drafts/AI_CODING_PROCESS.md`](../docs/delivery-drafts/AI_CODING_PROCESS.md)（开发阶段 / AI Coding 使用方式 / 关键迭代记录 / 验证方式）。
+- [x] AI Coding 过程记录：[`submission/ai-coding-log.md`](./ai-coding-log.md)（开发思路 / 关键决策 / 工具使用约束）；完整过程记录见 [`docs/AI_CODING_PROCESS.md`](../docs/AI_CODING_PROCESS.md)（开发阶段 / AI Coding 使用方式 / 关键迭代记录 / 验证方式）。
 - [x] Demo 截图：[`submission/screenshots/`](./screenshots/)（三角色 6 张关键页 + 索引）。
 
 ## 5. 可访问的演示环境说明
@@ -69,6 +69,6 @@ bash apps/api/scripts/e2e_test.sh                                               
 
 - [x] 演示视频（百度网盘，链接见 §3；提取码 9eev）
 - [x] 架构图
-- [x] AI Coding 过程记录（见 `docs/delivery-drafts/AI_CODING_PROCESS.md`）
+- [x] AI Coding 过程记录（见 `docs/AI_CODING_PROCESS.md`）
 - [x] Demo 截图
 - [x] 可访问演示环境说明（本地 Docker 一键复现 + `docs/deployment.md` 云部署说明；演示账号见 §5；未提供公网托管地址）

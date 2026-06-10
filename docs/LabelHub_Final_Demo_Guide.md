@@ -114,7 +114,7 @@ http://localhost:5180/owner/tasks/task_demo_schema_breaking_change/designer
 **建议截图：**
 
 ```
-docs/qa-assets/01-owner-breaking-blocked.png
+submission/screenshots/01-owner-breaking-blocked.png
 ```
 截图内容：显示 FIELD_REMOVED 的兼容性检查结果 + 禁用的发布按钮
 
@@ -143,7 +143,7 @@ http://localhost:5180/owner/tasks/task_demo_schema_safe_publish/designer
 **建议截图：**
 
 ```
-docs/qa-assets/02-owner-audit-timeline.png
+submission/screenshots/02-owner-audit-timeline.png
 ```
 
 ---
@@ -212,7 +212,7 @@ http://localhost:5180/labeler/workspace/asn_1001
 **建议截图：**
 
 ```
-docs/qa-assets/03-formily-linkage-required.png
+submission/screenshots/03-formily-linkage-required.png
 ```
 截图内容：qualityScore = "1" 时 factCheckNote 显示且标注必填
 
@@ -254,7 +254,7 @@ http://localhost:5180/labeler/workspace/asn_1001
 **建议截图：**
 
 ```
-docs/qa-assets/04-ai-preflight-blocked.png
+submission/screenshots/04-ai-preflight-blocked.png
 ```
 
 ### 5.2 SAFE 场景
@@ -274,7 +274,7 @@ docs/qa-assets/04-ai-preflight-blocked.png
 **建议截图：**
 
 ```
-docs/qa-assets/05-ai-preflight-safe.png
+submission/screenshots/05-ai-preflight-safe.png
 ```
 
 **讲解要点：**
@@ -308,7 +308,7 @@ http://localhost:5180/reviewer/items/sub_1001
 **建议截图：**
 
 ```
-docs/qa-assets/06-reviewer-diff-generated.png
+submission/screenshots/06-reviewer-diff-generated.png
 ```
 
 **讲解要点：**
@@ -351,7 +351,7 @@ http://localhost:5180/owner/tasks/task_news_quality/export
 **建议截图：**
 
 ```
-docs/qa-assets/07-export-passport-summary.png
+submission/screenshots/07-export-passport-summary.png
 ```
 
 **讲解要点：**
@@ -446,5 +446,3 @@ Demo 1 → Demo 3 → Demo 5
 | `docs/LabelHub_Schema_Version_Management.md` | Schema Governance 设计规格 |
 | `docs/labelhub_schema_runtime_engine.md` | Schema Runtime Engine v2 技术设计 |
 | `docs/FORMILY_ARCH_DECISIONS.md` | Formily 架构决策记录 |
-| `docs/QA_TEST_RECORD.md` | QA 测试记录模板（待填写） |
-| `HANDOFF.md` | 轮班交接状态（最新 Git 基线） |
