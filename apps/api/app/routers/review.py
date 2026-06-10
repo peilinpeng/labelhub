@@ -70,6 +70,24 @@ def get_review_detail(
 ) -> ReviewDetailResponse:
     detail = review_domain.get_review_detail(db, submission_id, actor)
     schema_json = detail["schema_version"].schema_json if detail["schema_version"] else {}
+    # AI 预审记录按契约 AIReviewResultRecord 序列化：result_json 即 AIReviewResult
+    # （totalScore/dimensionScores/fieldIssues/summary/confidence），需置于 aiResult
+    # 字段，与前端 detail.aiResult.aiResult.* 的读取对齐（resultJson 形状前端读不到）。
+    ai = detail["ai_result"]
+    ai_record = (
+        {
+            "id": ai.id,
+            "submissionId": ai.submission_id,
+            "schemaVersionId": ai.schema_version_id,
+            "stage": ai.stage,
+            "decision": ai.decision,
+            "aiResult": ai.result_json,
+            "actorId": ai.actor_id,
+            "createdAt": ai.created_at,
+        }
+        if ai
+        else None
+    )
     return ReviewDetailResponse(
         submission=SubmissionSummary.from_orm(detail["submission"]),
         task=TaskResponse.from_orm(detail["task"]),
@@ -80,7 +98,7 @@ def get_review_detail(
         itemId=detail["submission"].item_id,
         schemaVersionId=detail["submission"].schema_version_id,
         schemaJson=schema_json,
-        aiResult=ReviewResultResponse.from_orm(detail["ai_result"]) if detail["ai_result"] else None,
+        aiResult=ai_record,
         aiTrace=AITraceResponse.from_orm(
             detail["ai_trace"],
             detail.get("review_config"),

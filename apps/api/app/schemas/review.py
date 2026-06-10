@@ -232,7 +232,9 @@ class ReviewDetailResponse(BaseModel):
     itemId: str
     schemaVersionId: str
     schemaJson: dict
-    aiResult: ReviewResultResponse | None = None
+    # 契约 AIReviewResultRecord：result_json(AIReviewResult) 置于 aiResult 字段，
+    # 前端读 detail.aiResult.aiResult.{dimensionScores,summary,confidence,fieldIssues}。
+    aiResult: dict | None = None
     aiTrace: AITraceResponse | None = None
     history: list[ReviewResultResponse]
     auditLogs: list[AuditLogSummary]
