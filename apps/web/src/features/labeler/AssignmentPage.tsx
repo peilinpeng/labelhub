@@ -5,6 +5,7 @@ import { collectFieldNodes } from "@labelhub/schema-core";
 import { SchemaRenderer, type LLMAssistOutcome } from "@labelhub/schema-renderer";
 import { Role } from "../../app/routes";
 import { callLLMAssist, getAssignmentContext, saveDraft, submitAssignment } from "../../api/labeler";
+import { ApiRequestError } from "../../api/client";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
 import { Badge, Button, Card } from "../../ui/primitives";
@@ -125,9 +126,14 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [pendingSubmitAnswers, setPendingSubmitAnswers] = useState<AnswerPayload | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  // 草稿版本冲突后的一次性提示：服务端草稿被其它会话更新，已自动重新同步版本号
+  const [draftResyncNotice, setDraftResyncNotice] = useState<string | null>(null);
   const isEditableAssignment = context ? isEditableAssignmentStatus(context.assignment.status) : false;
   // 已保存内容的基线快照：用于自动保存的脏检查，避免把"刚载入的草稿"重复回存
   const savedSnapshotRef = useRef<string | null>(null);
+  // 当前服务端草稿版本号（乐观锁）：载入时取服务端值，每次保存成功后更新为返回值。
+  // 不再写死 0，否则服务端已是 v1 时自动保存会永远 409 REVISION_CONFLICT。
+  const serverRevisionRef = useRef(0);
   const aiAssistMetadataByCallIdRef = useRef<Map<string, AiAssistResponseMetadata>>(new Map());
   const acceptedAiAssistPatchesRef = useRef<Map<string, AcceptedAiAssistPatch>>(new Map());
   const aiAssistCallAttemptCounterRef = useRef(0);
@@ -147,6 +153,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           const data = await getAssignmentContext(assignmentId);
           setContext(data);
           setAnswers(data.draft?.answers ?? {});
+          serverRevisionRef.current = data.draft?.serverRevision ?? 0;
         }
       } catch (e) {
         console.error("Failed to fetch assignment:", e);
@@ -166,6 +173,25 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     savedSnapshotRef.current = null;
   }, [assignmentId, context?.item.id]);
 
+  // 保存草稿并维护乐观锁版本号：clientRevision 取当前服务端版本，成功后更新为返回值。
+  // 若返回 409 REVISION_CONFLICT（服务端草稿已被更新），重新拉取最新版本号后保留本地
+  // 答案重试一次（last-write-wins），并给出"已重新同步"的提示，而不是持续用旧版本失败。
+  const persistDraft = async (draftAnswers: AnswerPayload): Promise<void> => {
+    if (!assignmentId) return;
+    try {
+      const resp = await saveDraft(assignmentId, { answers: draftAnswers, clientRevision: serverRevisionRef.current });
+      serverRevisionRef.current = resp.draft.serverRevision;
+    } catch (e) {
+      const conflict = e instanceof ApiRequestError && (e.status === 409 || e.code === "REVISION_CONFLICT");
+      if (!conflict) throw e;
+      const latest = await getAssignmentContext(assignmentId);
+      serverRevisionRef.current = latest.draft?.serverRevision ?? serverRevisionRef.current;
+      const resp = await saveDraft(assignmentId, { answers: draftAnswers, clientRevision: serverRevisionRef.current });
+      serverRevisionRef.current = resp.draft.serverRevision;
+      setDraftResyncNotice("草稿已在服务端更新，已重新同步最新版本，你的当前内容已保存。");
+    }
+  };
+
   // 草稿自动保存：答案变化且与上次已保存内容不同时，空闲 1.2s 后回存草稿（防丢失）。
   // 首次载入草稿时仅建立基线快照、不触发保存；保存成功后刷新基线与时间戳。
   useEffect(() => {
@@ -181,7 +207,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
         try {
           setSaving(true);
           setSaveFailed(false);
-          await saveDraft(assignmentId, { answers, clientRevision: 0 });
+          await persistDraft(answers);
           savedSnapshotRef.current = snapshot;
           setLastSavedAt(new Date().toISOString());
           setSaveErrorKind(null);
@@ -282,7 +308,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     try {
       setSaving(true);
       setSaveFailed(false);
-      await saveDraft(assignmentId, { answers, clientRevision: 0 });
+      await persistDraft(answers);
       savedSnapshotRef.current = JSON.stringify(answers);
       setLastSavedAt(new Date().toISOString());
       setSaveErrorKind(null);
@@ -322,7 +348,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     try {
       setSubmitting(true);
       setSubmitFailed(false);
-      response = await submitAssignment(assignmentId, { answers: submitAnswers, clientRevision: 0 });
+      response = await submitAssignment(assignmentId, { answers: submitAnswers, clientRevision: serverRevisionRef.current });
     } catch (error) {
       console.warn("提交标注失败：", error);
       setSubmitFailed(true);
@@ -381,7 +407,7 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
       return response;
     } catch {
       const fallbackResponse: LLMRuntimeResponse = {
-        output: { summary: "LLM 辅助暂时不可用" },
+        output: { summary: "AI 辅助暂时不可用，你仍可继续人工作答。" },
         suggestedPatch: {},
         callId: `llm_unavailable_${callAttemptId}` as LLMRuntimeResponse["callId"],
       };
@@ -601,6 +627,12 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
                 role={submitFailed ? "alert" : "status"}
               >
                 {submitNotice}
+              </div>
+            ) : null}
+
+            {draftResyncNotice ? (
+              <div className="labeler-runner-success" role="status">
+                {draftResyncNotice}
               </div>
             ) : null}
 

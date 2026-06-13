@@ -1,5 +1,22 @@
 import type { ApiError } from "@labelhub/contracts";
 
+/**
+ * 携带 HTTP 状态码与后端错误码的请求错误。
+ * 调用方可据此区分 409（REVISION_CONFLICT）、422（VALIDATION_FAILED）、
+ * 502（LLM_ASSIST_FAILED）等，做就地的软提示与恢复，而非一律当未知错误。
+ * 仍是 Error 子类，原有 `instanceof Error` / `.message` 的调用方不受影响。
+ */
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 const ROLE_CREDENTIALS: Record<string, { email: string; password: string }> = {
   OWNER:    { email: "owner@labelhub.test",    password: "Seed@1234" },
   LABELER:  { email: "labeler@labelhub.test",  password: "Seed@1234" },
@@ -122,7 +139,11 @@ async function handleResponse<T>(response: Response): Promise<T> {
     // 这里只把 401 当普通错误抛出，由各调用方就地做软提示（OwnerAIPage 等已有 catch 处理）；
     // 真正的会话失效会导致所有请求 401，登录态在下次角色校验时自然回到登录流程。
     const error = data as ApiError | null;
-    throw new Error(error?.message ?? `Request failed: ${response.status} ${response.statusText}`);
+    throw new ApiRequestError(
+      error?.message ?? `Request failed: ${response.status} ${response.statusText}`,
+      response.status,
+      error?.code,
+    );
   }
   return unwrapDataEnvelope(data) as T;
 }

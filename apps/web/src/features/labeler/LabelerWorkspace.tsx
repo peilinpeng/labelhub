@@ -1,9 +1,13 @@
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Role } from "../../app/routes";
-import { claimTask, listMarketplaceTasks } from "../../api/labeler";
+import { claimTask, listMarketplaceTasks, listMyAssignments } from "../../api/labeler";
+import { ApiRequestError } from "../../api/client";
 import { Badge, Button, Card, KpiCard } from "../../ui/primitives";
 import type { ClaimTaskResponse, Task } from "@labelhub/contracts";
+
+// 该 assignment 仍可继续作答（未提交完成），用于"已领取"时跳回原作答记录。
+const ACTIVE_ASSIGNMENT_STATUSES = new Set(["CLAIMED", "DRAFTING", "RETURNED"]);
 
 interface LabelerWorkspaceProps {
   role: Role;
@@ -15,6 +19,8 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
+  // 领取提示：区分"真错误"(danger) 与"已领取/友好引导"(info)，避免把正常业务规则当红错。
+  const [claimNotice, setClaimNotice] = useState<{ tone: "info" | "danger"; text: string } | null>(null);
   const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,12 +42,41 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
   const handleClaimTask = async (taskId: string) => {
     try {
       setClaimingTaskId(taskId);
+      setClaimNotice(null);
       const response: ClaimTaskResponse = await claimTask(taskId, {});
       navigate(`/labeler/workspace/${response.context.assignment.id}`);
     } catch (error) {
-      setOfflineNotice(error instanceof Error ? error.message : "领取任务失败，请稍后重试。");
+      // 422「您已领取该任务」是正常业务规则，不是错误：直接把用户带回已有作答记录。
+      const alreadyClaimed =
+        error instanceof ApiRequestError && error.status === 422 && error.message.includes("已领取");
+      if (alreadyClaimed) {
+        const existing = await findActiveAssignment(taskId);
+        if (existing) {
+          navigate(`/labeler/workspace/${existing}`);
+          return;
+        }
+        setClaimNotice({ tone: "info", text: "你已领取该任务，请先完成当前作答后再领取下一条。" });
+        return;
+      }
+      setClaimNotice({
+        tone: "danger",
+        text: error instanceof Error ? error.message : "领取任务失败，请稍后重试。",
+      });
     } finally {
       setClaimingTaskId(null);
+    }
+  };
+
+  // 查找当前用户在该任务下仍可继续作答的 assignment（用于"已领取"时跳回）。
+  const findActiveAssignment = async (taskId: string): Promise<string | null> => {
+    try {
+      const mine = await listMyAssignments();
+      const active = mine.find(
+        (a) => a.taskId === taskId && ACTIVE_ASSIGNMENT_STATUSES.has(a.status),
+      );
+      return active?.id ?? null;
+    } catch {
+      return null;
     }
   };
 
@@ -62,6 +97,15 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
         <Card className="labeler-return-card">
           <Badge tone="danger">加载失败</Badge>
           <p>{offlineNotice}</p>
+        </Card>
+      ) : null}
+
+      {claimNotice ? (
+        <Card className="labeler-return-card">
+          <Badge tone={claimNotice.tone === "danger" ? "danger" : "primary"}>
+            {claimNotice.tone === "danger" ? "领取失败" : "提示"}
+          </Badge>
+          <p>{claimNotice.text}</p>
         </Card>
       ) : null}
 
