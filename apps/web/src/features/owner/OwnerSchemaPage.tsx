@@ -1767,14 +1767,15 @@ async function buildPublishPreview({
   if (activeSchemaVersionId) {
     try {
       const schemaVersion = await fetchSchemaVersion(activeSchemaVersionId);
-      const oldSchema = schemaVersion.snapshot;
+      const oldSchema = readSchemaVersionSnapshot(schemaVersion);
+      if (oldSchema === undefined) {
+        throw new Error("SCHEMA_VERSION_SNAPSHOT_MISSING");
+      }
       compatibilityReport = checkBackwardCompatibility(oldSchema, schema);
       manualMappingSlots = createMigrationPlan(oldSchema, schema).manualMappingSlots;
       isFirstPublish = false;
-    } catch (error) {
-      oldSchemaStatusMessage = error instanceof Error
-        ? `未能加载上一已发布版本，本次仅执行当前草稿本地检查：${error.message}`
-        : "未能加载上一已发布版本，本次仅执行当前草稿本地检查。";
+    } catch {
+      oldSchemaStatusMessage = "未能读取上一已发布版本，本次仅执行当前草稿完整性检查。";
     }
   }
 
@@ -1806,6 +1807,17 @@ async function buildPublishPreview({
   }
 
   return result;
+}
+
+function readSchemaVersionSnapshot(schemaVersion: unknown): LabelHubSchema | undefined {
+  if (!isRecordValue(schemaVersion)) return undefined;
+  const candidate = schemaVersion.snapshot ?? schemaVersion.schema;
+  if (!isRecordValue(candidate) || !isRecordValue(candidate.root)) return undefined;
+  return candidate as unknown as LabelHubSchema;
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function createOwnerPublishAuditPreview(
