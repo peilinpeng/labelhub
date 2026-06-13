@@ -11849,6 +11849,8 @@ a {
   color: var(--lh-muted);
   font-size: 12px;
 }
+.owner-version-panel-compact .schema-version-panel__head h3,
+.owner-version-panel-compact .schema-version-panel__head p,
 .owner-version-panel-compact .schema-version-row__title strong,
 .owner-version-panel-compact .schema-version-row__meta,
 .owner-version-panel-compact .schema-version-change__msg,
@@ -11857,6 +11859,11 @@ a {
 .owner-version-panel-compact .empty-state {
   min-width: 0;
   overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* 标题块可收缩，避免长说明把右侧版本数 badge 顶出卡片 */
+.owner-version-panel-compact .schema-version-panel__head > div:first-child {
+  min-width: 0;
 }
 .owner-version-panel-compact .schema-version-row__meta {
   display: -webkit-box;

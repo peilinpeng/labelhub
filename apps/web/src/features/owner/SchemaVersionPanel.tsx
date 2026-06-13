@@ -129,7 +129,10 @@ export function SchemaVersionPanel({
       <div className="schema-version-panel__head">
         <div>
           <h3>版本管理</h3>
-          <p>模板每次发布生成一个不可变版本快照。可查看历史、对比变更、复制为新草稿或回滚。</p>
+          {/* 主界面只保留简短说明；完整功能（不可变快照 / 对比 / 复制 / 回滚）移入 tooltip，不再常驻撑破卡片 */}
+          <p title="模板每次发布生成一个不可变版本快照。可查看历史、对比变更、复制为新草稿或回滚。">
+            发布后可查看历史版本。
+          </p>
         </div>
         <Badge tone={versions.length > 0 ? "primary" : "default"}>共 {versions.length} 个版本</Badge>
       </div>
