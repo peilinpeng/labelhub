@@ -11,6 +11,11 @@ BASE="${1:-http://localhost:3000/api/v1}"
 PASS=0
 FAIL=0
 
+# ── 定位仓库根的 docker-compose.yml（脚本位于 apps/api/scripts/，上溯 3 层）──
+# 允许用环境变量 COMPOSE_FILE 覆盖
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_FILE="${COMPOSE_FILE:-$(cd "$SCRIPT_DIR/../../.." && pwd)/docker-compose.yml}"
+
 # ── 颜色 ────────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -233,7 +238,7 @@ fi
 # =============================================================================
 step_header 6 "插入测试 DatasetItem（Python 直连 DB，绕过文件上传）"
 ITEM_OUT=$(docker compose \
-  -f /Users/xiongweiluo/LabelHub_Coding/labelhub/docker-compose.yml \
+  -f "$COMPOSE_FILE" \
   exec -w /workspace/apps/api -T api \
   python3 -c "
 import sys
@@ -387,7 +392,7 @@ fi
 # Step 11b：绕过 AI 审核（无 Celery Worker 时 status 停在 AI_REVIEWING）
 echo "  → 绕过 AI 审核：强制 Submission 状态 → NEEDS_HUMAN_REVIEW"
 BYPASS_OUT=$(docker compose \
-  -f /Users/xiongweiluo/LabelHub_Coding/labelhub/docker-compose.yml \
+  -f "$COMPOSE_FILE" \
   exec -w /workspace/apps/api -T api \
   python3 -c "
 import sys
@@ -563,7 +568,7 @@ from app.models.llm import LLMCallLog
 from app.models.idempotency import IdempotencyRecord'
 
 db_py() {
-  docker compose -f /Users/xiongweiluo/LabelHub_Coding/labelhub/docker-compose.yml \
+  docker compose -f "$COMPOSE_FILE" \
     exec -w /workspace/apps/api -T api python3 -c "$DB_IMPORTS
 $1" 2>&1
 }
