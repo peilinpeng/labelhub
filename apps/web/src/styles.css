@@ -11839,6 +11839,116 @@ a {
   overflow-wrap: anywhere;
 }
 
+.owner-data-field-summary {
+  min-width: 0;
+}
+
+.owner-dataset-field-preview,
+.owner-dataset-field-empty {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--lh-border);
+}
+
+.owner-dataset-field-preview {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.owner-dataset-field-preview__head {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.owner-dataset-field-preview__head h4 {
+  margin: 0;
+  color: var(--lh-text);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.owner-dataset-field-preview__head p,
+.owner-dataset-field-empty {
+  margin: 0;
+  color: var(--lh-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.owner-dataset-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.owner-dataset-field-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--lh-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.owner-dataset-field-card--answer {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: #fffbeb;
+}
+
+.owner-dataset-field-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.owner-dataset-field-card__head code {
+  min-width: 0;
+  color: var(--lh-text);
+  font-size: 12px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.owner-dataset-field-card__head > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 0;
+}
+
+.owner-dataset-field-card__sample {
+  display: -webkit-box;
+  min-height: 38px;
+  margin: 0;
+  color: var(--lh-text);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.owner-dataset-field-card small,
+.owner-dataset-field-card__warn {
+  color: var(--lh-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.owner-dataset-field-card__warn {
+  margin: 0;
+  color: #92400e;
+}
+
 .owner-data-next-actions,
 .owner-template-next-step,
 .owner-ai-next-actions {
