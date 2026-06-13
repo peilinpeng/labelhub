@@ -495,6 +495,7 @@ def archive_task(
 # ---------------------------------------------------------------------------
 
 from app.services import schema_domain
+from app.utils.schema_normalize import normalize_schema_payload
 from app.schemas.task import (
     SaveSchemaDraftRequest, SaveSchemaDraftResponse,
     SchemaDraftResponse,
@@ -526,9 +527,11 @@ def save_schema_draft(
     传入 baseSchemaDraftRevision 且与当前修订号不一致时返回 409 SCHEMA_DRAFT_CONFLICT。
     """
     draft, log = schema_domain.save_schema_draft(db, task_id, actor, body)
+    # 校验沿用原始存储形态（validate_schema 同时兼容 root 与扁平 nodes）；
+    # 响应 schema 归一化为 canonical，保证前端拿到稳定形态。
     validation_result = schema_domain.validate_schema(draft.schema_json)
     return SaveSchemaDraftResponse(
-        schema=draft.schema_json,
+        schema=normalize_schema_payload(draft.schema_json, draft.task_id, draft.id),
         schemaDraftRevision=draft.schema_draft_revision,
         validation=SchemaValidationResultResponse(**validation_result),
         auditLog=AuditLogSummaryResponse.from_orm_obj(log),

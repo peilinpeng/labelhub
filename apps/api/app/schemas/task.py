@@ -50,6 +50,8 @@ from datetime import datetime
 from typing import Annotated, Any  # Literal 已在上方导入，不重复
 from pydantic import ConfigDict, Field  # BaseModel 已在上方导入，不重复
 
+from app.utils.schema_normalize import normalize_schema_payload
+
 
 # ── 子结构体 ────────────────────────────────────────────────────────────────
 
@@ -265,7 +267,8 @@ class SchemaDraftResponse(BaseModel):
     def from_orm(cls, d: Any) -> "SchemaDraftResponse":
         return cls(
             taskId=d.task_id,
-            schema=d.schema_json,
+            # 归一化为 canonical 形态，兼容历史简化 {nodes} 草稿，避免前端崩溃
+            schema=normalize_schema_payload(d.schema_json, d.task_id, d.id),
             schemaDraftRevision=d.schema_draft_revision,
             updatedBy=d.updated_by,
             updatedAt=d.updated_at,
@@ -300,7 +303,15 @@ class SchemaVersionResponse(BaseModel):
             schemaId=v.schema_id,
             schemaVersionNo=v.schema_version_no,
             contractVersion=v.contract_version,
-            schema=v.schema_json,
+            # 归一化为 canonical PublishedLabelHubSchema，兼容历史简化 {nodes} 快照
+            schema=normalize_schema_payload(
+                v.schema_json,
+                v.task_id,
+                v.schema_id,
+                published=True,
+                schema_version_id=v.id,
+                schema_version_no=v.schema_version_no,
+            ),
             publishedAt=v.published_at,
         )
 
