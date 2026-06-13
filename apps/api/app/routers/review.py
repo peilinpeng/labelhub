@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import Actor, require_roles
 from app.services import review_domain
+from app.utils.schema_normalize import normalize_schema_payload
 from app.schemas.review import (
     ClaimReviewResponse,
     ReviewDecisionRequest,
@@ -69,7 +70,18 @@ def get_review_detail(
     actor: Actor = Depends(require_roles("REVIEWER", "OWNER", "ADMIN")),
 ) -> ReviewDetailResponse:
     detail = review_domain.get_review_detail(db, submission_id, actor)
-    schema_json = detail["schema_version"].schema_json if detail["schema_version"] else {}
+    # 归一化为 canonical PublishedLabelHubSchema，与 Reviewer 前端（detail.schema.root /
+    # schemaVersionNo / SchemaRenderer）的 canonical 期望一致；无版本时退化为安全空 schema。
+    _sv = detail["schema_version"]
+    _task_id = detail["task"].id if detail["task"] else ""
+    schema_json = normalize_schema_payload(
+        _sv.schema_json if _sv else {},
+        _task_id,
+        _sv.schema_id if _sv else None,
+        published=True,
+        schema_version_id=_sv.id if _sv else None,
+        schema_version_no=_sv.schema_version_no if _sv else None,
+    )
     # AI 预审记录按契约 AIReviewResultRecord 序列化：result_json 即 AIReviewResult
     # （totalScore/dimensionScores/fieldIssues/summary/confidence），需置于 aiResult
     # 字段，与前端 detail.aiResult.aiResult.* 的读取对齐（resultJson 形状前端读不到）。

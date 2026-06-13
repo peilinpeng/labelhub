@@ -229,6 +229,10 @@ def get_assignment_context(db: Session, assignment_id: str, actor: object) -> di
         "task": task,
         "item": item,
         "schema_version_id": schema_version.id,
+        # schema_id / schema_version_no 仅用于响应层把快照归一化为 canonical
+        # PublishedLabelHubSchema（补 schemaId / schemaVersionNo），不参与业务判定。
+        "schema_id": schema_version.schema_id,
+        "schema_version_no": schema_version.schema_version_no,
         "schema_json": schema_version.schema_json,
         "draft": draft,
         "last_return_reason": last_return_reason,
