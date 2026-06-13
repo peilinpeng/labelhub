@@ -15,7 +15,7 @@ import type {
   GetExportArtifactRecordsResponse,
   SchemaVersion,
 } from "@labelhub/contracts";
-import { apiGet, apiPost, apiPut } from "./client";
+import { apiGet, apiPatch, apiPost, apiPut } from "./client";
 
 type PageList<T> = T[] | { items?: T[]; tasks?: T[]; jobs?: T[]; exportJobs?: T[] };
 
@@ -64,6 +64,14 @@ export async function createTask(
   }
 ): Promise<Task> {
   const res = await apiPost<Task | { task: Task; auditLog: unknown }>("/api/v1/tasks", request);
+  return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
+}
+
+export async function updateTask(
+  taskId: string,
+  request: Partial<Pick<Task, "title" | "description" | "instructionRichText" | "tags" | "quota" | "distributionStrategy">>,
+): Promise<Task> {
+  const res = await apiPatch<Task | { task: Task }>(`/api/v1/tasks/${taskId}`, request);
   return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
 }
 

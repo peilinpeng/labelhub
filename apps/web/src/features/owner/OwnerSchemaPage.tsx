@@ -926,6 +926,11 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           <Link to={RoutePath.OWNER_TASKS} className="lh-button">
             返回任务
           </Link>
+          {task.status === "DRAFT" ? (
+            <Link to={`/owner/tasks/${task.id}?edit=basic`} className="lh-button">
+              编辑基础信息
+            </Link>
+          ) : null}
           <Button type="button" onClick={() => setDataFieldsOpen(true)}>
             数据字段
           </Button>

@@ -4107,6 +4107,40 @@ a {
   margin-top: 8px;
 }
 
+.owner-task-edit-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.owner-task-edit-notice p {
+  margin: 0;
+  color: var(--lh-text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.owner-task-edit-form {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.owner-task-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.owner-task-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
 .owner-task-board-page {
   gap: 18px;
 }
