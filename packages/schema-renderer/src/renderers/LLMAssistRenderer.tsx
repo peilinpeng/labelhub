@@ -116,6 +116,11 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
             <button
               className="ai-quality-panel__apply"
               disabled={!canApply}
+              title={
+                canApply
+                  ? undefined
+                  : "该建议需要你先人工补充必填项，系统无法自动写入字段。请按上方提示补全后，点「我已补充，重新检查」。"
+              }
               type="button"
               onClick={() => {
                 if (!canApply) return;
@@ -138,6 +143,28 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
               }}
             >
               一键采纳
+            </button>
+          ) : null}
+          {hasSuggestedPatch && !canApply ? (
+            // 建议被 preflight 拦截（需人工补充必填项）时，给出明确的下一步：用户补全后
+            // 重新跑一次 preflight（不重新调用 LLM）。补全后若不再缺项，一键采纳会自动恢复可用。
+            <button
+              className="ai-quality-panel__recheck lh-button"
+              type="button"
+              title="我已按提示补充了必要说明，重新校验本条建议是否可以采纳。"
+              onClick={() => {
+                const patch = response?.suggestedPatch;
+                if (patch === undefined) return;
+                const ops = convertSuggestedPatchToPreflightPatch(patch);
+                const preflight = runSchemaPreflight({
+                  schema: renderContext.schema,
+                  currentAnswers: renderContext.answers,
+                  patch: ops,
+                });
+                setPreflightResult(preflight);
+              }}
+            >
+              我已补充，重新检查
             </button>
           ) : null}
           <button
