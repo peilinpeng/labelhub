@@ -11857,3 +11857,172 @@ a {
   border-color: rgba(245, 158, 11, 0.28);
   background: #fffbeb;
 }
+
+/* ── 数据字段 Drawer（模板搭建页右上角入口） ───────────────────────────────── */
+.owner-data-fields-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.owner-data-fields-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.32);
+  cursor: pointer;
+}
+
+.owner-data-fields-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: clamp(360px, 30vw, 440px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--lh-surface, #fff);
+  box-shadow: -8px 0 28px rgba(15, 23, 42, 0.18);
+}
+
+.owner-data-fields-drawer__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--lh-border, #e2e8f0);
+}
+
+.owner-data-fields-drawer__head h3 {
+  margin: 0 0 4px;
+}
+
+.owner-data-fields-drawer__head p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lh-muted, #64748b);
+}
+
+.owner-data-fields-drawer__close {
+  flex: none;
+  border: 0;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  color: var(--lh-muted, #64748b);
+}
+
+.owner-data-fields-drawer__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.owner-data-fields-empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--lh-muted, #64748b);
+}
+
+.owner-data-fields-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.owner-data-fields-section + .owner-data-fields-section {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--lh-border, #e2e8f0);
+}
+
+.owner-data-fields-section__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.owner-data-fields-section__head h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.owner-data-fields-section__head p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--lh-muted, #64748b);
+}
+
+.owner-data-field-card--answer {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.owner-data-field-card__warn {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b45309;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.owner-data-field-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--lh-border, #e2e8f0);
+  border-radius: var(--lh-radius-card, 10px);
+  background: var(--lh-surface, #fff);
+}
+
+.owner-data-field-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.owner-data-field-card__name {
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.owner-data-field-card__sample {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--lh-muted, #64748b);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  max-height: 4.5em;
+  overflow: hidden;
+}
+
+.owner-data-field-card > button,
+.owner-data-field-card .lh-button {
+  width: 100%;
+  justify-content: center;
+}

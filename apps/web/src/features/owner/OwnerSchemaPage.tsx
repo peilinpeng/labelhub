@@ -13,6 +13,7 @@ import {
 import type {
   AuditEventRecord,
   CompatibilityReport,
+  DatasetItem,
   FieldNode,
   ID,
   LabelHubRuntimeContext,
@@ -23,6 +24,7 @@ import type {
   SchemaValidationError,
   SchemaValidationResult,
   ServerComponentRegistryItem,
+  ShowItemNode,
   Task,
 } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
@@ -175,6 +177,9 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [task, setTask] = useState<Task | undefined>();
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [datasetItemStats, setDatasetItemStats] = useState<{ total: number; available: number } | null>(null);
+  // 数据字段面板：从已导入数据派生的字段列表 + Drawer 开关（轻量 Owner 体验优化，纯前端）
+  const [datasetFields, setDatasetFields] = useState<DataFieldInfo[]>([]);
+  const [dataFieldsOpen, setDataFieldsOpen] = useState(false);
   const [taskStatsLoaded, setTaskStatsLoaded] = useState(false);
   const [aiConfigStatus, setAiConfigStatus] = useState<"loading" | "configured" | "missing" | "error">("loading");
   const [aiConfigEnabled, setAiConfigEnabled] = useState<boolean | null>(null);
@@ -288,8 +293,10 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           total: itemsResult.value.total,
           available: itemsResult.value.items.filter((item) => item.status === "AVAILABLE").length,
         });
+        setDatasetFields(collectDataFields(itemsResult.value.items));
       } else {
         setDatasetItemStats(null);
+        setDatasetFields([]);
       }
       setTaskStatsLoaded(true);
 
@@ -876,6 +883,13 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     setValidationRules((current) => [...current, createValidationRule(fieldNodes)]);
   };
 
+  // 数据字段 → 一键添加为展示文本：在画布新增 show.text 节点并绑定 $.item.sourcePayload.<字段>。
+  const handleAddShowItemField = (fieldName: string) => {
+    setSchema((current) => appendShowItemField(current, fieldName));
+    setValidation(undefined);
+    showNotice(`已把「${friendlyFieldTitle(fieldName)}」添加到模板（展示文本）。`, "success");
+  };
+
   if (loading) {
     return <Card className="state-panel">加载模板组件中...</Card>;
   }
@@ -912,6 +926,9 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           <Link to={RoutePath.OWNER_TASKS} className="lh-button">
             返回任务
           </Link>
+          <Button type="button" onClick={() => setDataFieldsOpen(true)}>
+            数据字段
+          </Button>
           <Button type="button" disabled={saving} onClick={() => void handleSaveDraft()}>
             {saving && !publishing ? "保存中..." : "保存草稿"}
           </Button>
@@ -926,6 +943,92 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           </Button>
         </div>
       </Card>
+
+      {dataFieldsOpen ? (
+        <div className="owner-data-fields-overlay" role="presentation">
+          <button
+            type="button"
+            className="owner-data-fields-backdrop"
+            aria-label="关闭数据字段面板"
+            onClick={() => setDataFieldsOpen(false)}
+          />
+          <aside className="owner-data-fields-drawer" role="dialog" aria-modal="true" aria-label="数据字段">
+            <header className="owner-data-fields-drawer__head">
+              <div>
+                <h3>数据字段</h3>
+                <p>来自当前任务已导入数据，可一键添加为展示文本。</p>
+              </div>
+              <button
+                type="button"
+                className="owner-data-fields-drawer__close"
+                aria-label="关闭数据字段面板"
+                onClick={() => setDataFieldsOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="owner-data-fields-drawer__body">
+              {datasetFields.length === 0 ? (
+                <p className="owner-data-fields-empty">
+                  当前任务还没有可读取的数据字段。请先在数据管理导入 JSON / JSONL 数据。
+                </p>
+              ) : (
+                FIELD_SECTIONS.map((section) => {
+                  const fields = datasetFields.filter((field) => field.role === section.role);
+                  if (fields.length === 0) return null;
+                  const isAnswer = section.role === "answer";
+                  return (
+                    <section className="owner-data-fields-section" key={section.role}>
+                      <div className="owner-data-fields-section__head">
+                        <h4>{section.title}</h4>
+                        <p>{section.desc}</p>
+                      </div>
+                      {fields.map((field) => (
+                        <div
+                          className={`owner-data-field-card${isAnswer ? " owner-data-field-card--answer" : ""}`}
+                          key={field.name}
+                        >
+                          <div className="owner-data-field-card__head">
+                            <code className="owner-data-field-card__name">{field.name}</code>
+                            <Badge tone={isAnswer ? "warning" : "default"}>{field.kind}</Badge>
+                          </div>
+                          <p className="owner-data-field-card__sample" title={field.sample}>{field.sample}</p>
+                          {isAnswer ? (
+                            <>
+                              <p className="owner-data-field-card__warn">
+                                可能是答案或隐藏标签，展示给标注员可能造成泄露。
+                              </p>
+                              <Button
+                                type="button"
+                                disabled
+                                title="疑似答案 / 隐藏标签字段，默认禁止添加，避免答案泄露。"
+                              >
+                                默认禁止添加
+                              </Button>
+                            </>
+                          ) : section.role === "recommended" ? (
+                            <Button type="button" tone="primary" onClick={() => handleAddShowItemField(field.name)}>
+                              添加到模板：展示文本
+                            </Button>
+                          ) : section.role === "metadata" ? (
+                            <Button type="button" onClick={() => handleAddShowItemField(field.name)}>
+                              高级添加
+                            </Button>
+                          ) : (
+                            <Button type="button" onClick={() => handleAddShowItemField(field.name)}>
+                              添加到模板：展示文本
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </section>
+                  );
+                })
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : null}
 
       <div className="schema-builder-statusbar">
         <Badge tone={templateStatus.tone}>模板状态：{templateStatus.label}</Badge>
@@ -1980,6 +2083,165 @@ function resolveTaskId(taskId: string | undefined, fallbackTaskId: ID): ID {
 
 function appendNodeToRoot(schema: LabelHubSchema, type: NodeType): LabelHubSchema {
   const node = prepareNodeForAppsWebInsert(schema, createDefaultNode(type));
+  return {
+    ...schema,
+    meta: { ...schema.meta, updatedAt: new Date().toISOString() },
+    root: { ...schema.root, children: [...schema.root.children, node] },
+  };
+}
+
+// ── 数据字段面板 ────────────────────────────────────────────────────────────
+// 轻量 Owner 体验：读取已导入数据的 sourcePayload 字段，一键添加为 show.text 展示文本。
+// 不做字段转换 / 自动 Schema 生成；友好名映射仅对通用字段名做中文美化，未命中回退字段名。
+
+type DataFieldKind = "文本" | "数字" | "布尔" | "数组" | "对象" | "链接" | "空值";
+
+// 字段角色：推荐展示 / 元数据 / 疑似答案(隐藏标签) / 其他。按字段名启发式归类（通用，不写死数据集）。
+type FieldRole = "recommended" | "metadata" | "answer" | "other";
+
+interface DataFieldInfo {
+  name: string;
+  kind: DataFieldKind;
+  sample: string;
+  role: FieldRole;
+}
+
+const RECOMMENDED_FIELD_NAMES = new Set([
+  "prompt", "question", "query", "instruction",
+  "content", "content_markdown", "text", "body", "passage",
+  "model_answer", "answer", "response",
+  "model_a_answer", "model_b_answer", "reference",
+]);
+const METADATA_FIELD_NAMES = new Set([
+  "id", "lang", "language", "category", "difficulty",
+  "source", "tags", "created_at", "updated_at", "media_type", "type",
+]);
+const ANSWER_FIELD_NAMES = new Set([
+  "margin", "label", "gold", "ground_truth", "groundtruth", "target",
+  "winner", "chosen", "score", "expected_label", "correct_answer",
+  "gold_label", "gt", "preference", "preferred", "verdict", "is_correct",
+]);
+
+// 安全优先：先判疑似答案/隐藏标签（防答案泄露），再推荐展示，再元数据，最后兜底其他。
+function classifyFieldRole(name: string): FieldRole {
+  const n = name.toLowerCase();
+  const tokens = n.split(/[^a-z0-9]+/).filter(Boolean);
+  const hasToken = (set: Set<string>) => tokens.some((t) => set.has(t));
+  if (
+    ANSWER_FIELD_NAMES.has(n) ||
+    hasToken(ANSWER_FIELD_NAMES) ||
+    /ground_?truth|gold|winner|chosen|correct|expected_label|is_?correct/.test(n)
+  ) {
+    return "answer";
+  }
+  if (RECOMMENDED_FIELD_NAMES.has(n) || hasToken(RECOMMENDED_FIELD_NAMES)) return "recommended";
+  if (
+    METADATA_FIELD_NAMES.has(n) ||
+    hasToken(METADATA_FIELD_NAMES) ||
+    /^id$|_id$|_at$|^created|^updated/.test(n)
+  ) {
+    return "metadata";
+  }
+  return "other";
+}
+
+const FIELD_SECTIONS: ReadonlyArray<{ role: FieldRole; title: string; desc: string }> = [
+  { role: "recommended", title: "推荐展示字段", desc: "适合直接展示给标注员的内容字段。" },
+  { role: "metadata", title: "元数据字段", desc: "数据的辅助信息，一般不必展示给标注员。" },
+  { role: "answer", title: "疑似答案 / 隐藏标签字段", desc: "可能是答案或隐藏标签，默认禁止添加以防泄露。" },
+  { role: "other", title: "其他字段", desc: "无法自动判断用途的字段，可按需添加。" },
+];
+
+const FRIENDLY_FIELD_TITLES: Record<string, string> = {
+  prompt: "用户问题",
+  model_answer: "模型回答",
+  reference: "参考答案",
+  expected_dimensions: "期望评估维度",
+  content_markdown: "Markdown 内容",
+  media_url: "媒体链接",
+};
+
+function friendlyFieldTitle(fieldName: string): string {
+  return FRIENDLY_FIELD_TITLES[fieldName] ?? fieldName;
+}
+
+function isUrlLikeValue(value: string): boolean {
+  const v = value.trim();
+  return /^https?:\/\//i.test(v) || /^\/\//.test(v);
+}
+
+function inferDataFieldKind(value: unknown): DataFieldKind {
+  if (value === null || value === undefined || value === "") return "空值";
+  if (Array.isArray(value)) return value.length === 0 ? "空值" : "数组";
+  if (typeof value === "boolean") return "布尔";
+  if (typeof value === "number") return "数字";
+  if (typeof value === "object") return "对象";
+  if (typeof value === "string") return isUrlLikeValue(value) ? "链接" : "文本";
+  return "文本";
+}
+
+function formatDataFieldSample(value: unknown): string {
+  if (value === null || value === undefined) return "（空值）";
+  let text: string;
+  if (typeof value === "string") text = value;
+  else if (typeof value === "number" || typeof value === "boolean") text = String(value);
+  else {
+    try {
+      text = JSON.stringify(value);
+    } catch {
+      text = String(value);
+    }
+  }
+  text = text.replace(/\s+/g, " ").trim();
+  if (text === "") return "（空值）";
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+}
+
+// 从已导入 items 派生字段列表：字段名跨条 union（保序），示例值取首个有值样本（无则取首条原值）。
+function collectDataFields(items: DatasetItem[]): DataFieldInfo[] {
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items.slice(0, 50)) {
+    for (const key of Object.keys(item.sourcePayload ?? {})) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        order.push(key);
+      }
+    }
+  }
+  return order.map((name) => {
+    let sampleValue: unknown;
+    for (const item of items) {
+      const v = (item.sourcePayload ?? {})[name];
+      const empty = v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+      if (!empty) {
+        sampleValue = v;
+        break;
+      }
+    }
+    if (sampleValue === undefined && items.length > 0) {
+      sampleValue = (items[0].sourcePayload ?? {})[name];
+    }
+    return {
+      name,
+      kind: inferDataFieldKind(sampleValue),
+      sample: formatDataFieldSample(sampleValue),
+      role: classifyFieldRole(name),
+    };
+  });
+}
+
+// 一键添加：创建 show.text 节点，绑定原始字段并套用友好标题；去掉默认空 fallback，
+// 使字段缺失时能命中 ShowItemRenderer 的"字段不存在"友好提示。
+function appendShowItemField(schema: LabelHubSchema, fieldName: string): LabelHubSchema {
+  const base = createDefaultNode("show.text") as ShowItemNode;
+  const showNode = {
+    ...base,
+    title: friendlyFieldTitle(fieldName),
+    sourcePath: `$.item.sourcePayload.${fieldName}`,
+    transform: undefined,
+  } as ShowItemNode;
+  const node = prepareNodeForAppsWebInsert(schema, showNode);
   return {
     ...schema,
     meta: { ...schema.meta, updatedAt: new Date().toISOString() },
