@@ -2869,7 +2869,7 @@ a {
 }
 
 .owner-col-progress {
-  width: 132px;
+  width: 260px;
 }
 
 .owner-col-actions {
@@ -2995,10 +2995,10 @@ a {
 
 .owner-row-actions {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-start;
-  min-width: 184px;
+  min-width: 0;
 }
 
 .owner-row-actions .lh-button {
@@ -3012,12 +3012,73 @@ a {
 
 .owner-progress-cell {
   display: grid;
-  grid-template-columns: minmax(54px, 1fr) 34px;
-  gap: 8px;
-  align-items: center;
+  gap: 7px;
+  min-width: 0;
   color: var(--lh-muted);
   font-size: 12px;
-  font-weight: 850;
+  line-height: 1.45;
+}
+
+.owner-progress-cell__top,
+.owner-progress-cell__split {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 9px;
+  min-width: 0;
+}
+
+.owner-progress-cell__top {
+  justify-content: space-between;
+}
+
+.owner-progress-cell__top strong {
+  color: var(--lh-text);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.owner-progress-cell__top span,
+.owner-progress-cell__split span,
+.owner-progress-cell small,
+.owner-progress-note {
+  overflow-wrap: anywhere;
+}
+
+.owner-progress-cell__split span {
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.owner-progress-cell small {
+  color: var(--lh-muted);
+  font-size: 12px;
+}
+
+.owner-task-progress-bar {
+  height: 7px;
+  overflow: hidden;
+  border-radius: var(--lh-radius-pill);
+  background: #e2e8f0;
+}
+
+.owner-task-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--lh-gradient-primary);
+}
+
+.owner-progress-note {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.owner-progress-note--error {
+  color: #b45309;
 }
 
 .muted {

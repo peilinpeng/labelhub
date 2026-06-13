@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { archiveTask, endTask, listTasks } from "../../api/owner";
+import { archiveTask, endTask, fetchTaskStats, listTasks } from "../../api/owner";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
 import type { Task } from "@labelhub/contracts";
+import type { TaskStats } from "../../api/owner";
 
 interface OwnerWorkspaceProps {
   role: "OWNER" | "LABELER" | "REVIEWER";
@@ -61,6 +62,11 @@ function TrashIcon() {
 
 type BadgeTone = "success" | "warning" | "default";
 
+type TaskStatsState =
+  | { status: "loading" }
+  | { status: "ready"; stats: TaskStats }
+  | { status: "error" };
+
 function statusTone(status: Task["status"]): BadgeTone {
   if (status === "PUBLISHED") return "success";
   if (status === "DRAFT" || status === "PAUSED") return "warning";
@@ -106,8 +112,66 @@ function isPlaceholderTask(task: Task): boolean {
   return /E2E测试|端到端测试|并发测试|压力测试|压测|烟雾测试|冒烟测试|smoke[\s_-]*test/i.test(text);
 }
 
+function clampProgress(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function progressTotal(task: Task, stats: TaskStats): number {
+  return stats.datasetTotal > 0 ? stats.datasetTotal : task.quota.total;
+}
+
+function quotaProgressLabel(task: Task, stats: TaskStats): string {
+  if (stats.quotaRemaining !== null && stats.quotaTotal !== null) {
+    return `配额剩余 ${stats.quotaRemaining.toLocaleString()} / ${stats.quotaTotal.toLocaleString()}`;
+  }
+  if (stats.datasetTotal > 0) {
+    return `可领取 ${stats.datasetAvailable.toLocaleString()} / ${stats.datasetTotal.toLocaleString()}`;
+  }
+  return `配额 ${task.quota.total.toLocaleString()}`;
+}
+
+function TaskProgressSummary({ task, state }: { task: Task; state?: TaskStatsState }) {
+  if (task.status === "DRAFT") {
+    return <div className="owner-progress-note">草稿任务，发布后开始统计进度</div>;
+  }
+  if (!state || state.status === "loading") {
+    return <div className="owner-progress-note">进度加载中</div>;
+  }
+  if (state.status === "error") {
+    return <div className="owner-progress-note owner-progress-note--error">进度暂不可用</div>;
+  }
+
+  const stats = state.stats;
+  const total = progressTotal(task, stats);
+  if (total <= 0) {
+    return <div className="owner-progress-note">暂无数据</div>;
+  }
+
+  const progress = clampProgress(stats.progressPercent);
+  return (
+    <div className="owner-progress-cell" aria-label={`${task.title} 任务进度`}>
+      <div className="owner-progress-cell__top">
+        <strong>完成 {progress}%</strong>
+        <span>已提交 {stats.submittedTotal.toLocaleString()} / {total.toLocaleString()}</span>
+      </div>
+      <div className="owner-task-progress-bar" aria-hidden="true">
+        <span style={{ width: `${progress}%` }} />
+      </div>
+      <div className="owner-progress-cell__split">
+        <span>进行中 {stats.inProgress.toLocaleString()}</span>
+        <span>待审核 {stats.inReview.toLocaleString()}</span>
+        <span>已通过 {stats.accepted.toLocaleString()}</span>
+        <span>已打回 {stats.returned.toLocaleString()}</span>
+      </div>
+      <small>{quotaProgressLabel(task, stats)}</small>
+    </div>
+  );
+}
+
 export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskStats, setTaskStats] = useState<Record<string, TaskStatsState>>({});
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [strategy, setStrategy] = useState("ALL");
@@ -133,6 +197,38 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    const statTasks = tasks.filter((task) => task.status !== "DRAFT");
+    if (statTasks.length === 0) {
+      setTaskStats({});
+      return;
+    }
+
+    let cancelled = false;
+    setTaskStats(
+      Object.fromEntries(statTasks.map((task) => [task.id, { status: "loading" } satisfies TaskStatsState])),
+    );
+
+    void Promise.all(
+      statTasks.map(async (task) => {
+        try {
+          const stats = await fetchTaskStats(task.id);
+          if (!cancelled) {
+            setTaskStats((current) => ({ ...current, [task.id]: { status: "ready", stats } }));
+          }
+        } catch {
+          if (!cancelled) {
+            setTaskStats((current) => ({ ...current, [task.id]: { status: "error" } }));
+          }
+        }
+      }),
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tasks]);
 
   useEffect(() => {
     if (!selectedTaskId) return;
@@ -319,7 +415,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                 <th>任务</th>
                 <th>状态</th>
                 <th>分发策略</th>
-                <th>数据量</th>
+                <th>进度</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -354,9 +450,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                     </td>
                     <td className="owner-table-strong">{strategyLabel(task.distributionStrategy)}</td>
                     <td>
-                      <div className="owner-progress-cell">
-                        <span>{task.quota.total.toLocaleString()} 条</span>
-                      </div>
+                      <TaskProgressSummary task={task} state={taskStats[task.id]} />
                     </td>
                     <td>
                       <div
