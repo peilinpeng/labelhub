@@ -922,30 +922,36 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             配置字段结构、校验规则与联动逻辑。
           </p>
         </div>
-        <div className="schema-builder-toolbar__actions">
-          <Link to={RoutePath.OWNER_TASKS} className="lh-button">
-            返回任务
-          </Link>
-          {task.status === "DRAFT" ? (
-            <Link to={`/owner/tasks/${task.id}?edit=basic`} className="lh-button">
-              编辑基础信息
+        <div className="schema-builder-toolbar__actions owner-schema-actions-compact">
+          <div className="owner-schema-actions-group owner-schema-actions-group--nav">
+            <Link to={RoutePath.OWNER_TASKS} className="lh-button">
+              返回任务
             </Link>
-          ) : null}
-          <Button type="button" onClick={() => setDataFieldsOpen(true)}>
-            数据字段
-          </Button>
-          <Button type="button" disabled={saving} onClick={() => void handleSaveDraft()}>
-            {saving && !publishing ? "保存中..." : "保存草稿"}
-          </Button>
-          <Button type="button" onClick={() => setPreviewExpanded(true)}>
-            实时预览
-          </Button>
-          <Button type="button" onClick={exportSchemaJson}>
-            导出 JSON
-          </Button>
-          <Button type="button" tone="primary" disabled={saving || publishPreviewPreparing} onClick={() => void handlePublish()}>
-            {publishing ? "发布中..." : publishPreviewPreparing ? "检查中..." : "保存并发布模板"}
-          </Button>
+            {task.status === "DRAFT" ? (
+              <Link to={`/owner/tasks/${task.id}?edit=basic`} className="lh-button">
+                编辑基础信息
+              </Link>
+            ) : null}
+            <Button type="button" onClick={() => setDataFieldsOpen(true)}>
+              数据字段
+            </Button>
+          </div>
+          <div className="owner-schema-actions-group owner-schema-actions-group--tools">
+            <Button type="button" onClick={() => setPreviewExpanded(true)}>
+              实时预览
+            </Button>
+            <Button type="button" onClick={exportSchemaJson}>
+              导出 JSON
+            </Button>
+          </div>
+          <div className="owner-schema-actions-group owner-schema-actions-group--primary">
+            <Button type="button" disabled={saving} onClick={() => void handleSaveDraft()}>
+              {saving && !publishing ? "保存中..." : "保存草稿"}
+            </Button>
+            <Button type="button" tone="primary" disabled={saving || publishPreviewPreparing} onClick={() => void handlePublish()}>
+              {publishing ? "发布中..." : publishPreviewPreparing ? "检查中..." : "保存并发布模板"}
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -1035,32 +1041,57 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         </div>
       ) : null}
 
-      <div className="schema-builder-statusbar">
-        <Badge tone={templateStatus.tone}>模板状态：{templateStatus.label}</Badge>
-        <span title="草稿每次保存自动递增的修订号，用于并发冲突检测，不等于已发布版本号">
-          <Badge tone="primary">草稿修订：第 {schema.schemaDraftRevision ?? 1} 次修改</Badge>
-        </span>
-        <span
-          title={
-            task.activeSchemaVersionId
-              ? `任务绑定的发布版本 ID：${task.activeSchemaVersionId}`
-              : "任务尚未发布任何模板版本"
-          }
-        >
+      <div className="schema-builder-statusbar owner-schema-status">
+        <div className="owner-schema-status-summary">
+          <Badge tone={templateStatus.tone}>{templateStatus.label}</Badge>
           <Badge tone={boundVersionNo != null ? "success" : "default"}>
-            任务绑定版本：
             {boundVersionNo != null
-              ? `第 ${boundVersionNo} 版`
+              ? `已发布 · 第 ${boundVersionNo} 版`
               : task.activeSchemaVersionId
-                ? "已绑定已发布版本"
-                : "尚未发布"}
+                ? "已绑定版本"
+                : "未发布"}
           </Badge>
-        </span>
-        <Badge tone="default">所属任务：{task.title || "当前任务"}</Badge>
-        <Badge tone="success">可用字段组件：{serverRegistry.length} 类</Badge>
-        <span>{statusMessage}</span>
+          <Badge tone="primary">第 {schema.schemaDraftRevision ?? 1} 次修改</Badge>
+        </div>
+        <details className="owner-schema-status-details">
+          <summary>状态详情</summary>
+          <dl className="owner-schema-status-details__grid">
+            <div>
+              <dt>模板状态</dt>
+              <dd>{templateStatus.label}</dd>
+            </div>
+            <div>
+              <dt>草稿修订</dt>
+              <dd>第 {schema.schemaDraftRevision ?? 1} 次修改</dd>
+            </div>
+            <div>
+              <dt>任务绑定版本</dt>
+              <dd>
+                {boundVersionNo != null
+                  ? `第 ${boundVersionNo} 版`
+                  : task.activeSchemaVersionId
+                    ? "已绑定已发布版本"
+                    : "尚未发布"}
+              </dd>
+            </div>
+            <div>
+              <dt>所属任务</dt>
+              <dd>{task.title || "当前任务"}</dd>
+            </div>
+            <div>
+              <dt>可用字段组件</dt>
+              <dd>{serverRegistry.length} 类</dd>
+            </div>
+            {statusMessage ? (
+              <div>
+                <dt>当前状态</dt>
+                <dd>{statusMessage}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <p className="owner-schema-status-hint">{templateStatus.hint}</p>
+        </details>
       </div>
-      <p className="schema-builder-status-hint">{templateStatus.hint}</p>
 
       <TaskSetupStepper steps={setupSteps} />
 

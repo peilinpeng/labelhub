@@ -125,7 +125,7 @@ export function SchemaVersionPanel({
   }, [versions]);
 
   return (
-    <Card className="schema-version-panel">
+    <Card className="schema-version-panel owner-version-panel-compact">
       <div className="schema-version-panel__head">
         <div>
           <h3>版本管理</h3>
@@ -139,7 +139,10 @@ export function SchemaVersionPanel({
       ) : error ? (
         <div className="empty-state">{error}</div>
       ) : versions.length === 0 ? (
-        <div className="empty-state">该任务暂无已发布版本。发布模板后，这里会显示版本历史。</div>
+        <div className="empty-state owner-version-empty-state">
+          <strong>暂无发布版本</strong>
+          <span>发布模板后将显示版本历史。</span>
+        </div>
       ) : (
         <>
           <div className="schema-version-list">
