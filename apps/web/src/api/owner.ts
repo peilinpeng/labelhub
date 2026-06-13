@@ -108,12 +108,36 @@ export interface SchemaVersionHistoryItem {
   publishedAt: string;
 }
 
+/**
+ * 兼容两种版本快照形态：后端实际响应的 `schema`/`publishedAt`，以及 contracts
+ * SchemaVersion 的 `snapshot`/`createdAt`。缺少可用 schema 的条目直接丢弃，避免把
+ * undefined schema 传给 checkBackwardCompatibility / onCopyToDraft 造成白屏。
+ */
+function normalizeSchemaVersion(raw: unknown): SchemaVersionHistoryItem | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  const schema = (record.schema ?? record.snapshot) as LabelHubSchema | undefined;
+  if (schema === undefined || schema === null) return null;
+  const publishedAt = (record.publishedAt ?? record.createdAt ?? "") as string;
+  return {
+    id: String(record.id ?? ""),
+    taskId: String(record.taskId ?? ""),
+    schemaId: String(record.schemaId ?? schema.schemaId ?? ""),
+    schemaVersionNo: Number(record.schemaVersionNo ?? schema.schemaVersionNo ?? 0),
+    contractVersion: String(record.contractVersion ?? schema.contractVersion ?? ""),
+    schema,
+    publishedAt,
+  };
+}
+
 export async function listSchemaVersions(taskId: string): Promise<SchemaVersionHistoryItem[]> {
-  const res = await apiGet<{ schemaVersions?: SchemaVersionHistoryItem[] } | SchemaVersionHistoryItem[]>(
+  const res = await apiGet<{ schemaVersions?: unknown[] } | unknown[]>(
     `/api/v1/tasks/${taskId}/schema-versions`,
   );
-  if (Array.isArray(res)) return res;
-  return res.schemaVersions ?? [];
+  const rawList = Array.isArray(res) ? res : res.schemaVersions ?? [];
+  return rawList
+    .map(normalizeSchemaVersion)
+    .filter((item): item is SchemaVersionHistoryItem => item !== null);
 }
 
 export async function saveSchemaDraft(
