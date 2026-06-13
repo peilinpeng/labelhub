@@ -1,5 +1,6 @@
 import type { SchemaNode, ShowItemNode } from "@labelhub/contracts";
 import { isAllowedJsonPath } from "@labelhub/schema-core";
+import { useEffect, useState } from "react";
 import { createLocalError } from "../designer-state";
 
 export interface ShowItemPropertyPanelProps {
@@ -9,8 +10,22 @@ export interface ShowItemPropertyPanelProps {
   onLocalErrors(errors: ReturnType<typeof createLocalError>[]): void;
 }
 
+// 裸字段名（如 prompt）规范化为绑定原始数据的完整 JSONPath；已是完整 JSONPath（以 $ 开头）则原样保留。
+// 这样 Owner 既能直接填数据集字段名，也能填 $.item.sourcePayload.x / $.answers.x 等完整路径（向后兼容）。
+function normalizeSourcePath(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed === "" || trimmed.startsWith("$")) return trimmed;
+  return `$.item.sourcePayload.${trimmed}`;
+}
+
 export function ShowItemPropertyPanel({ node, readonly, onPatch, onLocalErrors }: ShowItemPropertyPanelProps) {
   const matchedSource = sourceOptions.some((option) => option.value === node.sourcePath) ? node.sourcePath : "__custom";
+  // 自定义来源用本地草稿态：允许 Owner 边输入裸字段名边显示原文，保存时再规范化为完整 JSONPath。
+  // 仅在切换到不同节点时重置，避免输入过程中被规范化后的完整路径覆盖。
+  const [customDraft, setCustomDraft] = useState(node.sourcePath);
+  useEffect(() => {
+    setCustomDraft(node.sourcePath);
+  }, [node.id]);
 
   return (
     <section>
@@ -35,12 +50,15 @@ export function ShowItemPropertyPanel({ node, readonly, onPatch, onLocalErrors }
       </label>
       {matchedSource === "__custom" ? (
         <label>
-          自定义来源
+          绑定数据字段
           <input
             disabled={readonly}
-            value={node.sourcePath}
+            placeholder="例如 prompt / model_answer / reference，或完整 JSONPath"
+            value={customDraft}
             onChange={(event) => {
-              const sourcePath = event.target.value;
+              const raw = event.target.value;
+              setCustomDraft(raw);
+              const sourcePath = normalizeSourcePath(raw);
               if (!isAllowedJsonPath(sourcePath)) {
                 onLocalErrors([createLocalError(node.id, `$.nodes.${node.id}.sourcePath`, "读取来源格式不正确")]);
                 return;

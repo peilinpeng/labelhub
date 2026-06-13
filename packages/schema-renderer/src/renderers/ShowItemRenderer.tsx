@@ -10,7 +10,30 @@ export interface ShowItemRendererProps {
 }
 
 export function ShowItemRenderer({ node, renderContext }: ShowItemRendererProps) {
-  const value = getByJsonPath(renderContext.context, node.sourcePath);
+  // 解析绑定路径取值；路径异常时兜底为 undefined，绝不让作答页白屏。
+  let value: unknown;
+  try {
+    value = getByJsonPath(renderContext.context, node.sourcePath);
+  } catch {
+    value = undefined;
+  }
+
+  // 字段真的不存在（undefined，区别于空字符串/空数组/null）且为文本类展示时，给出友好提示，
+  // 帮助 Owner 发现模板绑定或数据集字段写错；媒体类（图片/视频/文件）仍按空值隐藏，不硬塞提示。
+  // 若 Owner 已为 TEXT 显式配置 fallback，则尊重其占位，不覆盖为"字段不存在"。
+  const hasExplicitTextFallback = node.transform?.type === "TEXT" && node.transform.fallback !== undefined;
+  if (value === undefined && !isMediaShow(node) && !hasExplicitTextFallback) {
+    return (
+      <section data-node-id={node.id} data-show-type={node.type}>
+        <h3>{node.title}</h3>
+        {node.description !== undefined ? <p>{node.description}</p> : null}
+        <div className="show-item__missing" role="status">
+          字段 {jsonPathLeaf(node.sourcePath)} 不存在，请检查模板绑定或数据集字段。
+        </div>
+      </section>
+    );
+  }
+
   const body = renderShowItemBody(node, value);
   // 空值且无 fallback → 整块不展示（匹配 seed：text 题的媒体字段为空时自然不出现）。
   if (body === null) return null;
@@ -22,6 +45,19 @@ export function ShowItemRenderer({ node, renderContext }: ShowItemRendererProps)
       <div>{body}</div>
     </section>
   );
+}
+
+// 媒体类展示：图片 / 文件 / 视频（按 node.type 或 transform 判定）。媒体空值应隐藏而非提示。
+function isMediaShow(node: ShowItemNode): boolean {
+  if (node.type === "show.image" || node.type === "show.file") return true;
+  const t = node.transform?.type;
+  return t === "IMAGE_PREVIEW" || t === "FILE_URLS";
+}
+
+// 取 JSONPath 末段作为字段名展示，如 $.item.sourcePayload.prompt → prompt。
+function jsonPathLeaf(path: string): string {
+  const segments = path.split(".").filter((s) => s !== "");
+  return segments.length > 0 ? segments[segments.length - 1] : path;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +118,15 @@ function renderShowItemBody(node: ShowItemNode, value: unknown): ReactNode | nul
     return <pre>{safeStringify(value, space ?? 2)}</pre>;
   }
 
-  // 纯文本（show.text / 兜底）：对象仍 JSON 化，避免出现 [object Object]
+  // 纯文本（show.text / 兜底）：
+  // - 基础数组（元素均为原始值，如 expected_dimensions）用顿号连接，便于阅读；
+  // - 含对象元素的数组及对象仍 JSON 化，避免出现 [object Object]。
+  if (Array.isArray(value)) {
+    if (value.every(isPrimitiveValue)) {
+      return <span>{value.map((item) => formatPrimitive(item)).join("、")}</span>;
+    }
+    return <pre>{safeStringify(value, 2)}</pre>;
+  }
   if (typeof value === "object") {
     return <pre>{safeStringify(value, 2)}</pre>;
   }
@@ -153,6 +197,10 @@ function toText(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return safeStringify(value, 2);
+}
+
+function isPrimitiveValue(value: unknown): boolean {
+  return value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 }
 
 function formatPrimitive(value: unknown): string {
