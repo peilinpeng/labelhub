@@ -11834,6 +11834,26 @@ a {
   background: rgba(148, 163, 184, 0.35);
 }
 
+/* 版本管理卡片容器：与「发布前检查」(owner-readiness-panel) 一致的白色圆角卡片，
+   带 padding/border/阴影，避免标题与说明裸露在页面背景上、内容顶格贴边。 */
+.owner-version-panel-compact {
+  padding: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+  min-width: 0;
+}
+/* 头部：标题/说明块可收缩，版本数 badge 固定右上角、不贴边、不参与收缩 */
+.owner-version-panel-compact .schema-version-panel__head {
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+}
+.owner-version-panel-compact .schema-version-panel__head > :last-child {
+  flex-shrink: 0;
+}
+
 /* 版本管理紧凑空状态 + 长文本防溢出 */
 .owner-version-empty-state {
   display: flex;
