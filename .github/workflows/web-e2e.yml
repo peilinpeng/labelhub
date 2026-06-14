@@ -21,17 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Bring up full stack (waits for healthchecks + seed)
-        run: docker compose up -d --build --wait
-
-      - name: Wait for web (:5173)
-        run: |
-          for i in $(seq 1 60); do
-            if curl -sf -o /dev/null http://localhost:5173/; then echo "web up"; exit 0; fi
-            sleep 2
-          done
-          echo "web did not become ready"; docker compose logs --tail=100; exit 1
-
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
@@ -44,6 +33,17 @@ jobs:
       - name: Install Playwright browser
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
+
+      - name: Bring up full stack (waits for healthchecks + seed)
+        run: docker compose up -d --build --wait
+
+      - name: Wait for web (:5173)
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:5173/; then echo "web up"; exit 0; fi
+            sleep 2
+          done
+          echo "web did not become ready"; docker compose logs --tail=100; exit 1
 
       - name: Run Playwright e2e
         working-directory: apps/web

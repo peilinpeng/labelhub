@@ -15,6 +15,8 @@
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@formily/core": "^2",
+    "@formily/react": "^2",
     "@labelhub/contracts": "file:../../packages/contracts",
     "@labelhub/schema-designer": "file:../../packages/schema-designer",
     "@labelhub/schema-compiler": "file:../../packages/schema-compiler",
