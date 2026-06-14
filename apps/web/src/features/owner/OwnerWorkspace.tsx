@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { archiveTask, endTask, fetchTaskStats, listTasks } from "../../api/owner";
+import { archiveTask, endTask, fetchTaskStats, listTasks, pauseTask, resumeTask } from "../../api/owner";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
 import type { Task } from "@labelhub/contracts";
@@ -56,6 +56,23 @@ function TrashIcon() {
       <path d="M14 11v6" />
       <path d="M6 7l1 13h10l1-13" />
       <path d="M9 7V4h6v3" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M9 5v14" />
+      <path d="M15 5v14" />
+    </svg>
+  );
+}
+
+function ResumeIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M7 5l12 7-12 7z" />
     </svg>
   );
 }
@@ -186,8 +203,9 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const [strategy, setStrategy] = useState("ALL");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
-  const [deleteMessage, setDeleteMessage] = useState<{ tone: "success" | "danger" | "warning"; text: string } | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState<{ tone: "success" | "danger" | "warning"; title?: string; text: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -302,6 +320,34 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
     }
   };
 
+  const handleToggleTaskStatus = async (task: Task) => {
+    if (statusBusyId) return;
+    const pausing = task.status === "PUBLISHED";
+    try {
+      setStatusBusyId(task.id);
+      setDeleteMessage(null);
+      const updated = pausing
+        ? await pauseTask(task.id, "Owner 在任务管理页暂停任务。")
+        : await resumeTask(task.id);
+      setTasks((current) => current.map((t) => (t.id === task.id ? { ...t, status: updated.status } : t)));
+      setDeleteMessage({
+        tone: "success",
+        title: pausing ? "已暂停" : "已恢复",
+        text: pausing
+          ? `任务「${task.title}」已暂停，标注员暂时无法领取新题。`
+          : `任务「${task.title}」已恢复发布，重新开放领取。`,
+      });
+    } catch (cause) {
+      setDeleteMessage({
+        tone: "danger",
+        title: pausing ? "暂停失败" : "恢复失败",
+        text: cause instanceof Error ? cause.message : "操作失败：后端未完成该状态迁移。",
+      });
+    } finally {
+      setStatusBusyId(null);
+    }
+  };
+
   const deleteDialogDescription = deleteTarget
     ? deleteTarget.status === "DRAFT"
       ? `当前任务「${deleteTarget.title}」仍是草稿。现有后端只允许删除已发布后结束的任务，因此确认后如果后端不支持草稿删除，任务会保留在列表中。`
@@ -323,7 +369,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
 
       {deleteMessage ? (
         <Card className="owner-fallback-notice">
-          <Badge tone={deleteMessage.tone}>{deleteMessage.tone === "success" ? "已删除" : "删除失败"}</Badge>
+          <Badge tone={deleteMessage.tone}>{deleteMessage.title ?? (deleteMessage.tone === "success" ? "已删除" : "删除失败")}</Badge>
           <span>{deleteMessage.text}</span>
         </Card>
       ) : null}
@@ -502,6 +548,18 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                         >
                           <DownloadIcon />
                         </Link>
+                        {task.status === "PUBLISHED" || task.status === "PAUSED" ? (
+                          <button
+                            type="button"
+                            className="owner-icon-action"
+                            aria-label={`${task.status === "PUBLISHED" ? "暂停" : "恢复"} ${task.title}`}
+                            data-tooltip={task.status === "PUBLISHED" ? "暂停" : "恢复"}
+                            disabled={statusBusyId === task.id}
+                            onClick={() => void handleToggleTaskStatus(task)}
+                          >
+                            {task.status === "PUBLISHED" ? <PauseIcon /> : <ResumeIcon />}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="owner-icon-action owner-icon-action--danger"

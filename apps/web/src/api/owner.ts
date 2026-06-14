@@ -179,6 +179,16 @@ export async function publishTask(taskId: string, request: PublishTaskRequest): 
   return apiPost<PublishTaskResponse>(`/api/v1/tasks/${taskId}/publish`, request);
 }
 
+export async function pauseTask(taskId: string, reason: string): Promise<Task> {
+  const res = await apiPost<Task | { task: Task; auditLog: unknown }>(`/api/v1/tasks/${taskId}/pause`, { reason });
+  return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
+}
+
+export async function resumeTask(taskId: string): Promise<Task> {
+  const res = await apiPost<Task | { task: Task; auditLog: unknown }>(`/api/v1/tasks/${taskId}/resume`, {});
+  return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
+}
+
 export async function endTask(taskId: string, reason: string): Promise<Task> {
   const res = await apiPost<Task | { task: Task; auditLog: unknown }>(`/api/v1/tasks/${taskId}/end`, { reason });
   return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
