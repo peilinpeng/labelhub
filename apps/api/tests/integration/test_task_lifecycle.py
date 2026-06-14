@@ -1,4 +1,7 @@
 """集成测试：任务生命周期（TC-TASK-01~06）。"""
+from datetime import datetime, timedelta, timezone
+
+from app.models.task import Task
 from tests.helpers import create_task, publish_schema, add_item, publish_task
 
 
@@ -17,6 +20,38 @@ def test_list_tasks_returns_created(client, auth):
     assert data["total"] == 2
     titles = {t["title"] for t in data["tasks"]}
     assert {"任务A", "任务B"} <= titles
+
+
+def test_patch_without_deadline_keeps_existing_deadline(client, auth, db_session):
+    deadline = datetime.now(timezone.utc) + timedelta(days=3)
+    task = create_task(client, auth["OWNER"], deadlineAt=deadline.isoformat())
+
+    resp = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        json={"title": "仅改标题"},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["deadlineAt"] is not None
+
+    stored = db_session.get(Task, task["id"])
+    assert stored.deadline_at is not None
+
+
+def test_patch_deadline_null_clears_deadline(client, auth, db_session):
+    deadline = datetime.now(timezone.utc) + timedelta(days=3)
+    task = create_task(client, auth["OWNER"], deadlineAt=deadline.isoformat())
+
+    resp = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        json={"deadlineAt": None},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["deadlineAt"] is None
+
+    stored = db_session.get(Task, task["id"])
+    assert stored.deadline_at is None
 
 
 def test_publish_task_transitions_to_published(client, auth, db_session):

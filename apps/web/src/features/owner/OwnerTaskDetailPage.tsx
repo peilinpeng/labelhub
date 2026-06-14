@@ -20,6 +20,7 @@ interface TaskEditForm {
   instruction: string;
   quotaTotal: number;
   perLabeler: string;
+  deadlineLocal: string;
   distributionType: DistributionType;
   assigneeIds: string;
   claimBatchSize: number;
@@ -58,6 +59,24 @@ function formatDate(value?: string | null): string {
   return value ? new Date(value).toLocaleDateString() : "无截止时间";
 }
 
+function toDateTimeLocalValue(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function getDeadlineView(value?: string | null): { label: string; tone: "default" | "warning" | "danger"; hint: string } {
+  if (!value) return { label: "无截止时间", tone: "default", hint: "未设置领取截止时间" };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { label: "无截止时间", tone: "default", hint: "截止时间格式异常" };
+  const diffMs = date.getTime() - Date.now();
+  if (diffMs <= 0) return { label: "已截止", tone: "danger", hint: `截止 ${date.toLocaleString()}` };
+  const days = Math.ceil(diffMs / 86_400_000);
+  return { label: `截止 ${date.toLocaleString()}`, tone: days <= 1 ? "warning" : "default", hint: `剩余 ${days} 天` };
+}
+
 function buildEditForm(task: Task): TaskEditForm {
   const distribution = task.distributionStrategy;
   return {
@@ -66,6 +85,7 @@ function buildEditForm(task: Task): TaskEditForm {
     instruction: docToMarkdown(task.instructionRichText),
     quotaTotal: task.quota.total,
     perLabeler: task.quota.perLabeler ? String(task.quota.perLabeler) : "",
+    deadlineLocal: toDateTimeLocalValue(task.deadlineAt),
     distributionType: distribution.type,
     assigneeIds: distribution.type === "ASSIGNMENT" ? distribution.assigneeIds.join(", ") : "",
     claimBatchSize: distribution.type === "QUOTA_CLAIM" ? distribution.claimBatchSize : 10,
@@ -197,6 +217,7 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
           total: Math.max(1, Math.floor(editForm.quotaTotal)),
           ...(perLabeler !== undefined ? { perLabeler: Math.floor(perLabeler) } : {}),
         },
+        deadlineAt: editForm.deadlineLocal ? new Date(editForm.deadlineLocal).toISOString() : null,
         distributionStrategy,
       });
       setTask(updatedTask);
@@ -224,6 +245,7 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
   }
 
   const activeVersionLabel = task.activeSchemaVersionId ?? "尚未绑定版本";
+  const deadlineView = getDeadlineView(task.deadlineAt);
   const hasData = (stats?.datasetTotal ?? 0) > 0;
   const hasAvailableData = (stats?.datasetAvailable ?? 0) > 0;
   const templateReady = Boolean(task.activeSchemaVersionId);
@@ -293,7 +315,8 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
           <p className="page-subtitle">{taskDescription(task)}</p>
           <div className="meta-line">
             <span>创建 {formatDate(task.createdAt)}</span>
-            <span>截止 {formatDate(task.deadlineAt)}</span>
+            <span>{deadlineView.label}</span>
+            {task.deadlineAt ? <span>{deadlineView.hint}</span> : null}
             <span>{strategyLabel(task.distributionStrategy)}</span>
             <span>当前模板 {activeVersionLabel}</span>
           </div>
@@ -416,6 +439,15 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
                   />
                 </label>
                 <label className="field-label">
+                  截止时间
+                  <Input
+                    type="datetime-local"
+                    value={editForm.deadlineLocal}
+                    onChange={(event) => setEditForm({ ...editForm, deadlineLocal: event.target.value })}
+                  />
+                  <small className="field-hint">可选。清空后任务将显示为无截止时间。</small>
+                </label>
+                <label className="field-label">
                   分发策略 *
                   <Select
                     value={editForm.distributionType}
@@ -504,6 +536,10 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
                 <label>
                   <span>每人上限</span>
                   <div className="owner-readonly-field">{task.quota.perLabeler ?? "-"}</div>
+                </label>
+                <label>
+                  <span>截止时间</span>
+                  <div className="owner-readonly-field">{deadlineView.label}{task.deadlineAt ? ` · ${deadlineView.hint}` : ""}</div>
                 </label>
               </div>
               <label>

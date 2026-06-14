@@ -128,7 +128,7 @@ def update_task(
         task.reward_rule_json = req.rewardRule.model_dump()
     if req.quota is not None:
         task.quota_json = req.quota.model_dump()
-    if req.deadlineAt is not None:
+    if "deadlineAt" in req.model_fields_set:
         task.deadline_at = req.deadlineAt
     if req.distributionStrategy is not None:
         task.distribution_strategy_json = req.distributionStrategy.model_dump()

@@ -59,6 +59,7 @@ export async function fetchTaskStats(taskId: string): Promise<TaskStats> {
 export async function createTask(
   request: Pick<Task, "title" | "quota" | "distributionStrategy" | "reviewPolicy"> & {
     description?: string;
+    deadlineAt?: string | null;
     tags?: string[];
     instructionRichText?: Task["instructionRichText"];
   }
@@ -69,7 +70,9 @@ export async function createTask(
 
 export async function updateTask(
   taskId: string,
-  request: Partial<Pick<Task, "title" | "description" | "instructionRichText" | "tags" | "quota" | "distributionStrategy">>,
+  request: Partial<Pick<Task, "title" | "description" | "instructionRichText" | "tags" | "quota" | "distributionStrategy">> & {
+    deadlineAt?: string | null;
+  },
 ): Promise<Task> {
   const res = await apiPatch<Task | { task: Task }>(`/api/v1/tasks/${taskId}`, request);
   return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;

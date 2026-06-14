@@ -114,34 +114,38 @@ export default function LabelerWorkspace({ role }: LabelerWorkspaceProps) {
       </div>
 
       <div className="soft-grid">
-        {tasks.map((task) => (
-          <Card key={task.id} className="soft-panel info-card">
-            <div className="form-stack">
-              <div>
-                <div className="page-actions">
-                  <Badge tone="success">{taskStatusLabel(task.status)}</Badge>
-                  <Badge tone="primary">{distributionLabel(task.distributionStrategy.type)}</Badge>
+        {tasks.map((task) => {
+          const deadlineView = getDeadlineView(task.deadlineAt);
+          return (
+            <Card key={task.id} className="soft-panel info-card">
+              <div className="form-stack">
+                <div>
+                  <div className="page-actions">
+                    <Badge tone="success">{taskStatusLabel(task.status)}</Badge>
+                    <Badge tone="primary">{distributionLabel(task.distributionStrategy.type)}</Badge>
+                  </div>
+                  <h3 className="task-title">{task.title}</h3>
+                  <p className="page-subtitle">{task.description}</p>
                 </div>
-                <h3 className="task-title">{task.title}</h3>
-                <p className="page-subtitle">{task.description}</p>
-              </div>
-              <div className="inset-well">
-                <div className="meta-line">
-                  <span>配额 {task.quota.total}</span>
-                  <span>每人 {task.quota.perLabeler ?? "-"}</span>
-                  <span>{task.deadlineAt ? `截止 ${new Date(task.deadlineAt).toLocaleDateString()}` : "无截止时间"}</span>
+                <div className="inset-well">
+                  <div className="meta-line">
+                    <span>配额 {task.quota.total}</span>
+                    <span>每人 {task.quota.perLabeler ?? "-"}</span>
+                    <span>{deadlineView.label}</span>
+                    {deadlineView.hint ? <span>{deadlineView.hint}</span> : null}
+                  </div>
                 </div>
+                <Button
+                  tone="success"
+                  onClick={() => handleClaimTask(task.id)}
+                  disabled={claimingTaskId === task.id}
+                >
+                  {claimingTaskId === task.id ? "领取中..." : "领取任务"}
+                </Button>
               </div>
-              <Button
-                tone="success"
-                onClick={() => handleClaimTask(task.id)}
-                disabled={claimingTaskId === task.id}
-              >
-                {claimingTaskId === task.id ? "领取中..." : "领取任务"}
-              </Button>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
 
       {tasks.length === 0 ? <Card className="empty-state">暂无可领取的任务</Card> : null}
@@ -163,6 +167,15 @@ function distributionLabel(type: Task["distributionStrategy"]["type"]): string {
   if (type === "FIRST_COME_FIRST_SERVED") return "先到先得";
   if (type === "ASSIGNMENT") return "指派";
   return "配额抢单";
+}
+
+function getDeadlineView(value?: string | null): { label: string; hint?: string } {
+  if (!value) return { label: "无截止时间" };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { label: "无截止时间" };
+  const diffMs = date.getTime() - Date.now();
+  if (diffMs <= 0) return { label: "已截止", hint: `截止 ${date.toLocaleString()}` };
+  return { label: `截止 ${date.toLocaleDateString()}`, hint: `剩余 ${Math.ceil(diffMs / 86_400_000)} 天` };
 }
 
 function isPlaceholderTask(task: Task): boolean {

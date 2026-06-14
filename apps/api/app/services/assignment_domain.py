@@ -36,6 +36,14 @@ _NON_FIELD_TYPES = {
 }
 
 
+def _to_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _collect_field_names(nodes: list, result: set) -> None:
     for node in nodes:
         node_type = node.get("type", "")
@@ -121,6 +129,10 @@ def claim_item(db: Session, task_id: str, actor: object, req: object) -> tuple:
 
     if task.status != "PUBLISHED":
         raise ValidationFailedException("任务未发布，无法领取")
+
+    deadline = _to_utc(task.deadline_at)
+    if deadline is not None and deadline <= datetime.now(timezone.utc):
+        raise ValidationFailedException("任务已截止，无法继续领取。")
 
     if task.active_schema_version_id is None:
         raise ValidationFailedException("任务未配置 Schema 版本")

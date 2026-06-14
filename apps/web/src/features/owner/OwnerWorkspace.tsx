@@ -92,6 +92,15 @@ function formatDate(value?: string | null): string {
   return new Date(value).toLocaleDateString();
 }
 
+function getDeadlineView(value?: string | null): { label: string; hint?: string } {
+  if (!value) return { label: "无截止时间" };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { label: "无截止时间" };
+  const diffMs = date.getTime() - Date.now();
+  if (diffMs <= 0) return { label: "已截止", hint: `截止 ${date.toLocaleString()}` };
+  return { label: `截止 ${date.toLocaleDateString()}`, hint: `剩余 ${Math.ceil(diffMs / 86_400_000)} 天` };
+}
+
 function taskDescription(task: Task): string {
   const description = task.description?.trim();
   const looksInternal =
@@ -258,6 +267,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const selectedTask = selectedTaskId
     ? (tasks.find((task) => task.id === selectedTaskId) ?? null)
     : null;
+  const selectedDeadlineView = selectedTask ? getDeadlineView(selectedTask.deadlineAt) : null;
 
   const publishedCount = tasks.filter((task) => task.status === "PUBLISHED").length;
   const draftTasks = tasks.filter((task) => task.status === "DRAFT");
@@ -421,6 +431,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
             </thead>
             <tbody>
               {visibleTasks.map((task) => {
+                const deadlineView = getDeadlineView(task.deadlineAt);
                 return (
                   <tr
                     className={["owner-task-row", selectedTask?.id === task.id ? "owner-task-row--selected" : ""]
@@ -441,7 +452,8 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                       <p className="owner-task-description">{taskDescription(task)}</p>
                       <div className="meta-line owner-task-meta">
                         <span>创建 {formatDate(task.createdAt)}</span>
-                        <span>截止 {formatDate(task.deadlineAt)}</span>
+                        <span>{deadlineView.label}</span>
+                        {deadlineView.hint ? <span>{deadlineView.hint}</span> : null}
                         <span>数据量 {task.quota.total.toLocaleString()}</span>
                       </div>
                     </td>
@@ -568,6 +580,13 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
               <label>
                 <span>分发策略</span>
                 <div className="owner-readonly-field">{strategyLabel(selectedTask.distributionStrategy)}</div>
+              </label>
+              <label>
+                <span>截止时间</span>
+                <div className="owner-readonly-field">
+                  {selectedDeadlineView?.label ?? "无截止时间"}
+                  {selectedDeadlineView?.hint ? ` · ${selectedDeadlineView.hint}` : ""}
+                </div>
               </label>
             </div>
 
