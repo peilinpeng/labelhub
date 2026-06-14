@@ -200,6 +200,55 @@ def test_old_version_retrievable_after_new_publish(client, auth):
     assert _field_names(r_v2.json()["schema"]) == {"summary"}
 
 
+# ── 发布向后兼容性闸门（后端权威）：绑定版本存在时 BREAKING 变更阻断发布 ────────
+
+def test_publish_blocked_by_breaking_change_against_active_version(client, auth, db_session):
+    """删除字段相对当前绑定版本属 BREAKING → 422 SCHEMA_INVALID，details 带 breakingChanges。"""
+    from app.models.task import Task
+
+    task = create_task(client, auth["OWNER"])
+    tid = task["id"]
+
+    rev1 = _save_draft(client, auth["OWNER"], tid, SCHEMA_V1).json()["schemaDraftRevision"]
+    v1 = _publish(client, auth["OWNER"], tid, rev1).json()["schemaVersion"]
+
+    # 模拟任务已发布并绑定 V1（仅 publish_task 会写 active_schema_version_id）
+    t = db_session.query(Task).filter_by(id=tid).first()
+    t.active_schema_version_id = v1["id"]
+    db_session.commit()
+
+    # 演进到 V2（删除 category）→ 破坏性变更，发布应被后端闸门阻断
+    rev2 = _save_draft(client, auth["OWNER"], tid, SCHEMA_V2).json()["schemaDraftRevision"]
+    resp = _publish(client, auth["OWNER"], tid, rev2)
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["code"] == "SCHEMA_INVALID"
+    codes = [c["code"] for c in resp.json()["details"]["breakingChanges"]]
+    assert "FIELD_REMOVED" in codes
+
+
+def test_publish_non_breaking_change_against_active_version_ok(client, auth, db_session):
+    """仅新增字段属非破坏性 → 即使已绑定版本仍允许发布（不误伤正常演进）。"""
+    from app.models.task import Task
+
+    task = create_task(client, auth["OWNER"])
+    tid = task["id"]
+
+    rev1 = _save_draft(client, auth["OWNER"], tid, SCHEMA_V1).json()["schemaDraftRevision"]
+    v1 = _publish(client, auth["OWNER"], tid, rev1).json()["schemaVersion"]
+    t = db_session.query(Task).filter_by(id=tid).first()
+    t.active_schema_version_id = v1["id"]
+    db_session.commit()
+
+    # 在 V1 基础上新增一个字段（非破坏性）
+    schema_add = {"nodes": SCHEMA_V1["nodes"] + [{
+        "id": "node-extra", "type": "input.text", "name": "extra",
+        "label": "额外", "required": False, "validationRules": [],
+    }]}
+    rev2 = _save_draft(client, auth["OWNER"], tid, schema_add).json()["schemaDraftRevision"]
+    resp = _publish(client, auth["OWNER"], tid, rev2)
+    assert resp.status_code == 201, resp.text
+
+
 def test_schema_version_accessible_by_labeler_and_reviewer(client, auth):
     """TC-DES-11：LABELER / REVIEWER 均可读取 Schema 版本快照（用于渲染历史答卷）。"""
     task = create_task(client, auth["OWNER"])
