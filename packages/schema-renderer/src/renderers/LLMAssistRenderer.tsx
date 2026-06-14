@@ -38,7 +38,7 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
   // 空对象 patch（AI 未给出任何字段建议）不应渲染可点的"确认应用"按钮——否则会
   // 跳过 preflight（其判定也以 length > 0 为准）却仍可点击，应用空操作并误记 ACCEPTED。
   const hasSuggestedPatch =
-    response?.suggestedPatch !== undefined &&
+    response?.suggestedPatch != null &&
     Object.keys(response.suggestedPatch).length > 0 &&
     requireUserConfirm(node);
   const preflightBlocked = preflightResult !== undefined && !preflightResult.ok;
@@ -290,7 +290,7 @@ async function runLLMAssist(
 
     // 有 suggestedPatch 且非空时执行 preflight
     const patch = result.suggestedPatch;
-    if (patch !== undefined && Object.keys(patch).length > 0) {
+    if (patch != null && Object.keys(patch).length > 0) {
       const ops = convertSuggestedPatchToPreflightPatch(patch);
       const preflight = runSchemaPreflight({
         schema: renderContext.schema,
@@ -347,7 +347,7 @@ function buildSuggestionItems(
   patch: AnswerPayload | undefined,
   answers: AnswerPayload,
 ): Array<{ fieldName: string; label: string; currentValue: string; suggestedValue: string }> {
-  if (patch === undefined) return [];
+  if (patch == null) return [];
   return Object.entries(patch)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([fieldName, value]) => ({

@@ -253,6 +253,29 @@ describe("LLMAssistRenderer preflight UI", () => {
     expect(screen.queryByRole("button", { name: "一键采纳" })).toBeNull();
   });
 
+  test("suggestedPatch 为 null 时不崩溃、不显示采纳入口（回归：后端无 outputBindings 返回 null 致 Object.keys(null) 整页白屏）", async () => {
+    // 契约把 suggestedPatch 标为可选对象，但真实后端在 llm.assist 无 outputBindings /
+    // 无 patch 时返回 null（合法空值）。用 cast 注入 null 模拟真实后端，覆盖 Object.keys(null) 崩溃。
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 输出（无 patch）",
+      suggestedPatch: null,
+      callId: "llm_test_null_patch",
+    } as unknown as LLMRuntimeResponse);
+
+    renderWithSchema(makeSimpleSchema(), { onLLMAssist });
+    // 点击 AI 辅助：修复前会触发 Object.keys(null) → 抛错 → 整页白屏。
+    await clickAiButton();
+
+    // 普通字段仍渲染（页面没崩）
+    expect(screen.getByText("字段 A")).toBeTruthy();
+    // AI 输出仍展示
+    await waitFor(() => expect(screen.getByText("AI 输出（无 patch）")).toBeTruthy());
+    // null patch → 无 preflight block、无可点采纳入口
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "一键采纳" })).toBeNull();
+  });
+
   test("SAFE 状态显示可直接采纳的人话提示", async () => {
     const onLLMAssist = vi.fn().mockResolvedValue({
       output: "AI 输出",
