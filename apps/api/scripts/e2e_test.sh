@@ -342,7 +342,7 @@ if [ "$HTTP_STATUS" = "200" ]; then
   if [ "$FOUND" = "True" ]; then
     ok "目标任务在任务广场可见"
   else
-    ok "任务广场请求成功（total=$MKT_TOTAL，目标任务可能在后续分页）"
+    ok "任务广场请求成功（total=${MKT_TOTAL}，目标任务可能在后续分页）"
   fi
 else
   fail "获取任务广场失败 (HTTP $HTTP_STATUS): $RESP_BODY"
@@ -465,7 +465,7 @@ if [ "$HTTP_STATUS" = "200" ]; then
   if [ "$FOUND_IN_Q" = "True" ]; then
     ok "目标 Submission 出现在审核队列"
   elif [ "$QUEUE_TOTAL" != "0" ]; then
-    ok "审核队列不为空（total=$QUEUE_TOTAL），目标可能在后续分页"
+    ok "审核队列不为空（total=${QUEUE_TOTAL}），目标可能在后续分页"
   else
     fail "审核队列为空，Submission 未进入审核状态"
   fi
@@ -514,7 +514,7 @@ if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "201" ]; then
   if [ "$DECISION" = "PASS" ] && [ "$FINAL_STATUS" = "ACCEPTED" ]; then
     ok "审核通过（decision=PASS, status=ACCEPTED）"
   elif [ "$DECISION" = "PASS" ]; then
-    ok "审核通过（decision=PASS, status=$FINAL_STATUS）"
+    ok "审核通过（decision=PASS, status=${FINAL_STATUS}）"
   else
     fail "审核决策异常 decision=$DECISION status=$FINAL_STATUS"
   fi
@@ -541,7 +541,7 @@ if [ "$HTTP_STATUS" = "200" ]; then
   elif [ "$ITEM_STATUS" = "NOT_FOUND" ]; then
     fail "DatasetItem $ITEM_ID 在列表中未找到"
   else
-    fail "DatasetItem 状态为 $ITEM_STATUS，期望 COMPLETED"
+    fail "DatasetItem 状态为 ${ITEM_STATUS}，期望 COMPLETED"
   fi
 else
   fail "获取题目列表失败 (HTTP $HTTP_STATUS): $RESP_BODY"
@@ -593,7 +593,7 @@ split_resp "$RAW"
 if [ "$HTTP_STATUS" = "403" ]; then
   ok "越权访问被正确拦截 (403)"
 else
-  fail "越权未被拦截，期望 403，实际 $HTTP_STATUS：$RESP_BODY"
+  fail "越权未被拦截，期望 403，实际 ${HTTP_STATUS}：$RESP_BODY"
 fi
 
 # =============================================================================
@@ -691,7 +691,7 @@ RAW=$(do_post "$BASE/tasks/$RW_TASK/claim" "$LABELER_TOKEN" '{}'); split_resp "$
 if [ "$HTTP_STATUS" = "422" ]; then
   ok "暂停后领取被正确拒绝 (422)"
 else
-  fail "暂停后领取未被拒，期望 422，实际 $HTTP_STATUS：$RESP_BODY"
+  fail "暂停后领取未被拒，期望 422，实际 ${HTTP_STATUS}：$RESP_BODY"
 fi
 
 # =============================================================================
@@ -705,7 +705,7 @@ JSON
 RAW=$(do_post "$BASE/tasks/$TASK_ID/exports" "$OWNER_TOKEN" "$EXPORT_BODY"); split_resp "$RAW"
 if [ "$HTTP_STATUS" = "201" ]; then
   EXPORT_ID=$(jval "$RESP_BODY" "d['exportJob']['id']")
-  echo "  exportJob.id: $EXPORT_ID（创建状态 $(jval "$RESP_BODY" "d['exportJob']['status']")）"
+  echo "  exportJob.id: ${EXPORT_ID}（创建状态 $(jval "$RESP_BODY" "d['exportJob']['status']")）"
   # 同步执行导出逻辑（worker 可选，与 Step 11b 一致，保证无 Celery 也可跑）
   docker compose exec -T api python -c "
 from app.database import SessionLocal
@@ -723,7 +723,7 @@ finally:
   FHASH=$(jval "$RESP_BODY" "(d.get('records') or [{}])[0].get('passport',{}).get('finalAnswerHash','')")
   echo "  passportCount=$PCOUNT  reviewStatus=$RSTATUS  finalAnswerHash(len)=${#FHASH}  batchHash(len)=${#BATCH}"
   if [ "${#FHASH}" = "64" ] && [ "${#BATCH}" = "64" ] && [ -n "$PCOUNT" ] && [ "$PCOUNT" != "0" ] && [ "$PCOUNT" != "None" ]; then
-    ok "导出生成数据质量护照（passportCount=$PCOUNT，finalAnswerHash/batchHash 均为 64 位 SHA-256，reviewStatus=$RSTATUS）"
+    ok "导出生成数据质量护照（passportCount=${PCOUNT}，finalAnswerHash/batchHash 均为 64 位 SHA-256，reviewStatus=${RSTATUS}）"
   else
     fail "导出记录缺少有效 passport：$RESP_BODY"
   fi
