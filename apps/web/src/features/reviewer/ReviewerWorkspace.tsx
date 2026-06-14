@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Role } from "../../app/routes";
-import { batchDecideReview, claimReview, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
+import { batchDecideReview, claimReview, getReviewDetail, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
 import type { ReviewDecisionRequest } from "@labelhub/contracts";
 import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import { formatBeijingClock } from "../../utils/formatTime";
@@ -12,6 +12,17 @@ interface ReviewerWorkspaceProps {
 }
 
 type QueueFilter = "pending" | "passed" | "returned" | "manual" | "failed";
+
+type DimensionScore = {
+  key: string;
+  score: number | null;
+  reason?: string;
+};
+
+type DimensionScoreState =
+  | { status: "loading"; scores: DimensionScore[] }
+  | { status: "ready"; scores: DimensionScore[] }
+  | { status: "error"; scores: DimensionScore[] };
 
 function statusLabel(status: ReviewQueueItem["submission"]["status"]): string {
   if (status === "AI_PASSED") return "建议通过";
@@ -49,6 +60,8 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
   const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([]);
   const [batchMessage, setBatchMessage] = useState<string | null>(null);
   const [batching, setBatching] = useState(false);
+  const [dimensionScoresBySubmissionId, setDimensionScoresBySubmissionId] = useState<Record<string, DimensionScoreState>>({});
+  const requestedDimensionScoreIdsRef = useRef<Set<string>>(new Set());
   // 批量打回统一原因：复用 decision 的 reason / comment 字段，打回必填，不再下发伪造默认文案。
   const [batchReturnReason, setBatchReturnReason] = useState("");
 
@@ -96,6 +109,41 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
   const selected = submissions.find((item) => item.submission.id === selectedId) ?? filteredSubmissions[0] ?? submissions[0];
   const selectedDisplay = selected ? getQueueDisplay(selected) : null;
   const selectedBatchItems = filteredSubmissions.filter((item) => selectedBatchIds.includes(item.submission.id) && isBatchSelectable(item));
+  const selectedDimensionScoreState = selected ? dimensionScoresBySubmissionId[selected.submission.id] : undefined;
+
+  useEffect(() => {
+    const submissionId = selected?.submission.id;
+    if (!submissionId || requestedDimensionScoreIdsRef.current.has(submissionId)) return;
+    requestedDimensionScoreIdsRef.current.add(submissionId);
+    setDimensionScoresBySubmissionId((current) => ({
+      ...current,
+      [submissionId]: { status: "loading", scores: [] },
+    }));
+    let cancelled = false;
+    void (async () => {
+      try {
+        const detail = await getReviewDetail(submissionId);
+        const scores = normalizeDimensionScores(detail.aiResult?.aiResult?.dimensionScores);
+        if (!cancelled) {
+          setDimensionScoresBySubmissionId((current) => ({
+            ...current,
+            [submissionId]: { status: "ready", scores },
+          }));
+        }
+      } catch (error) {
+        console.warn("AI 维度评分加载失败：", error);
+        if (!cancelled) {
+          setDimensionScoresBySubmissionId((current) => ({
+            ...current,
+            [submissionId]: { status: "error", scores: [] },
+          }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.submission.id]);
 
   const toggleBatchId = (submissionId: string) => {
     setSelectedBatchIds((current) =>
@@ -350,9 +398,9 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           <main className="review-ai-detail">
             <section className="review-ai-detail__heading">
               <div>
-                <h2>{selectedDisplay?.title ?? selected.taskTitle}提交复核</h2>
+                <h2>{formatSubmissionTitle(selectedDisplay?.title, selected.submission.id, selectedIndex(submissions, selected.submission.id))}提交复核</h2>
                 <p>
-                  提交编号：{selected.submission.id} · 第 {selected.submission.attemptNo} 轮 · 提交于{" "}
+                  提交号：{shortSubmissionId(selected.submission.id)} · 第 {selected.submission.attemptNo} 轮 · 提交于{" "}
                   {formatTime(selected.submission.createdAt)} · 标注员{" "}
                   {selectedDisplay?.labeler ?? selected.submission.labelerId}
                 </p>
@@ -395,17 +443,14 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                   <h3>AI 预审代理</h3>
                   <span>维度评分</span>
                 </div>
-                <div className="review-ai-empty">
-                  <strong>暂无维度评分</strong>
-                  <span>本条提交需要人工确认字段完整性和审核结论。</span>
-                </div>
+                <DimensionScoresPreview state={selectedDimensionScoreState} />
               </Card>
             </div>
 
             <Card className="review-ai-actionbar">
               <div className="review-ai-actionbar__status">
                 <strong>{selectedDisplay?.recommendation ?? statusLabel(selected.submission.status)}</strong>
-                <span>{selectedDisplay?.issue ?? "该提交需要人工确认字段完整性和审核结论。"}</span>
+                <span>{humanizeAiReason(selectedDisplay?.issue ?? "该提交需要人工确认字段完整性和审核结论。")}</span>
               </div>
               <Link
                 className="lh-button lh-button--primary review-ai-actionbar__btn"
@@ -437,7 +482,13 @@ function isBatchSelectable(item: ReviewQueueItem): boolean {
 
 // 提交字段的人话标签：把技术 key 映射成审核员可读的中文，未知 key 原样保留。
 const FIELD_LABELS: Record<string, string> = {
+  submission_material: "补充审核材料",
+  answer: "标注答案",
   title: "标题",
+  content: "内容",
+  category: "分类",
+  evidence: "证据说明",
+  comment: "备注",
   itemId: "数据编号",
   taskTitle: "所属任务",
   labeler: "标注员",
@@ -453,4 +504,121 @@ function formatFieldValue(value: unknown): string {
     return String(value);
   }
   return JSON.stringify(value);
+}
+
+function DimensionScoresPreview({ state }: { state: DimensionScoreState | undefined }) {
+  if (state?.status === "loading" || state === undefined) {
+    return (
+      <div className="review-ai-empty">
+        <strong>正在加载 AI 评分...</strong>
+        <span>维度评分会随当前选中的提交自动刷新。</span>
+      </div>
+    );
+  }
+
+  if (state.scores.length === 0) {
+    return (
+      <div className="review-ai-empty">
+        <strong>本条提交暂未返回维度评分</strong>
+        <span>当前提交暂无 AI 维度评分，可进入人工审核查看 AI 结论与字段级建议。</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="review-ai-score-list" aria-label="AI 维度评分">
+      <strong style={{ display: "block", marginBottom: 10 }}>已读取 {state.scores.length} 项 AI 维度评分</strong>
+      {state.scores.map((score) => {
+        const percent = normalizeScorePercent(score.score);
+        const label = dimensionLabel(score.key);
+        return (
+          <div className="review-ai-score-row" key={score.key} style={{ gridTemplateColumns: "minmax(128px, 1fr) minmax(0, 2fr) 96px" }}>
+            <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }} title={score.key}>{label}</span>
+            <div>
+              <div className="review-ai-score-track" aria-hidden="true">
+                <span
+                  className={percent >= 80 ? "review-ai-score-fill review-ai-score-fill--success" : "review-ai-score-fill"}
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              {score.reason ? (
+                <small style={{ display: "block", marginTop: 4, color: "#64748b", fontWeight: 700, lineHeight: 1.45, overflowWrap: "anywhere" }}>
+                  {humanizeAiReason(score.reason, score.key)}
+                </small>
+              ) : null}
+            </div>
+            <strong>{Math.round(percent)} 分 · {scoreVerdict(percent)}</strong>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function normalizeDimensionScores(value: unknown): DimensionScore[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (item == null || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const key = typeof record.key === "string" && record.key.trim() ? record.key : "unknown";
+    const rawScore = typeof record.score === "number" && Number.isFinite(record.score) ? record.score : null;
+    const reason = typeof record.reason === "string" ? record.reason : undefined;
+    return [{ key, score: rawScore, reason }];
+  });
+}
+
+function normalizeScorePercent(rawScore: number | null): number {
+  if (rawScore == null) return 0;
+  const normalizedScore = rawScore <= 1 ? rawScore * 100 : rawScore;
+  return Math.max(0, Math.min(100, normalizedScore));
+}
+
+const DIMENSION_LABELS: Record<string, string> = {
+  content_accuracy: "内容准确性",
+  format_compliance: "格式合规性",
+  factuality: "事实准确性",
+  category: "分类一致性",
+  evidence: "证据充分性",
+  format: "格式规范性",
+};
+
+function dimensionLabel(key: string): string {
+  return DIMENSION_LABELS[key] ?? "未命名维度";
+}
+
+function scoreVerdict(percent: number): string {
+  if (percent >= 80) return "通过";
+  if (percent >= 60) return "需复核";
+  return "不通过";
+}
+
+function humanizeAiReason(text?: string, dimensionKey?: string): string {
+  if (!text) return "";
+  let output = text
+    .replace(/缺少具体的题目内容、标注答案和对应schema的详细信息，无法进行自动维度评分。/g, "提交内容较少，AI 无法判断答案是否符合题目要求，建议人工复核。")
+    .replace(/目标标注schema/g, "目标标注规则")
+    .replace(/标注schema/g, "标注规则")
+    .replace(/schema/g, "表单规则")
+    .replace(/自动维度评分/g, "自动评分")
+    .replace(/自动预审打分/g, "自动评分");
+  if (dimensionKey === "content_accuracy" && /缺少具体的题目内容|题目要求/.test(output)) {
+    output = "提交内容较少，AI 无法判断答案是否准确，建议人工复核。";
+  }
+  return output;
+}
+
+function shortSubmissionId(id: string): string {
+  return id.length > 18 ? `${id.slice(0, 10)}...${id.slice(-4)}` : id;
+}
+
+function selectedIndex(items: ReviewQueueItem[], submissionId: string): number {
+  const index = items.findIndex((item) => item.submission.id === submissionId);
+  return index >= 0 ? index + 1 : 1;
+}
+
+function formatSubmissionTitle(title: string | undefined, submissionId: string, index: number): string {
+  if (!title || title === submissionId || /^sub_[a-z0-9]+$/i.test(title) || /^item_[a-z0-9]+$/i.test(title) || /^\d+$/.test(title)) {
+    return `第 ${index} 条提交`;
+  }
+  return title;
 }
