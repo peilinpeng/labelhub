@@ -490,6 +490,24 @@ def archive_task(
     )
 
 
+# ── DELETE /tasks/{task_id}（删除草稿任务）──────────────────────────────────
+# 仅 DRAFT 可删除（从未发布、无标注/审核数据，硬删安全）；非 DRAFT → 409，
+# 应改用结束 / 归档以保留记录。
+
+@router.delete(
+    "/tasks/{task_id}",
+    status_code=204,
+    summary="删除草稿任务（仅 DRAFT）",
+)
+def delete_draft_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> None:
+    """删除草稿任务，级联清理 schema 草稿 / 版本 / 数据项 / 审计日志。非 DRAFT 返回 409。"""
+    task_domain.delete_draft_task(db, task_id, actor)
+
+
 # ---------------------------------------------------------------------------
 # Schema 路由（契约 §23.1）
 # ---------------------------------------------------------------------------
