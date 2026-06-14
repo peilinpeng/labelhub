@@ -15,7 +15,7 @@ import type {
   GetExportArtifactRecordsResponse,
   SchemaVersion,
 } from "@labelhub/contracts";
-import { apiGet, apiPatch, apiPost, apiPut } from "./client";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "./client";
 
 type PageList<T> = T[] | { items?: T[]; tasks?: T[]; jobs?: T[]; exportJobs?: T[] };
 
@@ -197,6 +197,10 @@ export async function endTask(taskId: string, reason: string): Promise<Task> {
 export async function archiveTask(taskId: string, reason: string): Promise<Task> {
   const res = await apiPost<Task | { task: Task; auditLog: unknown }>(`/api/v1/tasks/${taskId}/archive`, { reason });
   return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
+}
+
+export async function deleteDraftTask(taskId: string): Promise<void> {
+  await apiDelete(`/api/v1/tasks/${taskId}`);
 }
 
 export async function listTasks(): Promise<Task[]> {

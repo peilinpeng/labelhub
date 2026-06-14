@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { archiveTask, endTask, fetchTaskStats, listTasks, pauseTask, resumeTask } from "../../api/owner";
+import { archiveTask, deleteDraftTask, endTask, fetchTaskStats, listTasks, pauseTask, resumeTask } from "../../api/owner";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
 import type { Task } from "@labelhub/contracts";
@@ -73,6 +73,16 @@ function ResumeIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">
       <path d="M7 5l12 7-12 7z" />
+    </svg>
+  );
+}
+
+function ArchiveIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M3 5h18v4H3z" />
+      <path d="M5 9v10h14V9" />
+      <path d="M9 13h6" />
     </svg>
   );
 }
@@ -295,24 +305,35 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const handleDeleteTask = async () => {
     if (!deleteTarget || deleting) return;
 
-    const reason = "Owner 在任务管理页确认删除任务。";
+    const isDraft = deleteTarget.status === "DRAFT";
+    const reason = "Owner 在任务管理页结束并归档任务。";
     try {
       setDeleting(true);
-      if (deleteTarget.status === "DRAFT") {
-        throw new Error("当前后端暂未开放草稿任务删除接口，任务未删除。");
+      if (isDraft) {
+        // 草稿从未发布、无标注数据，后端硬删除
+        await deleteDraftTask(deleteTarget.id);
+      } else {
+        // 已发布任务不可删除：经状态机结束（PUBLISHED/PAUSED）后归档，保留全部记录
+        if (deleteTarget.status === "PUBLISHED" || deleteTarget.status === "PAUSED") {
+          await endTask(deleteTarget.id, reason);
+        }
+        await archiveTask(deleteTarget.id, reason);
       }
-      if (deleteTarget.status === "PUBLISHED" || deleteTarget.status === "PAUSED") {
-        await endTask(deleteTarget.id, reason);
-      }
-      await archiveTask(deleteTarget.id, reason);
       setTasks((current) => current.filter((task) => task.id !== deleteTarget.id));
       setSelectedTaskId((current) => (current === deleteTarget.id ? null : current));
-      setDeleteMessage({ tone: "success", text: `任务「${deleteTarget.title}」已删除，并保留后端审计记录。` });
+      setDeleteMessage({
+        tone: "success",
+        title: isDraft ? "已删除" : "已归档",
+        text: isDraft
+          ? `草稿任务「${deleteTarget.title}」已删除。`
+          : `任务「${deleteTarget.title}」已结束并归档，标注、审核与审计记录均保留。`,
+      });
       setDeleteTarget(null);
     } catch (cause) {
       setDeleteMessage({
         tone: "danger",
-        text: cause instanceof Error ? `删除失败：${cause.message}` : "删除失败：后端未完成该操作。",
+        title: isDraft ? "删除失败" : "归档失败",
+        text: cause instanceof Error ? cause.message : "操作失败：后端未完成该操作。",
       });
       setDeleteTarget(null);
     } finally {
@@ -348,10 +369,11 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
     }
   };
 
+  const deleteIsDraft = deleteTarget?.status === "DRAFT";
   const deleteDialogDescription = deleteTarget
-    ? deleteTarget.status === "DRAFT"
-      ? `当前任务「${deleteTarget.title}」仍是草稿。现有后端只允许删除已发布后结束的任务，因此确认后如果后端不支持草稿删除，任务会保留在列表中。`
-      : `确定要删除任务「${deleteTarget.title}」吗？删除会通过后端状态机结束并归档任务，任务将从当前列表隐藏，已有标注、审核和审计记录仍会保留。`
+    ? deleteIsDraft
+      ? `确定删除草稿任务「${deleteTarget.title}」吗？草稿从未发布、没有标注数据，删除后不可恢复。`
+      : `确定结束并归档任务「${deleteTarget.title}」吗？任务会经状态机结束后归档、从当前列表隐藏，已有标注、审核和审计记录都会保留（这不是物理删除）。`
     : "";
 
   if (loading) {
@@ -563,14 +585,14 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                         <button
                           type="button"
                           className="owner-icon-action owner-icon-action--danger"
-                          aria-label={`删除 ${task.title}`}
-                          data-tooltip="删除"
+                          aria-label={`${task.status === "DRAFT" ? "删除草稿" : "结束并归档"} ${task.title}`}
+                          data-tooltip={task.status === "DRAFT" ? "删除草稿" : "结束并归档"}
                           onClick={() => {
                             setDeleteMessage(null);
                             setDeleteTarget(task);
                           }}
                         >
-                          <TrashIcon />
+                          {task.status === "DRAFT" ? <TrashIcon /> : <ArchiveIcon />}
                         </button>
                       </div>
                     </td>
@@ -669,7 +691,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                   setDeleteTarget(selectedTask);
                 }}
               >
-                删除任务
+                {selectedTask.status === "DRAFT" ? "删除草稿任务" : "结束并归档任务"}
               </Button>
             </div>
           </aside>
@@ -678,9 +700,9 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="确认删除任务"
+        title={deleteIsDraft ? "确认删除草稿任务" : "确认结束并归档任务"}
         description={deleteDialogDescription}
-        confirmText={deleting ? "删除中" : "确认删除"}
+        confirmText={deleting ? "处理中" : deleteIsDraft ? "确认删除" : "结束并归档"}
         cancelText="取消"
         tone="danger"
         onCancel={() => {

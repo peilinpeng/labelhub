@@ -114,6 +114,17 @@ export async function apiPatch<T>(url: string, body: unknown): Promise<T> {
   return handleResponse<T>(response);
 }
 
+export async function apiDelete<T = void>(url: string): Promise<T> {
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      "Idempotency-Key": crypto.randomUUID(),
+      ...getAuthHeader(),
+    },
+  });
+  return handleResponse<T>(response);
+}
+
 /** 上传二进制文件内容（数据集导入用）。不发 Idempotency-Key，避免中间件按写操作缓存。 */
 export async function apiUploadBinary(url: string, file: Blob, contentType: string): Promise<void> {
   const response = await fetch(url, {

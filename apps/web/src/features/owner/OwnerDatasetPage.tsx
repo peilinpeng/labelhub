@@ -236,7 +236,7 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
                     {field.sampleIndex === null ? "暂无示例" : `来自第 ${field.sampleIndex + 1} 条样本`}
                   </small>
                   {field.role === "answer" ? (
-                    <p className="owner-dataset-field-card__warn">可能是答案或隐藏标签，不建议展示给标注员。</p>
+                    <p className="owner-dataset-field-card__warn">可能是答案或隐藏标签，展示给标注员会造成泄露；模板设计器已默认禁止将其加入展示。</p>
                   ) : null}
                 </article>
               ))}
