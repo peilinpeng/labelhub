@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { SchemaDesigner, validateDesignerSchema } from "@labelhub/schema-designer";
 import {
   checkBackwardCompatibility,
@@ -172,6 +172,9 @@ function schemaRevisionLabel(schema: LabelHubSchema): string {
 
 export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const { taskId } = useParams<{ taskId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // 从 AI 预审页「下一步：发布任务」带 ?publish=1 进入时，自动触发发布前检查（只触发一次）。
+  const autoPublishTriggeredRef = useRef(false);
   const [serverRegistry, setServerRegistry] = useState<ServerComponentRegistryItem[]>(localServerComponentRegistry);
   const [schema, setSchema] = useState<LabelHubSchema>(() => createFallbackSchema(taskId));
   const [task, setTask] = useState<Task | undefined>();
@@ -245,9 +248,24 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           setStatusMessage("已加载模板草稿");
         } else if (resolvedTask !== undefined) {
           const fallbackSchema = createFallbackSchema(currentTaskId, resolvedTask?.title);
-          setSchema(fallbackSchema);
+          // 未读取到草稿时，默认把上一步「新建任务」的标题与说明带入模板名称/说明，
+          // 方便 Owner 直接发布；后续点击「一键配置模版」套预设时由 handleLoadPreset 覆盖。
+          const prefilledSchema: LabelHubSchema = {
+            ...fallbackSchema,
+            meta: {
+              ...fallbackSchema.meta,
+              name: resolvedTask.title || fallbackSchema.meta.name,
+              description: resolvedTask.description || fallbackSchema.meta.description,
+            },
+            root: {
+              ...fallbackSchema.root,
+              title: resolvedTask.title || fallbackSchema.root.title,
+            },
+          };
+          setSchema(prefilledSchema);
+          // 预设高亮仍按原始 fallback 判定，避免改了名称后匹配不到内置预设。
           setActivePresetId(presetIdForSchema(fallbackSchema));
-          setStatusMessage("未读取到模板草稿，已创建空白编辑起点");
+          setStatusMessage("未读取到模板草稿，已带入任务标题与说明作为起点");
         } else {
           setStatusMessage("任务或模板草稿加载失败，请检查后端服务。");
         }
@@ -736,6 +754,25 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     setPublishPreviewOpen(false);
     void confirmPublish(preview);
   };
+
+  // 从 AI 预审页带 ?publish=1 进入：数据加载完成后自动跑发布前检查（弹出 PublishPreviewDialog
+  // 或在前置未满足时给出明确提示），并清掉 query 防止刷新/返回重复触发。
+  useEffect(() => {
+    if (autoPublishTriggeredRef.current) return;
+    if (searchParams.get("publish") !== "1") return;
+    if (loading || !taskStatsLoaded || aiConfigStatus === "loading") return;
+    autoPublishTriggeredRef.current = true;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("publish");
+        return next;
+      },
+      { replace: true },
+    );
+    void handlePublish();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading, taskStatsLoaded, aiConfigStatus]);
 
   const focusIssueNode = (nodeId: string | undefined) => {
     if (nodeId === undefined) return;

@@ -360,7 +360,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
             ) : null}
             {configId ? (
               <div className="owner-ai-next-actions">
-                <Link to={`/owner/tasks/${selectedTaskId}/designer`} className="lh-button lh-button--primary">
+                <Link to={`/owner/tasks/${selectedTaskId}/designer?publish=1`} className="lh-button lh-button--primary">
                   下一步：发布任务
                 </Link>
               </div>
