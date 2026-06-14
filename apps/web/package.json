@@ -17,6 +17,8 @@
   "dependencies": {
     "@labelhub/contracts": "file:../../packages/contracts",
     "@labelhub/schema-designer": "file:../../packages/schema-designer",
+    "@labelhub/schema-compiler": "file:../../packages/schema-compiler",
+    "@labelhub/schema-core": "file:../../packages/schema-core",
     "@labelhub/schema-renderer": "file:../../packages/schema-renderer",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
