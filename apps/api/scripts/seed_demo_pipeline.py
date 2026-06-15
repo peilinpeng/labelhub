@@ -47,9 +47,12 @@ from app.services.review_domain import create_ai_review_job, claim_review, submi
 from app.services.review_eval_domain import compute_agreement
 from app.schemas.review import ReviewDecisionRequest
 from app.worker.ai_review_worker import _execute_review
+from scripts.seed_competition import _QA_REVIEW_PROMPT, _PREF_REVIEW_PROMPT
 
 QA_TASK = "task_demo_qa_quality"
 PREF_TASK = "task_demo_pref_compare"
+# 单一真源：prompt 模板定义在 seed_competition；跑前同步进运行 DB（seed_competition 幂等不更新已有 ReviewConfig）。
+_PROMPT_BY_TASK = {QA_TASK: _QA_REVIEW_PROMPT, PREF_TASK: _PREF_REVIEW_PROMPT}
 NEWS_TASK = "task_demo_news_quality"
 LABELER_ID = "usr_demo_labeler"
 REVIEWER_ID = "usr_demo_reviewer"
@@ -170,6 +173,13 @@ def _run_task(db, task_id: str, answers_fn, per_task: int, leave_queue: int,
             sample = answers_fn(0, rng)
         print(f"  [dry-run] 不调 Doubao、不写库。answers 模板示例：{sample}")
         return {"task": task_id, "dry_run": True}
+
+    # 把最新 prompt 模板同步进运行 DB，确保 AI 拿到含每题真实内容的 prompt（而非旧的空桩）。
+    canonical_prompt = _PROMPT_BY_TASK.get(task_id)
+    if canonical_prompt and review_config.prompt_template != canonical_prompt:
+        review_config.prompt_template = canonical_prompt
+        db.commit()
+        print("  已同步最新 AI 预审 prompt 模板到 ReviewConfig")
 
     _reset_history(db, task_id)
 
