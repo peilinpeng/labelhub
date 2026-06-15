@@ -89,7 +89,9 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
                   <li key={item.fieldName}>
                     <div className="ai-quality-panel__field">
                       <strong>{item.label}</strong>
-                      {item.label !== item.fieldName ? <small>{item.fieldName}</small> : null}
+                      {item.label !== item.fieldName && shouldShowTechnicalFieldName(item.fieldName) ? (
+                        <small>{item.fieldName}</small>
+                      ) : null}
                     </div>
                     <div className="ai-quality-panel__diff">
                       <span>{item.currentValue}</span>
@@ -363,8 +365,16 @@ function fieldLabel(fieldName: string): string {
     qualityScore: "质量评分",
     rewriteSuggestion: "修改建议",
     factCheckNote: "事实核查说明",
+    relevance: "相关性",
+    accuracy: "准确性",
+    compliance: "格式合规",
+    safety: "安全性",
   };
   return labels[fieldName] ?? fieldName;
+}
+
+function shouldShowTechnicalFieldName(fieldName: string): boolean {
+  return !["relevance", "accuracy", "compliance", "safety"].includes(fieldName);
 }
 
 function formatAnswerValue(value: unknown): string {
