@@ -614,6 +614,8 @@ const DIMENSION_LABELS: Record<string, string> = {
   accuracy: "内容准确性",
   compliance: "格式合规性",
   safety: "安全性",
+  completeness: "完整性",
+  readability: "可读性",
   content_accuracy: "内容准确性",
   format_compliance: "格式合规性",
   factuality: "事实准确性",
