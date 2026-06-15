@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { createExportJob, fetchTask, getExportArtifactRecords, listExportJobs } from "../../api/owner";
+import { createExportJob, downloadExportFile, fetchTask, getExportArtifactRecords, listExportJobs } from "../../api/owner";
 import { RoutePath, Role } from "../../app/routes";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
@@ -210,8 +210,18 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
     setExportConfirmOpen(true);
   };
 
-  const handleDownload = (job: ExportJob) => {
-    setExportNotice(`导出任务 ${job.id} 已完成，请使用后端返回的真实下载地址或制品接口下载。`);
+  const handleDownload = async (job: ExportJob) => {
+    if (job.status !== "DONE") return;
+    try {
+      const { blob, filename } = await downloadExportFile(job.id);
+      // 文件名优先用历史记录里的展示名，其次后端 Content-Disposition，最后兜底。
+      const downloadName = job.fileName || filename || `${taskId ?? "export"}.${(job.format ?? "jsonl").toLowerCase()}`;
+      triggerBrowserDownload(blob, downloadName);
+      setExportNotice(`已开始下载 ${downloadName}`);
+    } catch (error) {
+      console.warn("导出文件下载失败：", error);
+      setExportNotice(error instanceof Error ? `下载失败：${error.message}` : "下载失败，请稍后重试。");
+    }
   };
 
   const handleLoadPassportPreview = async (job: ExportJob) => {
@@ -409,7 +419,7 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
               <div className="owner-export-progress" aria-label={`进度 ${job.progress}%`}>
                 <span style={{ width: `${job.progress}%` }} />
               </div>
-              <Button type="button" disabled={job.status !== "DONE"} onClick={() => handleDownload(job)}>
+              <Button type="button" disabled={job.status !== "DONE"} onClick={() => void handleDownload(job)}>
                 下载
               </Button>
               {job.artifactSummary ? (
@@ -441,6 +451,18 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
       />
     </div>
   );
+}
+
+// 用 blob + 临时 <a download> 触发稳定的浏览器下载，避免直接 window.open 一个需要 token 的 URL。
+function triggerBrowserDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function mapBackendExportJob(job: BackendExportJob, taskId: string): ExportJob {

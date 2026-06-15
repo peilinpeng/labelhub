@@ -138,6 +138,43 @@ export async function apiUploadBinary(url: string, file: Blob, contentType: stri
   }
 }
 
+/**
+ * 下载二进制制品（导出文件等）。带认证，失败时抛 ApiRequestError 供调用方就地提示。
+ * 返回 blob 与从 Content-Disposition 解析出的文件名（可能为 null）。
+ */
+export async function apiGetBlob(url: string): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await fetch(url, { headers: { ...getAuthHeader() } });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    let message: string | undefined;
+    let code: string | undefined;
+    try {
+      const err = JSON.parse(text) as ApiError;
+      message = err?.message;
+      code = err?.code;
+    } catch {
+      // 非 JSON 错误体：保留默认提示。
+    }
+    throw new ApiRequestError(
+      message ?? `Request failed: ${response.status} ${response.statusText}`,
+      response.status,
+      code,
+    );
+  }
+  const blob = await response.blob();
+  return { blob, filename: parseContentDispositionFilename(response.headers.get("content-disposition")) };
+}
+
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8?.[1]) {
+    try { return decodeURIComponent(utf8[1].trim()); } catch { /* fall through */ }
+  }
+  const quoted = /filename="?([^";]+)"?/i.exec(header);
+  return quoted?.[1]?.trim() ?? null;
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
   let data: unknown = null;

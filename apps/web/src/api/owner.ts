@@ -15,7 +15,7 @@ import type {
   GetExportArtifactRecordsResponse,
   SchemaVersion,
 } from "@labelhub/contracts";
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "./client";
+import { apiDelete, apiGet, apiGetBlob, apiPatch, apiPost, apiPut } from "./client";
 
 type PageList<T> = T[] | { items?: T[]; tasks?: T[]; jobs?: T[]; exportJobs?: T[] };
 
@@ -222,6 +222,11 @@ export async function listExportJobs(taskId: string): Promise<ExportJob[]> {
 
 export async function getExportArtifactRecords(exportId: string): Promise<GetExportArtifactRecordsResponse> {
   return apiGet<GetExportArtifactRecordsResponse>(`/api/v1/exports/${exportId}/records`);
+}
+
+/** 下载已完成导出任务的真实文件（流式 FileResponse），带认证。 */
+export async function downloadExportFile(exportId: string): Promise<{ blob: Blob; filename: string | null }> {
+  return apiGetBlob(`/api/v1/exports/${exportId}/download/file`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
