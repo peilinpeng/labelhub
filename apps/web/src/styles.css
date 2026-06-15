@@ -11867,6 +11867,214 @@ a {
   background: rgba(148, 163, 184, 0.35);
 }
 
+.ai-schema-draft-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.ai-schema-draft-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.ai-schema-draft-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.ai-schema-draft-dialog__header,
+.ai-schema-draft-dialog__actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.ai-schema-draft-dialog__header span {
+  display: block;
+  color: var(--lh-accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-schema-draft-dialog__header h3 {
+  margin: 4px 0;
+  color: var(--lh-text);
+  font-size: 20px;
+}
+
+.ai-schema-draft-dialog__header p,
+.ai-schema-draft-empty,
+.ai-schema-draft-trace {
+  margin: 0;
+  color: var(--lh-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ai-schema-draft-dialog__header > button {
+  border: 0;
+  background: transparent;
+  color: var(--lh-muted);
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.ai-schema-draft-dialog__body {
+  display: grid;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.ai-schema-draft-prompt {
+  display: grid;
+  gap: 8px;
+  color: var(--lh-text);
+  font-weight: 800;
+}
+
+.ai-schema-draft-prompt textarea {
+  min-height: 120px;
+  resize: vertical;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 8px;
+  padding: 12px;
+  font: inherit;
+  line-height: 1.6;
+}
+
+.ai-schema-draft-error {
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+  padding: 10px 12px;
+  font-weight: 800;
+}
+
+.ai-schema-draft-preview {
+  display: grid;
+  gap: 14px;
+}
+
+.ai-schema-draft-preview__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-schema-draft-preview__summary > div {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.ai-schema-draft-preview__summary strong {
+  display: block;
+  color: var(--lh-text);
+  font-size: 20px;
+}
+
+.ai-schema-draft-preview__summary span {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-schema-draft-field-list,
+.ai-schema-draft-issues {
+  display: grid;
+  gap: 8px;
+}
+
+.ai-schema-draft-select-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ai-schema-draft-select-count {
+  color: var(--lh-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-schema-draft-select-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-schema-draft-field-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.ai-schema-draft-field-check {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--lh-primary, #2563eb);
+}
+
+.ai-schema-draft-field-row strong,
+.ai-schema-draft-field-row span {
+  display: block;
+  min-width: 0;
+}
+
+.ai-schema-draft-field-row span {
+  color: var(--lh-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ai-schema-draft-issues p {
+  margin: 0;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ai-schema-draft-dialog__actions {
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  border-bottom: 0;
+}
+
 /* 版本管理卡片容器：与「发布前检查」(owner-readiness-panel) 一致的白色圆角卡片，
    带 padding/border/阴影，避免标题与说明裸露在页面背景上、内容顶格贴边。 */
 .owner-version-panel-compact {
