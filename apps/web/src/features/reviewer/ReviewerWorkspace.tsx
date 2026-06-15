@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Role } from "../../app/routes";
-import { batchDecideReview, claimReview, getReviewDetail, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
+import { batchDecideReview, claimReview, fetchReviewQueueCount, getReviewDetail, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
 import type { ReviewDecisionRequest } from "@labelhub/contracts";
 import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import { formatBeijingClock } from "../../utils/formatTime";
@@ -64,39 +64,57 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
   const requestedDimensionScoreIdsRef = useRef<Set<string>>(new Set());
   // 批量打回统一原因：复用 decision 的 reason / comment 字段，打回必填，不再下发伪造默认文案。
   const [batchReturnReason, setBatchReturnReason] = useState("");
+  // Tab 数字：独立于当前选中 Tab 的全量统计。不能从当前 Tab 的 submissions 客户端聚合，
+  // 否则非当前 Tab（已通过 / 已打回）会恒为 0，必须点击该 Tab 后才显示真实数字。
+  const [counts, setCounts] = useState({ pending: 0, passed: 0, returned: 0, manual: 0, failed: 0 });
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        setLoading(true);
-        const data = await listReviewQueue({ status: reviewQueueStatusFor(filter) });
-        // 后端/mock 可能返回缺少嵌套 submission 的脏数据，统一在入口过滤，
-        // 保证下游 stats / 过滤 / 选中 / 渲染读取 item.submission.* 时不会崩溃。
-        const safeData = data.filter(
-          (item): item is ReviewQueueItem =>
-            item != null && item.submission != null && typeof item.submission.id === "string",
-        );
-        setSubmissions(safeData);
-        setSelectedId((current) => current ?? safeData[0]?.submission?.id ?? null);
-        setSelectedBatchIds([]);
-        setOfflineNotice(null);
-      } catch (error) {
-        console.warn("审核队列加载失败：", error);
-        setSubmissions([]);
-        setSelectedId(null);
-        setOfflineNotice("审核队列加载失败，请稍后重试。");
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const loadQueue = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await listReviewQueue({ status: reviewQueueStatusFor(filter) });
+      // 后端/mock 可能返回缺少嵌套 submission 的脏数据，统一在入口过滤，
+      // 保证下游过滤 / 选中 / 渲染读取 item.submission.* 时不会崩溃。
+      const safeData = data.filter(
+        (item): item is ReviewQueueItem =>
+          item != null && item.submission != null && typeof item.submission.id === "string",
+      );
+      setSubmissions(safeData);
+      setSelectedId((current) => current ?? safeData[0]?.submission?.id ?? null);
+      setSelectedBatchIds([]);
+      setOfflineNotice(null);
+    } catch (error) {
+      console.warn("审核队列加载失败：", error);
+      setSubmissions([]);
+      setSelectedId(null);
+      setOfflineNotice("审核队列加载失败，请稍后重试。");
+    } finally {
+      setLoading(false);
+    }
   }, [filter]);
 
-  const stats = useMemo(() => {
-    const pending = submissions.filter((item) => item.submission.status === "NEEDS_HUMAN_REVIEW").length;
-    const passed = submissions.filter((item) => item.submission.status === "AI_PASSED" || item.submission.status === "ACCEPTED").length;
-    const returned = submissions.filter((item) => item.submission.status === "RETURNED" || item.submission.status === "REJECTED").length;
-    return { pending, passed, returned, manual: pending, failed: 0 };
-  }, [submissions]);
+  const loadCounts = useCallback(async () => {
+    try {
+      const [pending, passed, returned] = await Promise.all([
+        fetchReviewQueueCount("NEEDS_HUMAN_REVIEW"),
+        fetchReviewQueueCount("ACCEPTED"),
+        fetchReviewQueueCount("RETURNED"),
+      ]);
+      // 「转人工」与「待审核」共用 NEEDS_HUMAN_REVIEW 状态（reviewQueueStatusFor 同口径）；
+      // 队列中无独立「失败」状态（AI 失败会转人工），保持 0。
+      setCounts({ pending, passed, returned, manual: pending, failed: 0 });
+    } catch (error) {
+      console.warn("审核队列统计加载失败：", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadQueue();
+  }, [loadQueue]);
+
+  // Tab 数字首屏即加载，且不随选中 Tab 变化（与列表请求解耦）。
+  useEffect(() => {
+    void loadCounts();
+  }, [loadCounts]);
 
   const filteredSubmissions = submissions.filter((item) => {
     if (filter === "passed") return item.submission.status === "AI_PASSED" || item.submission.status === "ACCEPTED";
@@ -228,6 +246,8 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
       );
       setSubmissions(safeData);
       setSelectedBatchIds([]);
+      // 决策会改变各状态条数，同步刷新 Tab 数字。
+      void loadCounts();
       if (decision === "RETURN" && successCount > 0) setBatchReturnReason("");
     } catch (error) {
       setBatchMessage(error instanceof Error ? `批量操作失败：${error.message}` : "批量操作失败。");
@@ -266,7 +286,7 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           <h2>我的审核概览</h2>
           <span>仅展示与你审核任务相关的真实队列数据</span>
         </div>
-        {stats.pending + stats.passed + stats.returned === 0 ? (
+        {counts.pending + counts.passed + counts.returned === 0 ? (
           <div className="empty-state">
             暂无审核记录。完成审核后，这里会显示你的审核反馈与退回记录。
           </div>
@@ -274,15 +294,15 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           <div className="reviewer-overview__grid">
             <div className="reviewer-overview__item reviewer-overview__item--warning">
               <span>待我处理</span>
-              <strong>{stats.pending}</strong>
+              <strong>{counts.pending}</strong>
             </div>
             <div className="reviewer-overview__item reviewer-overview__item--success">
               <span>当前队列已通过</span>
-              <strong>{stats.passed}</strong>
+              <strong>{counts.passed}</strong>
             </div>
             <div className="reviewer-overview__item reviewer-overview__item--danger">
               <span>当前队列已退回</span>
-              <strong>{stats.returned}</strong>
+              <strong>{counts.returned}</strong>
             </div>
             <div className="reviewer-overview__item">
               <span>AI 预审辅助</span>
@@ -294,13 +314,27 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
 
       <div className="review-ai-layout">
         <Card className="review-ai-queue">
+          <div className="review-ai-queue__toolbar">
+            <span>AI 预审为异步处理，提交后稍候可刷新查看最新结果。</span>
+            <Button
+              type="button"
+              tone="default"
+              disabled={loading}
+              onClick={() => {
+                void loadQueue();
+                void loadCounts();
+              }}
+            >
+              刷新队列
+            </Button>
+          </div>
           <div className="review-ai-tabs" role="tablist" aria-label="AI 预审状态">
             {[
-              ["pending", "待审核", stats.pending],
-              ["passed", "已通过", stats.passed],
-              ["returned", "已打回", stats.returned],
-              ["manual", "转人工", stats.manual],
-              ["failed", "失败", stats.failed],
+              ["pending", "待审核", counts.pending],
+              ["passed", "已通过", counts.passed],
+              ["returned", "已打回", counts.returned],
+              ["manual", "转人工", counts.manual],
+              ["failed", "失败", counts.failed],
             ].map(([key, label, count]) => (
               <button
                 className={filter === key ? "review-ai-tab review-ai-tab--active" : "review-ai-tab"}
@@ -574,6 +608,12 @@ function normalizeScorePercent(rawScore: number | null): number {
 }
 
 const DIMENSION_LABELS: Record<string, string> = {
+  // ReviewConfig.dimensions_json 实际下发的 key（见 seed_demo / seed_competition）：
+  // relevance / accuracy / compliance / safety —— 缺失这些映射会导致维度全部显示「未命名维度」。
+  relevance: "内容相关性",
+  accuracy: "内容准确性",
+  compliance: "格式合规性",
+  safety: "安全性",
   content_accuracy: "内容准确性",
   format_compliance: "格式合规性",
   factuality: "事实准确性",

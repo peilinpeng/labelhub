@@ -50,6 +50,24 @@ export async function listReviewQueue(params: { page?: number; pageSize?: number
   return unwrapList(res);
 }
 
+/**
+ * 统计某一队列状态的条数（用于 Reviewer 页面左侧 Tab 数字）。
+ * 必须独立于当前选中的 Tab：后端 /review/queue 会按 status 服务端精确过滤，
+ * 若复用当前 Tab 的列表客户端聚合，非当前 Tab 的计数会恒为 0（点击后才变正确）。
+ * 真实后端返回 { items, total }，直接取 total（不受分页 pageSize 限制）；
+ * mock 返回裸数组且忽略 status 参数，回退为按 status 客户端过滤后计数。
+ */
+export async function fetchReviewQueueCount(status: string): Promise<number> {
+  const search = new URLSearchParams();
+  search.set("pageSize", "100");
+  search.set("status", status);
+  const res = await apiGet<unknown>(`/api/v1/review/queue?${search.toString()}`);
+  if (res != null && typeof res === "object" && !Array.isArray(res) && typeof (res as { total?: unknown }).total === "number") {
+    return (res as { total: number }).total;
+  }
+  return unwrapList(res as PageList<ReviewQueueItem>).filter((item) => item?.submission?.status === status).length;
+}
+
 export async function getReviewDetail(submissionId: string): Promise<ReviewDetailResponse> {
   const res = await apiGet<ReviewDetailResponse | { detail: ReviewDetailResponse }>(
     `/api/v1/review/submissions/${submissionId}`
