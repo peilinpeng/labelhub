@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import Actor, require_roles
-from app.services import review_domain
+from app.services import review_domain, review_eval_domain
 from app.utils.schema_normalize import normalize_schema_payload
 from app.schemas.review import (
     ClaimReviewResponse,
@@ -15,6 +15,7 @@ from app.schemas.review import (
     ReviewQueueResponse,
     ReviewQueueItem,
     ReviewDetailResponse,
+    ReviewAgreementResponse,
     AITraceResponse,
     SubmissionSummary,
     ReviewResultResponse,
@@ -57,6 +58,19 @@ def get_review_queue(
             aiDecision=ai_result.decision if ai_result else None,
         ))
     return ReviewQueueResponse(items=items, total=total, page=page, pageSize=pageSize)
+
+
+@router.get(
+    "/review/agreement",
+    response_model=ReviewAgreementResponse,
+    summary="AI 预审与人工最终决策的一致性指标（只读，质量评估）",
+)
+def get_review_agreement(
+    taskId: str | None = Query(None, description="按任务过滤；不传则跨全部任务统计"),
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER", "REVIEWER", "ADMIN")),
+) -> ReviewAgreementResponse:
+    return ReviewAgreementResponse(**review_eval_domain.compute_agreement(db, taskId))
 
 
 @router.get(

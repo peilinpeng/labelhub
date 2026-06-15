@@ -284,3 +284,21 @@ class GetReviewConfigResponse(BaseModel):
 
 class UpdateReviewConfigResponse(BaseModel):
     reviewConfig: ReviewConfigResponse
+
+
+class ReviewAgreementConfusion(BaseModel):
+    aiPassHumanPass: int
+    aiPassHumanReturn: int
+    aiReturnHumanPass: int
+    aiReturnHumanReturn: int
+
+
+class ReviewAgreementResponse(BaseModel):
+    """AI 预审 vs 人工最终决策的一致性指标（只读统计）。"""
+    taskId: str | None = None
+    evaluated: int               # 计入一致率的样本数（AI 给确定判断且有人工决策）
+    agreementCount: int
+    agreementRate: float | None  # evaluated=0 时为 null
+    aiAbstain: int               # AI=NEED_HUMAN_REVIEW（主动转人工，不计入一致率）
+    confusion: ReviewAgreementConfusion
+    submissionsConsidered: int
