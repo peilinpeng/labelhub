@@ -620,10 +620,21 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       });
 
       failureStage = "PUBLISH_TASK";
-      const publishedTask = await publishTask(currentTaskId, { schemaVersionId });
-      setTask(publishedTask.task);
-      setVersionRefreshKey((key) => key + 1);
-      showNotice("发布成功，任务已进入任务市场。", "success");
+      // publishTask 合法迁移仅 ('DRAFT','publishTask')：DRAFT 任务发布后进入任务市场；
+      // 已发布/暂停等任务再次绑定会被状态机拒绝——这是版本冻结的预期行为，不算发布失败。
+      // 新模板版本已通过上一步 publishSchema 入历史，已发布任务保留原绑定（与“复制为新草稿/回滚”一致）。
+      if (task && task.status !== "DRAFT") {
+        setVersionRefreshKey((key) => key + 1);
+        showNotice(
+          "模板新版本已发布并入版本历史。该任务已是发布状态，按版本冻结策略保留原绑定；如需启用新版本，请在“版本管理”中操作。",
+          "success",
+        );
+      } else {
+        const publishedTask = await publishTask(currentTaskId, { schemaVersionId });
+        setTask(publishedTask.task);
+        setVersionRefreshKey((key) => key + 1);
+        showNotice("发布成功，任务已进入任务市场。", "success");
+      }
     } catch (error) {
       console.error("Owner 模板发布失败", error);
       await appendSchemaPublishFailedAuditEvent({
@@ -901,6 +912,7 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         resolveTaskId(taskId, schema.meta.taskId),
         task?.title ?? schema.meta.name,
         description,
+        datasetFields.map((field) => field.name),
       );
       setAiSchemaPreview({
         schema: normalized,
@@ -2188,6 +2200,7 @@ function normalizeGeneratedSchemaDraft(
   taskId: ID,
   taskTitle: string,
   prompt: string,
+  availableFieldNames: string[] = [],
 ): LabelHubSchema {
   if (!isRecord(schemaDraft)) {
     throw new Error("AI 生成结果不是对象");
@@ -2205,7 +2218,7 @@ function normalizeGeneratedSchemaDraft(
 
   const usedNodeIds = new Set<string>(["root"]);
   const usedFieldNames = new Set<string>();
-  const children = rawChildren.map((node, index) => normalizeGeneratedNode(node, index, usedNodeIds, usedFieldNames));
+  const children = rawChildren.map((node, index) => normalizeGeneratedNode(node, index, usedNodeIds, usedFieldNames, availableFieldNames));
   const now = new Date().toISOString();
   const generatedTitle = readString(schemaDraft, "title")
     ?? (isRecord(schemaDraft.meta) ? readString(schemaDraft.meta, "name") : undefined)
@@ -2281,11 +2294,79 @@ function humanizeGeneratedNodeTitle(rawTitleOrName: string, _nodeKind?: string):
   return suffix ? `${readable} ${suffix}` : readable;
 }
 
+// AI 生成 show.* 展示节点的字段别名组：把「中文标题 / 机器名」按语义归类到真实数据字段候选。
+// 仅用于推断展示节点的 sourcePath，不影响作答字段。
+// 顺序敏感：参考答案组必须排在模型回答组之前——否则 "reference_answer" 会被模型组的裸 "answer" 误命中。
+const SHOW_FIELD_ALIASES: ReadonlyArray<{ canon: RegExp; candidates: string[] }> = [
+  {
+    canon: /(用户|输入|提问|问题|prompt|question|query|user[_-]?input|instruction|^input$|_input$)/i,
+    candidates: ["prompt", "question", "query", "user_input", "instruction", "input"],
+  },
+  {
+    canon: /(参考答案|参考|标准答案|reference[_-]?answer|reference|ground[_-]?truth|gold|expected[_-]?answer)/i,
+    candidates: ["reference_answer", "reference", "ground_truth", "gold", "expected_answer"],
+  },
+  {
+    canon: /(模型回答|模型回复|模型输出|回答|回复|输出|model[_-]?response|model[_-]?answer|answer|response|output|completion)/i,
+    candidates: ["model_response", "model_answer", "answer", "response", "output", "completion"],
+  },
+];
+
+// 推断 AI 生成展示节点应绑定的 sourcePath，尽量指向真实数据字段，避免绑定到不存在的机器名（如 show_model_response）。
+// 优先级：① AI 已给且指向真实字段的 sourcePath → 保留；② name/id 精确匹配真实字段（含去 show_ 前缀）；
+// ③ 别名匹配真实字段；④ 兜底：保留 AI 原 sourcePath，否则 `$.item.sourcePayload.<sanitizedName>`。
+function inferGeneratedShowSourcePath(
+  rawNode: Record<string, unknown>,
+  fallbackId: string,
+  availableFieldNames: string[],
+): string {
+  const pathFor = (field: string) => `$.item.sourcePayload.${field}`;
+  const fieldSet = new Set(availableFieldNames);
+  const byLower = new Map(availableFieldNames.map((f) => [f.toLowerCase(), f]));
+  const rawSourcePath = readString(rawNode, "sourcePath");
+
+  // ① AI 已给 sourcePath 且解析出的字段真实存在 → 保留
+  if (rawSourcePath) {
+    const m = /\$\.item\.sourcePayload\.([A-Za-z0-9_]+)/.exec(rawSourcePath);
+    if (m && fieldSet.has(m[1])) return rawSourcePath;
+  }
+
+  // ② name / id 精确匹配真实字段（也尝试去掉 show_ 前缀）
+  const idCandidates = [readString(rawNode, "name"), readString(rawNode, "id"), fallbackId]
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
+  for (const c of idCandidates) {
+    const lc = c.toLowerCase();
+    if (byLower.has(lc)) return pathFor(byLower.get(lc)!);
+    const stripped = lc.startsWith("show_") ? lc.slice(5) : lc;
+    if (stripped !== lc && byLower.has(stripped)) return pathFor(byLower.get(stripped)!);
+  }
+
+  // ③ 别名匹配：用 title + name + id 文本命中别名组，再在真实字段里找候选（精确或包含 token）
+  if (availableFieldNames.length > 0) {
+    const haystack = [readString(rawNode, "title"), ...idCandidates].filter(Boolean).join(" ");
+    for (const group of SHOW_FIELD_ALIASES) {
+      if (!group.canon.test(haystack)) continue;
+      for (const cand of group.candidates) {
+        if (byLower.has(cand)) return pathFor(byLower.get(cand)!);
+      }
+      const tokenHit = availableFieldNames.find((field) =>
+        group.candidates.some((cand) => field.toLowerCase().includes(cand)),
+      );
+      if (tokenHit) return pathFor(tokenHit);
+    }
+  }
+
+  // ④ 兜底
+  if (rawSourcePath) return rawSourcePath;
+  return pathFor(sanitizeIdentifier(readString(rawNode, "name") ?? fallbackId, fallbackId));
+}
+
 function normalizeGeneratedNode(
   rawNode: unknown,
   index: number,
   usedNodeIds: Set<string>,
   usedFieldNames: Set<string>,
+  availableFieldNames: string[] = [],
 ): SchemaNode {
   if (!isRecord(rawNode)) {
     throw new Error(`AI 生成的第 ${index + 1} 个节点不是对象`);
@@ -2311,7 +2392,7 @@ function normalizeGeneratedNode(
     return {
       ...baseNode,
       kind: "CONTAINER",
-      children: rawChildren.map((child, childIndex) => normalizeGeneratedNode(child, childIndex, usedNodeIds, usedFieldNames)),
+      children: rawChildren.map((child, childIndex) => normalizeGeneratedNode(child, childIndex, usedNodeIds, usedFieldNames, availableFieldNames)),
     } as SchemaNode;
   }
 
@@ -2319,7 +2400,8 @@ function normalizeGeneratedNode(
     return {
       ...baseNode,
       kind: "SHOW_ITEM",
-      sourcePath: readString(rawNode, "sourcePath") ?? `$.item.sourcePayload.${sanitizeIdentifier(readString(rawNode, "name") ?? id, id)}`,
+      // 展示节点优先绑定到真实数据字段（复用「数据字段」抽屉的 sourcePayload 字段名）；无法匹配才回退 sanitized name。
+      sourcePath: inferGeneratedShowSourcePath(rawNode, id, availableFieldNames),
     } as SchemaNode;
   }
 
