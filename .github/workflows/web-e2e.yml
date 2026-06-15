@@ -26,6 +26,9 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Install workspace package deps
+        run: npm install
+
       - name: Install web deps
         working-directory: apps/web
         run: npm install

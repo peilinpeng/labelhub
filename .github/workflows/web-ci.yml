@@ -29,7 +29,11 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install dependencies
+      - name: Install workspace package dependencies
+        run: npm install
+        working-directory: ${{ github.workspace }}
+
+      - name: Install web dependencies
         run: npm install
 
       - name: Typecheck
