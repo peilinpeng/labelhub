@@ -613,16 +613,18 @@ function PassportRecordPreview({ record }: { record: ExportRecord }) {
   if (passport === undefined) {
     return (
       <div className="owner-export-passport-record">
-        <strong>{record.submissionId}</strong>
-        <span>该记录暂无质量护照。</span>
+        <div className="owner-export-passport-record__head">
+          <strong className="owner-export-passport-record__id" title={record.submissionId}>{formatHash(record.submissionId)}</strong>
+        </div>
+        <span className="owner-export-passport-record__note">该记录暂无质量护照。</span>
       </div>
     );
   }
   return (
     <div className="owner-export-passport-record">
-      <div>
-        <strong>{passport.submissionId}</strong>
-        <span>{reviewStatusLabel(passport.reviewStatus)} · 审计事件 {passport.auditEventCount ?? 0} 条</span>
+      <div className="owner-export-passport-record__head">
+        <strong className="owner-export-passport-record__id" title={passport.submissionId}>{formatHash(passport.submissionId)}</strong>
+        <span className="owner-export-passport-record__status">{reviewStatusLabel(passport.reviewStatus)}</span>
       </div>
       <dl>
         <div>
@@ -630,21 +632,20 @@ function PassportRecordPreview({ record }: { record: ExportRecord }) {
           <dd>{passport.reviewerPatchCount ?? 0}</dd>
         </div>
         <div>
-          <dt>AI 采纳</dt>
-          <dd>{passport.aiAcceptedCount ?? 0}</dd>
+          <dt>AI 辅助</dt>
+          <dd>{passport.aiAssistUsed ? "是" : "否"}</dd>
         </div>
         <div>
-          <dt>AI 忽略</dt>
-          <dd>{passport.aiDismissedCount ?? 0}</dd>
+          <dt>改动字段</dt>
+          <dd>{passport.changedFieldNames?.length ?? 0}</dd>
         </div>
         <div>
-          <dt>AI 后改</dt>
-          <dd>{passport.aiEditedCount ?? 0}</dd>
+          <dt>审计事件</dt>
+          <dd>{passport.auditEventCount ?? 0}</dd>
         </div>
       </dl>
-      <p>风险信号：{passport.riskCodes && passport.riskCodes.length > 0 ? passport.riskCodes.join("、") : "无"}</p>
-      <p>
-        答案指纹：
+      <p className="owner-export-passport-record__hash">
+        <span>答案指纹</span>
         <code title={passport.finalAnswerHash ?? "暂无答案指纹"}>{formatHash(passport.finalAnswerHash)}</code>
       </p>
     </div>

@@ -3883,6 +3883,54 @@ a {
   background: #fff;
 }
 
+.owner-export-passport-record__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.owner-export-passport-record__id {
+  min-width: 0;
+  max-width: 100%;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 950;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.owner-export-passport-record__status {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.owner-export-passport-record__note {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.owner-export-passport-record__hash {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.owner-export-passport-record__hash > span {
+  flex-shrink: 0;
+}
+
 .owner-export-passport-record dl {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
