@@ -3818,6 +3818,13 @@ a {
   font-size: 14px;
 }
 
+.owner-export-passport__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .owner-export-passport__fingerprint {
   display: flex;
   flex-wrap: wrap;
