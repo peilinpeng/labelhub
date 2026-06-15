@@ -22,6 +22,13 @@ export async function login(page: Page, role: Role): Promise<void> {
   await page.goto("/");
   await page.getByRole("button", { name: new RegExp(ROLE_EMAIL[role]) }).click();
   const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  const loginResponse = page.waitForResponse(
+    (response) => response.url().includes("/api/v1/auth/login") && response.request().method() === "POST",
+    { timeout: 15_000 },
+  );
   await dialog.getByRole("button", { name: "登录", exact: true }).click();
-  await expect(page).toHaveURL(ROLE_HOME[role]);
+  const response = await loginResponse;
+  expect(response.ok(), `登录接口返回 ${response.status()}`).toBe(true);
+  await expect(page).toHaveURL(ROLE_HOME[role], { timeout: 15_000 });
 }
