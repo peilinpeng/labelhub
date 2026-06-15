@@ -47,6 +47,12 @@ TASK_ID = "task_demo_news_quality"
 DRAFT_ID = "sd_demo_news_quality"
 SV_ID = "sv_demo_news_quality_v1"
 RC_ID = "rc_demo_news_quality"
+# 一条「待人工复核」演示提交的固定 ID：让 Reviewer 审核队列非空（demo / Web E2E 依赖）。
+# 这些对象同样按 task_id 被 _wipe_demo 清理，重复 seed 不会堆积。
+REVIEW_ITEM_ID = "item_demo_review_01"
+REVIEW_ASN_ID = "asn_demo_review_01"
+REVIEW_SUB_ID = "sub_demo_review_01"
+REVIEW_RR_ID = "rr_demo_review_ai_01"
 
 _DEMO_USERS = [
     {"id": "usr_demo_owner",    "role": "OWNER",    "email": "owner@labelhub.com",    "display_name": "演示 Owner"},
@@ -252,6 +258,55 @@ def main() -> None:
                 source_payload=payload, status="AVAILABLE",
             ))
 
+        # ── 一条「待人工复核」提交 ──────────────────────────────────────────────
+        # 仅凭账号 / 任务 / item（全 AVAILABLE）时 Reviewer 审核队列恒为空，
+        # 「进入人工审核」永远不渲染（Web E2E reviewer.spec 因此失败）。这里直接落库
+        # 一条 NEEDS_HUMAN_REVIEW 提交 + 一条 AI_PRECHECK 结果，使队列非空。
+        # 不调用 worker、不依赖 Doubao key、不触发真实 LLM；按 task_id 随 _wipe_demo 清理。
+        # 用一条专属 item（不占用上面 10 条可领取题目）。
+        db.add(DatasetItem(
+            id=REVIEW_ITEM_ID, task_id=TASK_ID, external_key="demo-review-01",
+            source_payload={"title": "演示待复核提交", "body": "提交内容不足，需要人工复核。"},
+            status="LOCKED",
+        ))
+        db.flush()
+        db.add(Assignment(
+            id=REVIEW_ASN_ID, task_id=TASK_ID, item_id=REVIEW_ITEM_ID,
+            labeler_id=users["LABELER"], schema_version_id=SV_ID, status="SUBMITTED",
+        ))
+        db.flush()
+        db.add(Submission(
+            id=REVIEW_SUB_ID, assignment_id=REVIEW_ASN_ID, task_id=TASK_ID,
+            item_id=REVIEW_ITEM_ID, labeler_id=users["LABELER"], schema_version_id=SV_ID,
+            attempt_no=1,
+            answers_json={"quality": "low", "comment": "演示：提交内容不足，需要人工复核。"},
+            status="NEEDS_HUMAN_REVIEW",
+            validation_json={"valid": True, "errors": []},
+        ))
+        db.flush()
+        # 回填循环外键，与真实「领取 → 提交」流程保持一致
+        db.get(Assignment, REVIEW_ASN_ID).latest_submission_id = REVIEW_SUB_ID
+        db.get(DatasetItem, REVIEW_ITEM_ID).current_assignment_id = REVIEW_ASN_ID
+        db.flush()
+        # 最小 AI 预审结果（stage=AI_PRECHECK，决策=转人工，带维度评分供页面展示）。
+        # actor_id 用 labeler，与 AI worker 缺省 system 用户时的回退口径一致。
+        db.add(ReviewResult(
+            id=REVIEW_RR_ID, submission_id=REVIEW_SUB_ID, schema_version_id=SV_ID,
+            stage="AI_PRECHECK", decision="NEED_HUMAN_REVIEW",
+            result_json={
+                "decision": "NEED_HUMAN_REVIEW",
+                "totalScore": 0,
+                "dimensionScores": [
+                    {"key": "content_accuracy", "score": 0, "reason": "提交内容不足，无法判定准确性。"},
+                    {"key": "format_compliance", "score": 0, "reason": "缺少必要字段，无法校验格式合规性。"},
+                ],
+                "fieldIssues": [],
+                "summary": "提交内容不足，AI 无法给出确定结论，已转人工复核。",
+                "confidence": 1.0,
+            },
+            actor_id=users["LABELER"],
+        ))
+
         # 发布任务
         task.status = "PUBLISHED"
         task.active_schema_version_id = SV_ID
@@ -261,6 +316,7 @@ def main() -> None:
         print(f"   Schema 版本   : {SV_ID}（v1，ShowItem + 单选 + 多行文本）")
         print(f"   ReviewConfig  : {RC_ID}（enabled，3 维度）")
         print(f"   题目数量      : {len(rows)}")
+        print(f"   待复核提交    : {REVIEW_SUB_ID}（NEEDS_HUMAN_REVIEW，Reviewer 队列可见）")
         print("\n" + "=" * 60)
         print("演示数据初始化完成。可用上面账号登录前端走完整流程。")
         print("=" * 60)
