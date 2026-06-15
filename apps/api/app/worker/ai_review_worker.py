@@ -142,6 +142,21 @@ def _extract_ai_result(response) -> dict:
     raise ValueError("LLM 未返回 tool_call 或可解析正文")
 
 
+def _route_with_confidence(raw_decision: str, confidence, threshold: float) -> tuple[str, bool]:
+    """置信度感知路由（human-in-the-loop）。
+
+    LLM 给 PASS 但 confidence 低于阈值时，降级为 NEED_HUMAN_REVIEW，不把"不确定的通过"
+    自动放行。仅收紧不放宽：RETURN / NEED_HUMAN_REVIEW 原样返回，永不因此自动通过更多。
+    返回 (有效决策, 是否发生了降级)。
+    """
+    low = (
+        raw_decision == "PASS"
+        and isinstance(confidence, (int, float))
+        and float(confidence) < threshold
+    )
+    return ("NEED_HUMAN_REVIEW" if low else raw_decision), low
+
+
 def _render_prompt(template_str: str, context: dict) -> str:
     return Template(template_str).render(**context)
 
@@ -339,17 +354,21 @@ def _execute_review(db, job_id: str) -> None:
     )
     db.add(review_result)
 
-    decision = ai_result["decision"]
+    # 置信度感知路由（见 _route_with_confidence）。AI_PRECHECK 记录上面已存 LLM 原始决策，
+    # 这里只调整路由用的有效决策；原始判断保留供人机一致性对账。
+    raw_decision = ai_result["decision"]
+    confidence = ai_result.get("confidence")
+    threshold = settings.AI_REVIEW_CONFIDENCE_THRESHOLD
+    decision, low_confidence_downgrade = _route_with_confidence(raw_decision, confidence, threshold)
+
+    action = "AI_REVIEW_SUCCEEDED"
     if decision == "PASS":
         command = "aiReviewPass"
-        action = "AI_REVIEW_SUCCEEDED"
     elif decision == "RETURN":
         command = "aiReviewReturn"
-        action = "AI_REVIEW_SUCCEEDED"
         _handle_submission_return(db, submission, system_actor_id)
     else:
         command = "aiReviewNeedHuman"
-        action = "AI_REVIEW_SUCCEEDED"
 
     new_sub_status = apply_transition(submission.status, command)
     submission.status = new_sub_status
@@ -360,7 +379,15 @@ def _execute_review(db, job_id: str) -> None:
         entity_id=submission.id,
         action=action,
         actor_id=system_actor_id,
-        after={"decision": decision, "totalScore": ai_result.get("totalScore"), "jobId": job.id},
+        after={
+            "decision": decision,
+            "rawDecision": raw_decision,
+            "confidence": confidence,
+            "confidenceThreshold": threshold,
+            "lowConfidenceDowngrade": low_confidence_downgrade,
+            "totalScore": ai_result.get("totalScore"),
+            "jobId": job.id,
+        },
     )
 
     job.status = "SUCCEEDED"

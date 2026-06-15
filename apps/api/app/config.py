@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     FILE_STORAGE_DRIVER: str = "local"
     LOCAL_STORAGE_DIR: str = "/workspace/.storage/files"
 
+    # AI 预审：置信度感知路由阈值。
+    # LLM 返回 PASS 但 confidence 低于该阈值时，降级为转人工复核（human-in-the-loop），
+    # 避免把"不确定的通过"当作确定结论自动放行。仅收紧、不放宽：永不因此自动通过更多。
+    AI_REVIEW_CONFIDENCE_THRESHOLD: float = 0.6
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
