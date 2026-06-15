@@ -32,15 +32,20 @@ test.describe("Owner 真后端任务生命周期", () => {
     await page.getByPlaceholder("请输入任务名称").fill(draftName);
     await page.getByRole("button", { name: "创建任务并导入数据" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "创建草稿" }).click();
+    await expect(page).toHaveURL(/\/owner\/tasks\/[^/]+\/data$/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: draftName })).toBeVisible({ timeout: 15_000 });
 
     // 回任务管理，确认草稿行带「删除草稿」入口（状态感知）
     await page.getByRole("link", { name: "任务管理" }).click();
-    const deleteBtn = page.getByRole("button", { name: `删除草稿 ${draftName}` });
+    await expect(page.getByRole("heading", { name: "任务管理" })).toBeVisible({ timeout: 15_000 });
+    const taskRow = page.locator("tbody tr").filter({ hasText: draftName });
+    await expect(taskRow).toBeVisible({ timeout: 15_000 });
+    const deleteBtn = taskRow.getByRole("button", { name: `删除草稿 ${draftName}` });
     await expect(deleteBtn).toBeVisible();
 
     // 删除并确认弹窗，断言行消失
     await deleteBtn.click();
     await page.getByRole("dialog").getByRole("button", { name: "确认删除" }).click();
-    await expect(page.getByRole("button", { name: `删除草稿 ${draftName}` })).toHaveCount(0);
+    await expect(taskRow).toHaveCount(0);
   });
 });

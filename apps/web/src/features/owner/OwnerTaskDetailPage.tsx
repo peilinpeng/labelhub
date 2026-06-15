@@ -41,6 +41,10 @@ function statusLabel(status: Task["status"]): string {
   return "已结束";
 }
 
+function isEndedOrArchivedStatus(status: Task["status"]): boolean {
+  return status === "ENDED" || status === "ARCHIVED";
+}
+
 function strategyLabel(strategy: Task["distributionStrategy"]): string {
   if (strategy.type === "FIRST_COME_FIRST_SERVED") return "先到先得";
   if (strategy.type === "ASSIGNMENT") return "指派";
@@ -250,6 +254,7 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
   const hasAvailableData = (stats?.datasetAvailable ?? 0) > 0;
   const templateReady = Boolean(task.activeSchemaVersionId);
   const distributionReady = isDistributionReady(task);
+  const readOnlyTask = isEndedOrArchivedStatus(task.status);
   const setupSteps = buildTaskSetupSteps({
     taskId: task.id,
     currentStep: "basic",
@@ -261,6 +266,7 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
     templateMeta: templateReady ? "已发布模板" : "待配置模板",
     aiMeta: aiConfigured ? (aiEnabled ? "AI 预审已启用" : "已明确不启用 AI 预审") : "待配置规则",
   });
+  const readonlySetupSteps = setupSteps.map(({ href: _href, actionLabel: _actionLabel, ...step }) => step);
   const readinessItems: ReadinessItem[] = [
     {
       key: "basic",
@@ -279,24 +285,21 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
             : `已导入 ${stats.datasetTotal} 条，但暂无可领取数据。`
           : "发布前需要先导入标注数据。"
         : "数据状态待检查。",
-      href: `/owner/tasks/${task.id}/data`,
-      actionLabel: "去导入数据",
+      ...(!readOnlyTask ? { href: `/owner/tasks/${task.id}/data`, actionLabel: "去导入数据" } : {}),
     },
     {
       key: "template",
       label: "模板配置",
       state: templateReady ? "done" : "error",
       detail: templateReady ? "已绑定发布模板。" : "发布前需要完成标注模板配置。",
-      href: `/owner/tasks/${task.id}/designer`,
-      actionLabel: "去配置模板",
+      ...(!readOnlyTask ? { href: `/owner/tasks/${task.id}/designer`, actionLabel: "去配置模板" } : {}),
     },
     {
       key: "ai",
       label: "AI 预审",
       state: aiConfigured ? "done" : "error",
       detail: aiConfigured ? (aiEnabled ? "AI 预审已启用。" : "已明确选择不启用 AI 预审。") : "发布前需要配置 AI 预审规则。",
-      href: `/owner/tasks/${task.id}/ai-precheck`,
-      actionLabel: "去配置 AI 预审",
+      ...(!readOnlyTask ? { href: `/owner/tasks/${task.id}/ai-precheck`, actionLabel: "去配置 AI 预审" } : {}),
     },
     {
       key: "distribution",
@@ -330,15 +333,19 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
           <Link to={RoutePath.OWNER_TASKS} className="lh-button">
             返回任务
           </Link>
-          <Link to={`/owner/tasks/${task.id}/data`} className="lh-button">
-            数据管理
-          </Link>
-          <Link to={`/owner/tasks/${task.id}/designer`} className="lh-button lh-button--primary">
-            配置模板
-          </Link>
-          <Link to={`/owner/tasks/${task.id}/ai-precheck`} className="lh-button">
-            AI 预审配置
-          </Link>
+          {!readOnlyTask ? (
+            <>
+              <Link to={`/owner/tasks/${task.id}/data`} className="lh-button">
+                数据管理
+              </Link>
+              <Link to={`/owner/tasks/${task.id}/designer`} className="lh-button lh-button--primary">
+                配置模板
+              </Link>
+              <Link to={`/owner/tasks/${task.id}/ai-precheck`} className="lh-button">
+                AI 预审配置
+              </Link>
+            </>
+          ) : null}
           <Link to={`/owner/tasks/${task.id}/export`} className="lh-button">
             导出数据
           </Link>
@@ -352,7 +359,7 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
         </Card>
       ) : null}
 
-      <TaskSetupStepper steps={setupSteps} />
+      <TaskSetupStepper steps={readOnlyTask ? readonlySetupSteps : setupSteps} />
       <PublishReadinessPanel items={readinessItems} />
 
       <section className="owner-task-board-grid" aria-label="任务看板">
@@ -569,12 +576,16 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
               <div><span>已打回</span><strong>{stats?.returned ?? "-"}</strong></div>
             </div>
             <div className="owner-task-actions-grid">
-              <Link to={`/owner/tasks/${task.id}/data`} className="lh-button">
-                数据管理
-              </Link>
-              <Link to={`/owner/tasks/${task.id}/ai-precheck`} className="lh-button">
-                AI 预审配置
-              </Link>
+              {!readOnlyTask ? (
+                <>
+                  <Link to={`/owner/tasks/${task.id}/data`} className="lh-button">
+                    数据管理
+                  </Link>
+                  <Link to={`/owner/tasks/${task.id}/ai-precheck`} className="lh-button">
+                    AI 预审配置
+                  </Link>
+                </>
+              ) : null}
               <Link to={`/owner/tasks/${task.id}/export`} className="lh-button">
                 查看交付
               </Link>
@@ -619,9 +630,11 @@ export default function OwnerTaskDetailPage({ role: _role }: OwnerTaskDetailPage
               </div>
             </div>
             <div className="owner-detail-actions">
-              <Link to={`/owner/tasks/${task.id}/designer`} className="lh-button lh-button--primary">
-                管理模板版本
-              </Link>
+              {!readOnlyTask ? (
+                <Link to={`/owner/tasks/${task.id}/designer`} className="lh-button lh-button--primary">
+                  管理模板版本
+                </Link>
+              ) : null}
               <Link to={`/owner/tasks/${task.id}/export`} className="lh-button">
                 导出数据
               </Link>
