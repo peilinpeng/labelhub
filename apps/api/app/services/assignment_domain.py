@@ -286,13 +286,16 @@ def claim_item(db: Session, task_id: str, actor: object, req: object) -> tuple:
     if strategy["type"] == "ASSIGNMENT" and actor.id not in strategy.get("assigneeIds", []):
         raise PermissionDeniedException("当前用户未被指定为该任务的标注员")
 
+    # 仅当存在「进行中且未提交」的领取(CLAIMED/DRAFTING)时阻止再领，
+    # 以便标注员在工作台内逐条标完整个任务：当前条提交(SUBMITTED)后即可领下一条。
+    # SUBMITTED/RETURNED 不再阻塞领取（已提交的在审核流程中、退回的可后续修订）。
     active = db.query(Assignment).filter(
         Assignment.task_id == task_id,
         Assignment.labeler_id == actor.id,
-        Assignment.status.in_(["CLAIMED", "DRAFTING", "SUBMITTED", "RETURNED"]),
+        Assignment.status.in_(["CLAIMED", "DRAFTING"]),
     ).first()
     if active:
-        raise ValidationFailedException("您已领取该任务，请完成当前作答后再领取")
+        raise ValidationFailedException("您有未提交的领取记录，请先完成当前数据再领取下一条")
 
     q = db.query(DatasetItem).filter(
         DatasetItem.task_id == task_id,

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { runSchemaPreflight } from "@labelhub/schema-compiler";
 import { collectFieldNodes } from "@labelhub/schema-core";
 import { SchemaRenderer, type LLMAssistOutcome } from "@labelhub/schema-renderer";
 import { Role } from "../../app/routes";
-import { callLLMAssist, getAssignmentContext, saveDraft, submitAssignment } from "../../api/labeler";
+import { callLLMAssist, claimTask, getAssignmentContext, listAssignmentItems, saveDraft, submitAssignment } from "../../api/labeler";
 import { ApiRequestError } from "../../api/client";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
@@ -24,6 +24,7 @@ import type {
   AssignmentContextResponse,
   AssignmentStatus,
   DatasetItem,
+  ID,
   LabelHubRuntimeContext,
   LLMAssistNode,
   LLMRuntimeResponse,
@@ -112,7 +113,11 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
   // 开发者切换控件（仅 ?showRendererToggle=1 时可见）
   const [toggleEngine, setToggleEngine] = useState<"legacy" | "formily-v2">(urlEngine);
   const rendererEngine = showRendererToggle ? toggleEngine : urlEngine;
+  const navigate = useNavigate();
   const [context, setContext] = useState<AssignmentContextResponse | null>(null);
+  // 当前任务的全部数据（供左侧列出、逐条标注、提交后切下一条）
+  const [taskItems, setTaskItems] = useState<DatasetItem[]>([]);
+  const [claimingItemId, setClaimingItemId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<AnswerPayload>({});
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,6 +159,10 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
           setContext(data);
           setAnswers(data.draft?.answers ?? {});
           serverRevisionRef.current = data.draft?.serverRevision ?? 0;
+          // 拉取任务全部数据，供左侧导航逐条标注（失败不阻断作答）
+          listAssignmentItems(assignmentId)
+            .then(setTaskItems)
+            .catch((err) => console.warn("加载任务数据列表失败：", err));
         }
       } catch (e) {
         console.error("Failed to fetch assignment:", e);
@@ -362,11 +371,35 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
     savedSnapshotRef.current = JSON.stringify(submitAnswers);
     setContext((current) => (current ? { ...current, assignment: response.assignment } : current));
     setErrors([]);
+    // 刷新任务数据列表（当前条已变为已锁定/完成），并提示在左侧继续标注下一条
+    if (assignmentId) {
+      listAssignmentItems(assignmentId).then(setTaskItems).catch(() => undefined);
+    }
+    const remaining = taskItems.filter(
+      (it) => it.status === "AVAILABLE" && it.id !== context?.item.id,
+    ).length;
     setSubmitNotice(
-      response.nextStatus === "NEEDS_HUMAN_REVIEW" || response.nextStatus === "HUMAN_REVIEWING"
-        ? "标注已提交，已进入人工审核队列。可回任务市场继续领取下一条数据。"
-        : "标注已提交，已进入 AI 预审/审核流程。可回任务市场继续领取下一条数据。",
+      remaining > 0
+        ? `标注已提交，已进入审核流程。本任务还有 ${remaining} 条待标注，可在左侧「任务数据」中点选下一条继续。`
+        : "标注已提交，已进入审核流程。本任务数据已全部标注完成。",
     );
+  };
+
+  // 在工作台内切换/领取本任务的另一条数据：领取该题并跳转到其作答页，无需回任务市场。
+  const goToItem = async (itemId: string) => {
+    if (!context || itemId === context.item.id || claimingItemId) return;
+    try {
+      setClaimingItemId(itemId);
+      const res = await claimTask(context.task.id, { preferredItemId: itemId as ID });
+      navigate(`/labeler/workspace/${res.context.assignment.id}`);
+    } catch (error) {
+      setSubmitFailed(true);
+      setSubmitNotice(
+        error instanceof Error ? `领取该条数据失败：${error.message}` : "领取该条数据失败，请稍后重试。",
+      );
+    } finally {
+      setClaimingItemId(null);
+    }
   };
 
   const requestSubmit = (submitAnswers: AnswerPayload = answers) => {
@@ -551,19 +584,72 @@ export default function AssignmentPage({ role: _role }: AssignmentPageProps) {
         <aside className="labeler-runner-nav">
           <div className="labeler-runner-panel-head">
             <div>
-              <h3>当前数据</h3>
-              <p>一个领取记录只绑定一条真实数据</p>
+              <h3>任务数据</h3>
+              <p>
+                {taskItems.length > 0
+                  ? `共 ${taskItems.length} 条 · 待标注 ${taskItems.filter((it) => it.status === "AVAILABLE").length} 条`
+                  : "当前领取的数据"}
+              </p>
             </div>
           </div>
           <div className="labeler-runner-items">
-            <div className="labeler-runner-item labeler-runner-item--current labeler-runner-item--static">
-              <span>#001 {itemTitle}</span>
-              <span className="labeler-runner-status">
-                <span className="labeler-runner-dot labeler-runner-dot--primary" />
-                {assignmentStatusLabel(context.assignment.status)}
-              </span>
-            </div>
-            <p className="labeler-runner-more">提交后请回任务市场重新领取下一条数据。</p>
+            {taskItems.length === 0 ? (
+              <div className="labeler-runner-item labeler-runner-item--current labeler-runner-item--static">
+                <span>#001 {itemTitle}</span>
+                <span className="labeler-runner-status">
+                  <span className="labeler-runner-dot labeler-runner-dot--primary" />
+                  {assignmentStatusLabel(context.assignment.status)}
+                </span>
+              </div>
+            ) : (
+              taskItems.map((it, idx) => {
+                const isCurrent = it.id === context.item.id;
+                const available = it.status === "AVAILABLE";
+                const clickable = available && !isCurrent && !claimingItemId;
+                const cls = isCurrent
+                  ? "labeler-runner-item labeler-runner-item--current"
+                  : clickable
+                    ? "labeler-runner-item"
+                    : "labeler-runner-item labeler-runner-item--static";
+                return (
+                  <div
+                    key={it.id}
+                    className={cls}
+                    role={clickable ? "button" : undefined}
+                    tabIndex={clickable ? 0 : undefined}
+                    onClick={clickable ? () => void goToItem(it.id) : undefined}
+                    onKeyDown={
+                      clickable
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              void goToItem(it.id);
+                            }
+                          }
+                        : undefined
+                    }
+                    title={getItemTitle(it)}
+                  >
+                    <span>{`#${String(idx + 1).padStart(3, "0")} ${getItemTitle(it)}`}</span>
+                    <span className="labeler-runner-status">
+                      <span
+                        className={`labeler-runner-dot ${
+                          isCurrent ? "labeler-runner-dot--primary" : available ? "labeler-runner-dot--warning" : "labeler-runner-dot--success"
+                        }`}
+                      />
+                      {claimingItemId === it.id
+                        ? "领取中…"
+                        : isCurrent
+                          ? assignmentStatusLabel(context.assignment.status)
+                          : available
+                            ? "待标注"
+                            : "已处理"}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+            <p className="labeler-runner-more">提交当前条后，点选上方「待标注」数据即可继续，无需回任务市场。</p>
           </div>
         </aside>
 
