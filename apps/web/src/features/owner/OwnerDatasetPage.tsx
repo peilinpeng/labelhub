@@ -33,6 +33,17 @@ function previewPayload(payload: Record<string, unknown>): string {
   return s.length > 120 ? s.slice(0, 120) + " …" : s;
 }
 
+type FieldType = "文本" | "数字" | "布尔" | "数组" | "对象" | "链接" | "空值";
+type FieldRole = "recommended" | "metadata" | "answer" | "other";
+
+interface FieldSample {
+  name: string;
+  type: FieldType;
+  role: FieldRole;
+  sample: string;
+  sampleIndex: number | null;
+}
+
 export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps) {
   const { taskId = "" } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
@@ -147,7 +158,7 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
   const availableCount = items.filter((item) => item.status === "AVAILABLE").length;
   const hasData = total > 0;
   const latestImportTime = formatLatestItemTime(items);
-  const fieldPreview = collectPayloadFields(items);
+  const fieldSamples = collectFieldSamples(items);
   const setupSteps = buildTaskSetupSteps({
     taskId,
     currentStep: "data",
@@ -193,12 +204,47 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
             <strong>{latestImportTime}</strong>
             <small>按题目更新时间推断</small>
           </div>
-          <div>
+          <div className="owner-data-field-summary">
             <span>数据字段预览</span>
-            <strong>{fieldPreview.length > 0 ? fieldPreview.join(" / ") : "暂无字段"}</strong>
-            <small>来自前 {Math.min(items.length, 20)} 条题目</small>
+            <strong>{fieldSamples.length > 0 ? `${fieldSamples.length} 个字段` : "暂无字段"}</strong>
+            <small>根据已导入样本自动识别字段、类型和示例值。</small>
           </div>
         </div>
+        {fieldSamples.length > 0 ? (
+          <section className="owner-dataset-field-preview" aria-label="数据字段预览">
+            <div className="owner-dataset-field-preview__head">
+              <h4>数据字段预览</h4>
+              <p>根据已导入样本自动识别字段、类型和示例值。</p>
+            </div>
+            <div className="owner-dataset-field-grid">
+              {fieldSamples.map((field) => (
+                <article
+                  className={`owner-dataset-field-card owner-dataset-field-card--${field.role}`}
+                  key={field.name}
+                >
+                  <div className="owner-dataset-field-card__head">
+                    <code>{field.name}</code>
+                    <div>
+                      <Badge tone="default">{field.type}</Badge>
+                      <Badge tone={field.role === "answer" ? "warning" : field.role === "recommended" ? "success" : "default"}>
+                        {fieldRoleLabel(field.role)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <p className="owner-dataset-field-card__sample" title={field.sample}>{field.sample}</p>
+                  <small>
+                    {field.sampleIndex === null ? "暂无示例" : `来自第 ${field.sampleIndex + 1} 条样本`}
+                  </small>
+                  {field.role === "answer" ? (
+                    <p className="owner-dataset-field-card__warn">可能是答案或隐藏标签，展示给标注员会造成泄露；模板设计器已默认禁止将其加入展示。</p>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <div className="owner-dataset-field-empty">暂无可预览字段。导入数据后会显示字段类型和示例值。</div>
+        )}
         <div className="owner-data-next-actions">
           <Button
             type="button"
@@ -314,15 +360,146 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
   );
 }
 
-function collectPayloadFields(items: DatasetItem[]): string[] {
-  const fields = new Set<string>();
+const ROLE_ORDER: Record<FieldRole, number> = {
+  recommended: 0,
+  metadata: 1,
+  answer: 2,
+  other: 3,
+};
+
+const RECOMMENDED_FIELD_NAMES = new Set([
+  "prompt", "question", "query", "instruction",
+  "content", "content_markdown", "text", "body", "passage",
+  "response_a", "response_b", "model_answer", "answer", "response",
+  "model_a_answer", "model_b_answer", "reference",
+]);
+const METADATA_FIELD_NAMES = new Set([
+  "id", "lang", "language", "task_type", "category", "difficulty",
+  "source", "tags", "created_at", "updated_at", "media_type", "type",
+]);
+const ANSWER_FIELD_NAMES = new Set([
+  "margin", "label", "gold", "ground_truth", "groundtruth", "target",
+  "winner", "chosen", "score", "expected_label", "correct_answer",
+  "gold_label", "gt", "preference", "preferred", "verdict", "is_correct",
+]);
+
+function collectFieldSamples(items: DatasetItem[]): FieldSample[] {
+  const order: string[] = [];
+  const seen = new Set<string>();
   for (const item of items.slice(0, 20)) {
-    for (const key of Object.keys(item.sourcePayload)) {
-      fields.add(key);
-      if (fields.size >= 6) return [...fields];
+    for (const key of Object.keys(item.sourcePayload ?? {})) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        order.push(key);
+      }
     }
   }
-  return [...fields];
+  return order
+    .map((name, orderIndex) => {
+      const sample = findFieldSample(items, name);
+      return {
+        name,
+        type: inferFieldType(sample.value),
+        role: classifyFieldRole(name),
+        sample: formatFieldSample(sample.value),
+        sampleIndex: sample.index,
+        orderIndex,
+      };
+    })
+    .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.orderIndex - b.orderIndex)
+    .map(({ orderIndex: _orderIndex, ...field }) => field);
+}
+
+function findFieldSample(items: DatasetItem[], fieldName: string): { value: unknown; index: number | null } {
+  for (let i = 0; i < items.length; i += 1) {
+    const value = (items[i].sourcePayload ?? {})[fieldName];
+    if (!isEmptySample(value)) return { value, index: i };
+  }
+  return { value: undefined, index: null };
+}
+
+function isEmptySample(value: unknown): boolean {
+  return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+}
+
+function classifyFieldRole(fieldName: string): FieldRole {
+  const name = fieldName.toLowerCase();
+  const tokens = name.split(/[^a-z0-9]+/).filter(Boolean);
+  const hasToken = (set: Set<string>) => tokens.some((token) => set.has(token));
+  if (
+    ANSWER_FIELD_NAMES.has(name) ||
+    hasToken(ANSWER_FIELD_NAMES) ||
+    /ground_?truth|gold|winner|chosen|correct|expected_label|is_?correct/.test(name)
+  ) {
+    return "answer";
+  }
+  if (RECOMMENDED_FIELD_NAMES.has(name) || hasToken(RECOMMENDED_FIELD_NAMES)) return "recommended";
+  if (
+    METADATA_FIELD_NAMES.has(name) ||
+    hasToken(METADATA_FIELD_NAMES) ||
+    /^id$|_id$|_at$|^created|^updated/.test(name)
+  ) {
+    return "metadata";
+  }
+  return "other";
+}
+
+function fieldRoleLabel(role: FieldRole): string {
+  if (role === "recommended") return "推荐展示";
+  if (role === "metadata") return "元数据";
+  if (role === "answer") return "疑似答案";
+  return "其他字段";
+}
+
+function inferFieldType(value: unknown): FieldType {
+  if (value === null || value === undefined || value === "") return "空值";
+  if (Array.isArray(value)) return value.length === 0 ? "空值" : "数组";
+  if (typeof value === "boolean") return "布尔";
+  if (typeof value === "number") return "数字";
+  if (typeof value === "object") return "对象";
+  if (typeof value === "string") return isUrlLike(value) ? "链接" : "文本";
+  return "文本";
+}
+
+function formatFieldSample(value: unknown): string {
+  if (isEmptySample(value)) return "暂无示例";
+  let text: string;
+  if (Array.isArray(value)) {
+    text = value.every(isPrimitiveValue)
+      ? value.map(formatPrimitiveValue).join("、")
+      : safeStringify(value);
+  } else if (typeof value === "object") {
+    text = safeStringify(value);
+  } else {
+    text = formatPrimitiveValue(value);
+  }
+  text = text.replace(/\s+/g, " ").trim();
+  if (text === "") return "暂无示例";
+  return text.length > 90 ? `${text.slice(0, 90)}…` : text;
+}
+
+function isUrlLike(value: string): boolean {
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) || /^\/\//.test(trimmed);
+}
+
+function isPrimitiveValue(value: unknown): boolean {
+  return value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
+
+function formatPrimitiveValue(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return String(value);
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function formatLatestItemTime(items: DatasetItem[]): string {

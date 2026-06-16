@@ -28,6 +28,16 @@ const SEVERITY_LABELS: Record<string, string> = {
   LOW: "低",
 };
 
+const FIELD_LABELS: Record<string, string> = {
+  submission_material: "补充审核材料",
+  answer: "标注答案",
+  title: "标题",
+  content: "内容",
+  category: "分类",
+  evidence: "证据说明",
+  comment: "备注",
+};
+
 function statusTone(status: AiAssistSuggestionStatus): "default" | "primary" | "success" | "warning" | "danger" {
   switch (status) {
     case "ACCEPTED":
@@ -48,12 +58,15 @@ function severityTone(severity: string): "default" | "warning" | "danger" {
   return "default";
 }
 
-function formatValue(value: unknown): string {
+function formatValue(value: unknown, fieldName?: string): string {
   if (value === undefined || value === null || value === "") return "（空）";
+  if (fieldName === "submission_material" && typeof value === "string") {
+    return "建议补充本次审核所需的题目内容、标注结果和审核依据，再进行复核。";
+  }
   if (Array.isArray(value)) return value.length > 0 ? value.map((item) => String(item)).join("、") : "（空）";
   if (typeof value === "object") return "已填写";
   if (typeof value === "boolean") return value ? "是" : "否";
-  return String(value);
+  return humanizeAiText(String(value));
 }
 
 export function AiAssistPanel({ submissionId, onActionApplied }: AiAssistPanelProps) {
@@ -122,7 +135,7 @@ export function AiAssistPanel({ submissionId, onActionApplied }: AiAssistPanelPr
   const startEdit = (suggestion: AiAssistSuggestion) => {
     const draft: Record<string, string> = {};
     for (const op of suggestion.structuredPatch ?? []) {
-      draft[op.fieldName] = formatValue(op.nextValue);
+      draft[op.fieldName] = formatValue(op.nextValue, op.fieldName);
     }
     setEditDraft(draft);
     setEditingId(suggestion.id);
@@ -181,14 +194,14 @@ export function AiAssistPanel({ submissionId, onActionApplied }: AiAssistPanelPr
                   <Badge tone={statusTone(suggestion.status)}>{STATUS_LABELS[suggestion.status]}</Badge>
                 </div>
 
-                <p className="review-ai-assist__summary">{suggestion.summary}</p>
+                <p className="review-ai-assist__summary">{humanizeAiText(suggestion.summary)}</p>
 
                 {patch.length > 0 ? (
                   <div className="review-ai-assist__diff">
                     {patch.map((op) => (
                       <div className="review-ai-assist__diff-row" key={op.fieldName}>
-                        <span className="review-ai-assist__diff-field">{op.fieldName}</span>
-                        <span className="review-ai-assist__prev">{formatValue(op.previousValue)}</span>
+                        <span className="review-ai-assist__diff-field" title={`字段：${op.fieldName}`}>{fieldLabel(op.fieldName)}</span>
+                        <span className="review-ai-assist__prev">{formatValue(op.previousValue, op.fieldName)}</span>
                         <em className="review-ai-assist__arrow" aria-hidden="true">→</em>
                         {isEditing ? (
                           <Textarea
@@ -200,7 +213,7 @@ export function AiAssistPanel({ submissionId, onActionApplied }: AiAssistPanelPr
                             }
                           />
                         ) : (
-                          <span className="review-ai-assist__next">{formatValue(op.nextValue)}</span>
+                          <span className="review-ai-assist__next">{formatValue(op.nextValue, op.fieldName)}</span>
                         )}
                       </div>
                     ))}
@@ -251,4 +264,26 @@ export function AiAssistPanel({ submissionId, onActionApplied }: AiAssistPanelPr
       )}
     </Card>
   );
+}
+
+function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? humanizeKey(key);
+}
+
+function humanizeKey(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function humanizeAiText(text?: string): string {
+  if (!text) return "";
+  return text
+    .replace(/补充完整本次标注审核所需的全部基础材料[^。]*。?/g, "建议补充本次审核所需的题目内容、标注结果和审核依据，再进行复核。")
+    .replace(/缺少具体的题目内容、标注答案和对应schema的详细信息，无法进行自动维度评分。/g, "提交内容较少，AI 无法判断答案是否符合题目要求，建议人工复核。")
+    .replace(/目标标注schema/g, "目标标注规则")
+    .replace(/标注schema/g, "标注规则")
+    .replace(/schema/g, "表单规则")
+    .replace(/自动维度评分/g, "自动评分")
+    .replace(/自动预审打分/g, "自动评分");
 }

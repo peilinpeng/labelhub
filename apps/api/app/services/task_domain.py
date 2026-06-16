@@ -128,7 +128,7 @@ def update_task(
         task.reward_rule_json = req.rewardRule.model_dump()
     if req.quota is not None:
         task.quota_json = req.quota.model_dump()
-    if req.deadlineAt is not None:
+    if "deadlineAt" in req.model_fields_set:
         task.deadline_at = req.deadlineAt
     if req.distributionStrategy is not None:
         task.distribution_strategy_json = req.distributionStrategy.model_dump()
@@ -320,6 +320,54 @@ def archive_task(
     db.commit()
     db.refresh(task)
     return task, log
+
+
+def delete_draft_task(db: Session, task_id: str, actor: Actor) -> None:
+    """
+    删除草稿任务（仅 DRAFT）。
+
+    DRAFT 任务从未发布、无标注/审核/导出数据，硬删除是安全的。
+    非 DRAFT 任务（PUBLISHED/PAUSED/ENDED/ARCHIVED）禁止删除 → 409，
+    应改用结束（endTask）/ 归档（archiveTask）以保留审计与标注记录。
+
+    级联清理（FK 安全顺序，子表先于父表）：
+      dataset_items → schema_versions → schema_drafts → audit_logs(本任务+其 schema) → tasks
+    DRAFT 任务 active_schema_version_id 必为 NULL，无 task↔version 循环 FK 问题。
+    """
+    from app.models.dataset import DatasetItem
+    from app.models.schema import SchemaDraft
+
+    task = _get_task_or_404(db, task_id)
+    _assert_owner(task, actor)
+
+    if task.status != "DRAFT":
+        raise InvalidStateTransitionException(
+            f"任务当前状态 {task.status!r} 不支持删除；仅草稿任务可删除。"
+            "已发布任务请使用结束 / 归档以保留标注与审计记录。"
+        )
+
+    # 收集本任务的 schema 实体 id，用于清理对应 audit_logs（entity_id 无 FK，需显式删）
+    draft_ids = [d.id for d in db.query(SchemaDraft.id).filter_by(task_id=task_id).all()]
+    version_ids = [v.id for v in db.query(SchemaVersion.id).filter_by(task_id=task_id).all()]
+    schema_entity_ids = draft_ids + version_ids
+
+    # 子表先行
+    db.query(DatasetItem).filter_by(task_id=task_id).delete(synchronize_session=False)
+    db.query(SchemaVersion).filter_by(task_id=task_id).delete(synchronize_session=False)
+    db.query(SchemaDraft).filter_by(task_id=task_id).delete(synchronize_session=False)
+
+    # 审计日志：本任务（entity_type=TASK）+ 其 schema 实体（entity_type=SCHEMA）
+    db.query(AuditLog).filter(
+        AuditLog.entity_type == "TASK", AuditLog.entity_id == task_id
+    ).delete(synchronize_session=False)
+    if schema_entity_ids:
+        db.query(AuditLog).filter(
+            AuditLog.entity_type == "SCHEMA",
+            AuditLog.entity_id.in_(schema_entity_ids),
+        ).delete(synchronize_session=False)
+
+    db.delete(task)
+    db.commit()
 
 
 def get_task_stats(db: Session, task_id: str, actor: Actor) -> dict:

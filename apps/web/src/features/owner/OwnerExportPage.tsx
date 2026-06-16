@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { createExportJob, fetchTask, getExportArtifactRecords, listExportJobs } from "../../api/owner";
+import { createExportJob, downloadExportFile, fetchTask, getExportArtifactRecords, listExportJobs } from "../../api/owner";
 import { RoutePath, Role } from "../../app/routes";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { CONFIRM_KEYS, shouldSuppressConfirm, suppressConfirmForSession } from "../../ui/confirm";
@@ -210,8 +210,18 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
     setExportConfirmOpen(true);
   };
 
-  const handleDownload = (job: ExportJob) => {
-    setExportNotice(`导出任务 ${job.id} 已完成，请使用后端返回的真实下载地址或制品接口下载。`);
+  const handleDownload = async (job: ExportJob) => {
+    if (job.status !== "DONE") return;
+    try {
+      const { blob, filename } = await downloadExportFile(job.id);
+      // 文件名优先用历史记录里的展示名，其次后端 Content-Disposition，最后兜底。
+      const downloadName = job.fileName || filename || `${taskId ?? "export"}.${(job.format ?? "jsonl").toLowerCase()}`;
+      triggerBrowserDownload(blob, downloadName);
+      setExportNotice(`已开始下载 ${downloadName}`);
+    } catch (error) {
+      console.warn("导出文件下载失败：", error);
+      setExportNotice(error instanceof Error ? `下载失败：${error.message}` : "下载失败，请稍后重试。");
+    }
   };
 
   const handleLoadPassportPreview = async (job: ExportJob) => {
@@ -258,6 +268,67 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
           ...(current[job.id]?.artifactSummary !== undefined ? { artifactSummary: current[job.id].artifactSummary } : {}),
         },
       }));
+    }
+  };
+
+  // 下载质量护照 JSON：前端组装额外文件，不改原始导出 data file。
+  // 内容来自 GET /exports/{id}/records（artifactSummary + 逐条 passport），容错处理空记录。
+  const handleDownloadPassport = async (job: ExportJob) => {
+    setPassportPreviews((current) => ({
+      ...current,
+      [job.id]: {
+        loading: true,
+        error: null,
+        records: current[job.id]?.records ?? [],
+        ...(current[job.id]?.artifactSummary !== undefined ? { artifactSummary: current[job.id].artifactSummary } : {}),
+      },
+    }));
+    try {
+      const response = await getExportArtifactRecords(job.id);
+      // 既无批次摘要又无记录：不下载空文件，给出明确空状态说明。
+      if ((response.artifactSummary === undefined || response.artifactSummary === null) && response.records.length === 0) {
+        setPassportPreviews((current) => ({
+          ...current,
+          [job.id]: { loading: false, error: null, records: [] },
+        }));
+        setExportNotice("当前导出没有质量护照记录。可能是本次导出记录数为 0，或该导出生成于质量护照入口上线前。");
+        return;
+      }
+      const payload = {
+        exportId: job.id,
+        artifactSummary: response.artifactSummary ?? null,
+        records: response.records.map((record) => ({
+          recordIndex: record.recordIndex,
+          submissionId: record.submissionId,
+          schemaVersionId: record.schemaVersionId,
+          passport: record.passport ?? null,
+        })),
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      triggerBrowserDownload(blob, `quality_passport_${job.id}.json`);
+      // 顺带把摘要回填到预览，避免用户还要再点一次“查看”。
+      const nextState: PassportPreviewState = {
+        loading: false,
+        error: null,
+        records: response.records.slice(0, 3),
+      };
+      if (response.artifactSummary !== undefined && response.artifactSummary !== null) {
+        nextState.artifactSummary = response.artifactSummary;
+      }
+      setPassportPreviews((current) => ({ ...current, [job.id]: nextState }));
+      setExportNotice(`已开始下载 quality_passport_${job.id}.json`);
+    } catch (error) {
+      console.warn("下载质量护照失败：", error);
+      setPassportPreviews((current) => ({
+        ...current,
+        [job.id]: {
+          loading: false,
+          error: "质量护照下载失败，请稍后重试。",
+          records: current[job.id]?.records ?? [],
+          ...(current[job.id]?.artifactSummary !== undefined ? { artifactSummary: current[job.id].artifactSummary } : {}),
+        },
+      }));
+      setExportNotice(error instanceof Error ? `质量护照下载失败：${error.message}` : "质量护照下载失败，请稍后重试。");
     }
   };
 
@@ -409,14 +480,15 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
               <div className="owner-export-progress" aria-label={`进度 ${job.progress}%`}>
                 <span style={{ width: `${job.progress}%` }} />
               </div>
-              <Button type="button" disabled={job.status !== "DONE"} onClick={() => handleDownload(job)}>
+              <Button type="button" disabled={job.status !== "DONE"} onClick={() => void handleDownload(job)}>
                 下载
               </Button>
-              {job.artifactSummary ? (
+              {job.status === "DONE" ? (
                 <PassportSummaryBlock
                   job={job}
                   preview={passportPreviews[job.id]}
                   onLoadPreview={() => void handleLoadPassportPreview(job)}
+                  onDownloadPassport={() => void handleDownloadPassport(job)}
                 />
               ) : null}
             </div>
@@ -443,6 +515,18 @@ export default function OwnerExportPage({ role }: OwnerExportPageProps) {
   );
 }
 
+// 用 blob + 临时 <a download> 触发稳定的浏览器下载，避免直接 window.open 一个需要 token 的 URL。
+function triggerBrowserDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function mapBackendExportJob(job: BackendExportJob, taskId: string): ExportJob {
   const backendStatus = job.status ?? "PENDING";
   const total = typeof job.progress === "object" ? Number(job.progress.total ?? 0) : 0;
@@ -466,31 +550,48 @@ function PassportSummaryBlock({
   job,
   preview,
   onLoadPreview,
+  onDownloadPassport,
 }: {
   job: ExportJob;
   preview?: PassportPreviewState;
   onLoadPreview: () => void;
+  onDownloadPassport: () => void;
 }) {
+  // summary 可能尚未加载（真实导出列表接口不返回 artifactSummary）：入口仍要展示，
+  // 由用户点击“查看质量护照”按需拉取 GET /exports/{id}/records。
   const summary = preview?.artifactSummary ?? job.artifactSummary;
-  if (summary === undefined) return null;
+  const loaded = preview !== undefined && !preview.loading && preview.error === null;
   return (
     <div className="owner-export-passport">
       <div className="owner-export-passport__header">
         <div>
           <strong>数据质量护照</strong>
-          <span>记录数：{summary.recordCount} · 护照数：{summary.passportCount ?? 0} · 警告数：{summary.warningCount}</span>
+          {summary !== undefined ? (
+            <span>记录数：{summary.recordCount ?? 0} · 护照数：{summary.passportCount ?? 0} · 警告数：{summary.warningCount ?? 0}</span>
+          ) : (
+            <span>查看或下载本批次的质量护照（含答案指纹、审核状态、批次哈希）。</span>
+          )}
         </div>
-        <Button type="button" tone="ghost" onClick={onLoadPreview} disabled={preview?.loading === true}>
-          {preview?.loading ? "加载中..." : "查看质量摘要"}
-        </Button>
+        <div className="owner-export-passport__actions">
+          <Button type="button" tone="ghost" onClick={onLoadPreview} disabled={preview?.loading === true}>
+            {preview?.loading ? "加载中..." : "查看质量护照"}
+          </Button>
+          <Button type="button" tone="ghost" onClick={onDownloadPassport} disabled={preview?.loading === true}>
+            下载质量护照 JSON
+          </Button>
+        </div>
       </div>
-      <div className="owner-export-passport__fingerprint">
-        <span>批次指纹</span>
-        <code title={summary.passportBatchHash ?? "暂无批次指纹"}>{formatHash(summary.passportBatchHash)}</code>
-      </div>
-      {summary.warningCount > 0 ? <p className="owner-export-passport__warning">部分记录缺少完整质量证据。</p> : null}
+      {summary !== undefined ? (
+        <div className="owner-export-passport__fingerprint">
+          <span>批次指纹</span>
+          <code title={summary.passportBatchHash ?? "暂无批次指纹"}>{formatHash(summary.passportBatchHash)}</code>
+        </div>
+      ) : null}
+      {summary !== undefined && (summary.warningCount ?? 0) > 0 ? (
+        <p className="owner-export-passport__warning">部分记录缺少完整质量证据。</p>
+      ) : null}
       {preview?.error ? <p className="owner-export-passport__error">{preview.error}</p> : null}
-      {preview !== undefined && !preview.loading && preview.error === null ? (
+      {loaded ? (
         preview.records.length > 0 ? (
           <div className="owner-export-passport-preview">
             {preview.records.map((record) => (
@@ -498,7 +599,9 @@ function PassportSummaryBlock({
             ))}
           </div>
         ) : (
-          <p className="owner-export-passport__empty">暂无质量摘要记录。</p>
+          <p className="owner-export-passport__empty">
+            当前导出没有质量护照记录。可能是本次导出记录数为 0，或该导出生成于质量护照入口上线前。
+          </p>
         )
       ) : null}
     </div>
@@ -510,16 +613,18 @@ function PassportRecordPreview({ record }: { record: ExportRecord }) {
   if (passport === undefined) {
     return (
       <div className="owner-export-passport-record">
-        <strong>{record.submissionId}</strong>
-        <span>该记录暂无质量护照。</span>
+        <div className="owner-export-passport-record__head">
+          <strong className="owner-export-passport-record__id" title={record.submissionId}>{formatHash(record.submissionId)}</strong>
+        </div>
+        <span className="owner-export-passport-record__note">该记录暂无质量护照。</span>
       </div>
     );
   }
   return (
     <div className="owner-export-passport-record">
-      <div>
-        <strong>{passport.submissionId}</strong>
-        <span>{reviewStatusLabel(passport.reviewStatus)} · 审计事件 {passport.auditEventCount ?? 0} 条</span>
+      <div className="owner-export-passport-record__head">
+        <strong className="owner-export-passport-record__id" title={passport.submissionId}>{formatHash(passport.submissionId)}</strong>
+        <span className="owner-export-passport-record__status">{reviewStatusLabel(passport.reviewStatus)}</span>
       </div>
       <dl>
         <div>
@@ -527,21 +632,20 @@ function PassportRecordPreview({ record }: { record: ExportRecord }) {
           <dd>{passport.reviewerPatchCount ?? 0}</dd>
         </div>
         <div>
-          <dt>AI 采纳</dt>
-          <dd>{passport.aiAcceptedCount ?? 0}</dd>
+          <dt>AI 辅助</dt>
+          <dd>{passport.aiAssistUsed ? "是" : "否"}</dd>
         </div>
         <div>
-          <dt>AI 忽略</dt>
-          <dd>{passport.aiDismissedCount ?? 0}</dd>
+          <dt>改动字段</dt>
+          <dd>{passport.changedFieldNames?.length ?? 0}</dd>
         </div>
         <div>
-          <dt>AI 后改</dt>
-          <dd>{passport.aiEditedCount ?? 0}</dd>
+          <dt>审计事件</dt>
+          <dd>{passport.auditEventCount ?? 0}</dd>
         </div>
       </dl>
-      <p>风险信号：{passport.riskCodes && passport.riskCodes.length > 0 ? passport.riskCodes.join("、") : "无"}</p>
-      <p>
-        答案指纹：
+      <p className="owner-export-passport-record__hash">
+        <span>答案指纹</span>
         <code title={passport.finalAnswerHash ?? "暂无答案指纹"}>{formatHash(passport.finalAnswerHash)}</code>
       </p>
     </div>

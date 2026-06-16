@@ -1,5 +1,8 @@
 """集成测试：标注作答流程（TC-ANS-01~06，含 A1 题目导航 / A2 LLM 辅助）。"""
-from tests.helpers import setup_published_task
+from datetime import datetime, timedelta, timezone
+
+from app.models.assignment import Assignment
+from tests.helpers import add_item, create_task, publish_schema, publish_task, setup_published_task
 
 
 def _claim(client, auth, task_id):
@@ -12,6 +15,47 @@ def test_claim_creates_assignment(client, auth, db_session):
     ctx = setup_published_task(client, db_session, auth["OWNER"])
     asn_id = _claim(client, auth, ctx["task_id"])
     assert asn_id.startswith("asn_")
+
+
+def test_claim_allows_task_without_deadline(client, auth, db_session):
+    ctx = setup_published_task(client, db_session, auth["OWNER"])
+    resp = client.post(f"/api/v1/tasks/{ctx['task_id']}/claim", json={}, headers=auth["LABELER"])
+    assert resp.status_code == 201, resp.text
+
+
+def test_claim_allows_task_with_future_deadline(client, auth, db_session):
+    future_deadline = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    task = create_task(client, auth["OWNER"], deadlineAt=future_deadline)
+    sv = publish_schema(client, auth["OWNER"], task["id"])
+    add_item(db_session, task["id"])
+    publish_task(client, auth["OWNER"], task["id"], sv)
+
+    resp = client.post(f"/api/v1/tasks/{task['id']}/claim", json={}, headers=auth["LABELER"])
+    assert resp.status_code == 201, resp.text
+
+
+def test_claim_rejects_expired_task_without_creating_assignment(client, auth, db_session):
+    past_deadline = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    task = create_task(client, auth["OWNER"], deadlineAt=past_deadline)
+    sv = publish_schema(client, auth["OWNER"], task["id"])
+    add_item(db_session, task["id"])
+    publish_task(client, auth["OWNER"], task["id"], sv)
+
+    resp = client.post(f"/api/v1/tasks/{task['id']}/claim", json={}, headers=auth["LABELER"])
+    assert resp.status_code == 422
+    assert "任务已截止" in resp.json()["message"]
+    assert db_session.query(Assignment).filter_by(task_id=task["id"]).count() == 0
+
+
+def test_claim_rejects_task_deadline_equal_now(client, auth, db_session):
+    task = create_task(client, auth["OWNER"], deadlineAt=datetime.now(timezone.utc).isoformat())
+    sv = publish_schema(client, auth["OWNER"], task["id"])
+    add_item(db_session, task["id"])
+    publish_task(client, auth["OWNER"], task["id"], sv)
+
+    resp = client.post(f"/api/v1/tasks/{task['id']}/claim", json={}, headers=auth["LABELER"])
+    assert resp.status_code == 422
+    assert "任务已截止" in resp.json()["message"]
 
 
 def test_get_assignment_context(client, auth, db_session):

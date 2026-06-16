@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models.schema import SchemaVersion
 from app.middleware.auth import Actor, require_roles
 from app.services import assignment_domain, submission_domain
+from app.utils.schema_normalize import normalize_schema_payload
 from app.schemas.task import AuditLogSummaryResponse, TaskResponse
 from app.schemas.dataset import DatasetItemResponse, AssignmentItemsResponse
 from app.schemas.assignment import (
@@ -40,7 +41,14 @@ def claim_item(
             task=TaskResponse.from_orm(ctx["task"]),
             item=DatasetItemResponse.from_orm(ctx["item"]),
             schemaVersionId=ctx["schema_version_id"],
-            schema=ctx["schema_json"],
+            # 归一化为 canonical PublishedLabelHubSchema，与 Labeler/Reviewer 前端
+            # （SchemaRenderer / collectFieldNodes / schema.root）的 canonical 期望一致。
+            schema=normalize_schema_payload(
+                ctx["schema_json"], ctx["task"].id, ctx["schema_id"],
+                published=True,
+                schema_version_id=ctx["schema_version_id"],
+                schema_version_no=ctx["schema_version_no"],
+            ),
             draft=None,
             lastReturnReason=None,
         ),
@@ -64,7 +72,13 @@ def get_assignment(
         task=TaskResponse.from_orm(ctx["task"]),
         item=DatasetItemResponse.from_orm(ctx["item"]),
         schemaVersionId=ctx["schema_version_id"],
-        schema=ctx["schema_json"],
+        # 同 claim：归一化为 canonical PublishedLabelHubSchema，避免前端拿到 legacy {nodes}
+        schema=normalize_schema_payload(
+            ctx["schema_json"], ctx["task"].id, ctx["schema_id"],
+            published=True,
+            schema_version_id=ctx["schema_version_id"],
+            schema_version_no=ctx["schema_version_no"],
+        ),
         draft=DraftResponse.from_orm(ctx["draft"]) if ctx["draft"] else None,
         lastReturnReason=ctx["last_return_reason"],
     )

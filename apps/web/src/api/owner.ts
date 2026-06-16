@@ -15,7 +15,7 @@ import type {
   GetExportArtifactRecordsResponse,
   SchemaVersion,
 } from "@labelhub/contracts";
-import { apiGet, apiPost, apiPut } from "./client";
+import { apiDelete, apiGet, apiGetBlob, apiPatch, apiPost, apiPut } from "./client";
 
 type PageList<T> = T[] | { items?: T[]; tasks?: T[]; jobs?: T[]; exportJobs?: T[] };
 
@@ -59,11 +59,22 @@ export async function fetchTaskStats(taskId: string): Promise<TaskStats> {
 export async function createTask(
   request: Pick<Task, "title" | "quota" | "distributionStrategy" | "reviewPolicy"> & {
     description?: string;
+    deadlineAt?: string | null;
     tags?: string[];
     instructionRichText?: Task["instructionRichText"];
   }
 ): Promise<Task> {
   const res = await apiPost<Task | { task: Task; auditLog: unknown }>("/api/v1/tasks", request);
+  return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
+}
+
+export async function updateTask(
+  taskId: string,
+  request: Partial<Pick<Task, "title" | "description" | "instructionRichText" | "tags" | "quota" | "distributionStrategy">> & {
+    deadlineAt?: string | null;
+  },
+): Promise<Task> {
+  const res = await apiPatch<Task | { task: Task }>(`/api/v1/tasks/${taskId}`, request);
   return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
 }
 
@@ -100,12 +111,36 @@ export interface SchemaVersionHistoryItem {
   publishedAt: string;
 }
 
+/**
+ * 兼容两种版本快照形态：后端实际响应的 `schema`/`publishedAt`，以及 contracts
+ * SchemaVersion 的 `snapshot`/`createdAt`。缺少可用 schema 的条目直接丢弃，避免把
+ * undefined schema 传给 checkBackwardCompatibility / onCopyToDraft 造成白屏。
+ */
+function normalizeSchemaVersion(raw: unknown): SchemaVersionHistoryItem | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  const schema = (record.schema ?? record.snapshot) as LabelHubSchema | undefined;
+  if (schema === undefined || schema === null) return null;
+  const publishedAt = (record.publishedAt ?? record.createdAt ?? "") as string;
+  return {
+    id: String(record.id ?? ""),
+    taskId: String(record.taskId ?? ""),
+    schemaId: String(record.schemaId ?? schema.schemaId ?? ""),
+    schemaVersionNo: Number(record.schemaVersionNo ?? schema.schemaVersionNo ?? 0),
+    contractVersion: String(record.contractVersion ?? schema.contractVersion ?? ""),
+    schema,
+    publishedAt,
+  };
+}
+
 export async function listSchemaVersions(taskId: string): Promise<SchemaVersionHistoryItem[]> {
-  const res = await apiGet<{ schemaVersions?: SchemaVersionHistoryItem[] } | SchemaVersionHistoryItem[]>(
+  const res = await apiGet<{ schemaVersions?: unknown[] } | unknown[]>(
     `/api/v1/tasks/${taskId}/schema-versions`,
   );
-  if (Array.isArray(res)) return res;
-  return res.schemaVersions ?? [];
+  const rawList = Array.isArray(res) ? res : res.schemaVersions ?? [];
+  return rawList
+    .map(normalizeSchemaVersion)
+    .filter((item): item is SchemaVersionHistoryItem => item !== null);
 }
 
 export async function saveSchemaDraft(
@@ -144,6 +179,16 @@ export async function publishTask(taskId: string, request: PublishTaskRequest): 
   return apiPost<PublishTaskResponse>(`/api/v1/tasks/${taskId}/publish`, request);
 }
 
+export async function pauseTask(taskId: string, reason: string): Promise<Task> {
+  const res = await apiPost<Task | { task: Task; auditLog: unknown }>(`/api/v1/tasks/${taskId}/pause`, { reason });
+  return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
+}
+
+export async function resumeTask(taskId: string): Promise<Task> {
+  const res = await apiPost<Task | { task: Task; auditLog: unknown }>(`/api/v1/tasks/${taskId}/resume`, {});
+  return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
+}
+
 export async function endTask(taskId: string, reason: string): Promise<Task> {
   const res = await apiPost<Task | { task: Task; auditLog: unknown }>(`/api/v1/tasks/${taskId}/end`, { reason });
   return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
@@ -152,6 +197,10 @@ export async function endTask(taskId: string, reason: string): Promise<Task> {
 export async function archiveTask(taskId: string, reason: string): Promise<Task> {
   const res = await apiPost<Task | { task: Task; auditLog: unknown }>(`/api/v1/tasks/${taskId}/archive`, { reason });
   return isRecord(res) && "task" in res ? (res as { task: Task }).task : res;
+}
+
+export async function deleteDraftTask(taskId: string): Promise<void> {
+  await apiDelete(`/api/v1/tasks/${taskId}`);
 }
 
 export async function listTasks(): Promise<Task[]> {
@@ -175,6 +224,66 @@ export async function getExportArtifactRecords(exportId: string): Promise<GetExp
   return apiGet<GetExportArtifactRecordsResponse>(`/api/v1/exports/${exportId}/records`);
 }
 
+/** 下载已完成导出任务的真实文件（流式 FileResponse），带认证。 */
+export async function downloadExportFile(exportId: string): Promise<{ blob: Blob; filename: string | null }> {
+  return apiGetBlob(`/api/v1/exports/${exportId}/download/file`);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+// ---------------------------------------------------------------------------
+// 数据看板（只读聚合）。contracts 未定义此响应类型，故本地声明。
+// 对应后端 GET /api/v1/analytics/dashboard。
+// ---------------------------------------------------------------------------
+
+export interface AnalyticsAiCostRow {
+  purpose: "AI_REVIEW" | "LLM_ASSIST" | "SCHEMA_GENERATION";
+  scope: "task" | "global";
+  calls: number;
+  succeeded: number;
+  failed: number;
+  failureRate: number | null;
+  totalTokens: number;
+  tokenCoverage: number | null;
+  avgLatencyMs: number | null;
+}
+
+export interface AnalyticsLabelerRow {
+  labelerId: string;
+  displayName: string;
+  submitted: number;
+  accepted: number;
+  returned: number;
+  rejected: number;
+  inReview: number;
+  acceptRate: number | null;
+  returnRate: number | null;
+  avgAiScore: number | null;
+  reviewerPatchedFields: number;
+}
+
+export interface AnalyticsDashboard {
+  scope: { taskId: string | null; taskTitle: string | null };
+  aiCost: {
+    byPurpose: AnalyticsAiCostRow[];
+    totalCalls: number;
+    totalTokens: number;
+    schemaGenerationTaskScoped: boolean;
+  };
+  labelers: AnalyticsLabelerRow[];
+  aiQuality: {
+    aiRawTotal: number;
+    byRawDecision: { PASS?: number; RETURN?: number; NEED_HUMAN_REVIEW?: number };
+    humanReviewRate: number | null;
+    evaluated: number;
+    agreements: number;
+    agreementRate: number | null;
+  };
+}
+
+export async function fetchAnalyticsDashboard(taskId?: string): Promise<AnalyticsDashboard> {
+  const query = taskId ? `?taskId=${encodeURIComponent(taskId)}` : "";
+  return apiGet<AnalyticsDashboard>(`/api/v1/analytics/dashboard${query}`);
 }

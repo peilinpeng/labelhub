@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { archiveTask, endTask, listTasks } from "../../api/owner";
+import { archiveTask, deleteDraftTask, endTask, fetchTaskStats, listTasks, pauseTask, resumeTask } from "../../api/owner";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
 import type { Task } from "@labelhub/contracts";
+import type { TaskStats } from "../../api/owner";
 
 interface OwnerWorkspaceProps {
   role: "OWNER" | "LABELER" | "REVIEWER";
@@ -59,7 +60,39 @@ function TrashIcon() {
   );
 }
 
+function PauseIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M9 5v14" />
+      <path d="M15 5v14" />
+    </svg>
+  );
+}
+
+function ResumeIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M7 5l12 7-12 7z" />
+    </svg>
+  );
+}
+
+function ArchiveIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M3 5h18v4H3z" />
+      <path d="M5 9v10h14V9" />
+      <path d="M9 13h6" />
+    </svg>
+  );
+}
+
 type BadgeTone = "success" | "warning" | "default";
+
+type TaskStatsState =
+  | { status: "loading" }
+  | { status: "ready"; stats: TaskStats }
+  | { status: "error" };
 
 function statusTone(status: Task["status"]): BadgeTone {
   if (status === "PUBLISHED") return "success";
@@ -86,6 +119,15 @@ function formatDate(value?: string | null): string {
   return new Date(value).toLocaleDateString();
 }
 
+function getDeadlineView(value?: string | null): { label: string; hint?: string } {
+  if (!value) return { label: "无截止时间" };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { label: "无截止时间" };
+  const diffMs = date.getTime() - Date.now();
+  if (diffMs <= 0) return { label: "已截止", hint: `截止 ${date.toLocaleString()}` };
+  return { label: `截止 ${date.toLocaleDateString()}`, hint: `剩余 ${Math.ceil(diffMs / 86_400_000)} 天` };
+}
+
 function taskDescription(task: Task): string {
   const description = task.description?.trim();
   const looksInternal =
@@ -106,15 +148,88 @@ function isPlaceholderTask(task: Task): boolean {
   return /E2E测试|端到端测试|并发测试|压力测试|压测|烟雾测试|冒烟测试|smoke[\s_-]*test/i.test(text);
 }
 
+function clampProgress(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function progressTotal(task: Task, stats: TaskStats): number {
+  return stats.datasetTotal > 0 ? stats.datasetTotal : task.quota.total;
+}
+
+function quotaProgressLabel(task: Task, stats: TaskStats): string {
+  if (stats.quotaRemaining !== null && stats.quotaTotal !== null) {
+    return `配额剩余 ${stats.quotaRemaining.toLocaleString()} / ${stats.quotaTotal.toLocaleString()}`;
+  }
+  if (stats.datasetTotal > 0) {
+    return `可领取 ${stats.datasetAvailable.toLocaleString()} / ${stats.datasetTotal.toLocaleString()}`;
+  }
+  return `配额 ${task.quota.total.toLocaleString()}`;
+}
+
+function isEndedOrArchivedTask(task: Task): boolean {
+  return task.status === "ENDED" || task.status === "ARCHIVED";
+}
+
+function canArchiveOrDeleteTask(task: Task): boolean {
+  return task.status === "DRAFT" || task.status === "PUBLISHED" || task.status === "PAUSED";
+}
+
+function matchesStatusFilter(task: Task, statusFilter: string): boolean {
+  if (statusFilter === "ALL") return !isEndedOrArchivedTask(task);
+  if (statusFilter === "ENDED_ARCHIVED") return isEndedOrArchivedTask(task);
+  return task.status === statusFilter;
+}
+
+function TaskProgressSummary({ task, state }: { task: Task; state?: TaskStatsState }) {
+  if (task.status === "DRAFT") {
+    return <div className="owner-progress-note">草稿任务，发布后开始统计进度</div>;
+  }
+  if (!state || state.status === "loading") {
+    return <div className="owner-progress-note">进度加载中</div>;
+  }
+  if (state.status === "error") {
+    return <div className="owner-progress-note owner-progress-note--error">进度暂不可用</div>;
+  }
+
+  const stats = state.stats;
+  const total = progressTotal(task, stats);
+  if (total <= 0) {
+    return <div className="owner-progress-note">暂无数据</div>;
+  }
+
+  const progress = clampProgress(stats.progressPercent);
+  return (
+    <div className="owner-progress-cell" aria-label={`${task.title} 任务进度`}>
+      <div className="owner-progress-cell__top">
+        <strong>完成 {progress}%</strong>
+        <span>已提交 {stats.submittedTotal.toLocaleString()} / {total.toLocaleString()}</span>
+      </div>
+      <div className="owner-task-progress-bar" aria-hidden="true">
+        <span style={{ width: `${progress}%` }} />
+      </div>
+      <div className="owner-progress-cell__split">
+        <span>进行中 {stats.inProgress.toLocaleString()}</span>
+        <span>待审核 {stats.inReview.toLocaleString()}</span>
+        <span>已通过 {stats.accepted.toLocaleString()}</span>
+        <span>已打回 {stats.returned.toLocaleString()}</span>
+      </div>
+      <small>{quotaProgressLabel(task, stats)}</small>
+    </div>
+  );
+}
+
 export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskStats, setTaskStats] = useState<Record<string, TaskStatsState>>({});
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [strategy, setStrategy] = useState("ALL");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
-  const [deleteMessage, setDeleteMessage] = useState<{ tone: "success" | "danger" | "warning"; text: string } | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState<{ tone: "success" | "danger" | "warning"; title?: string; text: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -123,7 +238,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       try {
         setLoading(true);
         const data = await listTasks();
-        setTasks(data.filter((task) => task.status !== "ARCHIVED" && !isPlaceholderTask(task)));
+        setTasks(data.filter((task) => !isPlaceholderTask(task)));
         setError(null);
       } catch (cause) {
         setTasks([]);
@@ -133,6 +248,38 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    const statTasks = tasks.filter((task) => task.status !== "DRAFT");
+    if (statTasks.length === 0) {
+      setTaskStats({});
+      return;
+    }
+
+    let cancelled = false;
+    setTaskStats(
+      Object.fromEntries(statTasks.map((task) => [task.id, { status: "loading" } satisfies TaskStatsState])),
+    );
+
+    void Promise.all(
+      statTasks.map(async (task) => {
+        try {
+          const stats = await fetchTaskStats(task.id);
+          if (!cancelled) {
+            setTaskStats((current) => ({ ...current, [task.id]: { status: "ready", stats } }));
+          }
+        } catch {
+          if (!cancelled) {
+            setTaskStats((current) => ({ ...current, [task.id]: { status: "error" } }));
+          }
+        }
+      }),
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tasks]);
 
   useEffect(() => {
     if (!selectedTaskId) return;
@@ -152,7 +299,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       tasks.filter((task) => {
         const searchable = `${task.title} ${taskDescription(task)}`.toLowerCase();
         const matchesQuery = searchable.includes(query.toLowerCase());
-        const matchesStatus = status === "ALL" || task.status === status;
+        const matchesStatus = matchesStatusFilter(task, status);
         const matchesStrategy = strategy === "ALL" || task.distributionStrategy.type === strategy;
         return matchesQuery && matchesStatus && matchesStrategy;
       }),
@@ -162,33 +309,48 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
   const selectedTask = selectedTaskId
     ? (tasks.find((task) => task.id === selectedTaskId) ?? null)
     : null;
+  const selectedDeadlineView = selectedTask ? getDeadlineView(selectedTask.deadlineAt) : null;
 
   const publishedCount = tasks.filter((task) => task.status === "PUBLISHED").length;
   const draftTasks = tasks.filter((task) => task.status === "DRAFT");
   const draftCount = draftTasks.length;
-  const totalQuota = tasks.reduce((sum, task) => sum + task.quota.total, 0);
+  const visibleTotalQuota = visibleTasks.reduce((sum, task) => sum + task.quota.total, 0);
 
   const handleDeleteTask = async () => {
     if (!deleteTarget || deleting) return;
 
-    const reason = "Owner 在任务管理页确认删除任务。";
+    const isDraft = deleteTarget.status === "DRAFT";
+    const reason = "Owner 在任务管理页结束并归档任务。";
     try {
       setDeleting(true);
-      if (deleteTarget.status === "DRAFT") {
-        throw new Error("当前后端暂未开放草稿任务删除接口，任务未删除。");
+      if (isDraft) {
+        // 草稿从未发布、无标注数据，后端硬删除
+        await deleteDraftTask(deleteTarget.id);
+      } else {
+        // 已发布任务不可删除：经状态机结束（PUBLISHED/PAUSED）后归档，保留全部记录
+        if (deleteTarget.status === "PUBLISHED" || deleteTarget.status === "PAUSED") {
+          await endTask(deleteTarget.id, reason);
+        }
+        const archivedTask = await archiveTask(deleteTarget.id, reason);
+        setTasks((current) => current.map((task) => (task.id === deleteTarget.id ? archivedTask : task)));
       }
-      if (deleteTarget.status === "PUBLISHED" || deleteTarget.status === "PAUSED") {
-        await endTask(deleteTarget.id, reason);
+      if (isDraft) {
+        setTasks((current) => current.filter((task) => task.id !== deleteTarget.id));
       }
-      await archiveTask(deleteTarget.id, reason);
-      setTasks((current) => current.filter((task) => task.id !== deleteTarget.id));
       setSelectedTaskId((current) => (current === deleteTarget.id ? null : current));
-      setDeleteMessage({ tone: "success", text: `任务「${deleteTarget.title}」已删除，并保留后端审计记录。` });
+      setDeleteMessage({
+        tone: "success",
+        title: isDraft ? "已删除" : "已归档",
+        text: isDraft
+          ? `草稿任务「${deleteTarget.title}」已删除。`
+          : `任务「${deleteTarget.title}」已结束并归档，标注、审核与审计记录均保留。`,
+      });
       setDeleteTarget(null);
     } catch (cause) {
       setDeleteMessage({
         tone: "danger",
-        text: cause instanceof Error ? `删除失败：${cause.message}` : "删除失败：后端未完成该操作。",
+        title: isDraft ? "删除失败" : "归档失败",
+        text: cause instanceof Error ? cause.message : "操作失败：后端未完成该操作。",
       });
       setDeleteTarget(null);
     } finally {
@@ -196,10 +358,39 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
     }
   };
 
+  const handleToggleTaskStatus = async (task: Task) => {
+    if (statusBusyId) return;
+    const pausing = task.status === "PUBLISHED";
+    try {
+      setStatusBusyId(task.id);
+      setDeleteMessage(null);
+      const updated = pausing
+        ? await pauseTask(task.id, "Owner 在任务管理页暂停任务。")
+        : await resumeTask(task.id);
+      setTasks((current) => current.map((t) => (t.id === task.id ? { ...t, status: updated.status } : t)));
+      setDeleteMessage({
+        tone: "success",
+        title: pausing ? "已暂停" : "已恢复",
+        text: pausing
+          ? `任务「${task.title}」已暂停，标注员暂时无法领取新题。`
+          : `任务「${task.title}」已恢复发布，重新开放领取。`,
+      });
+    } catch (cause) {
+      setDeleteMessage({
+        tone: "danger",
+        title: pausing ? "暂停失败" : "恢复失败",
+        text: cause instanceof Error ? cause.message : "操作失败：后端未完成该状态迁移。",
+      });
+    } finally {
+      setStatusBusyId(null);
+    }
+  };
+
+  const deleteIsDraft = deleteTarget?.status === "DRAFT";
   const deleteDialogDescription = deleteTarget
-    ? deleteTarget.status === "DRAFT"
-      ? `当前任务「${deleteTarget.title}」仍是草稿。现有后端只允许删除已发布后结束的任务，因此确认后如果后端不支持草稿删除，任务会保留在列表中。`
-      : `确定要删除任务「${deleteTarget.title}」吗？删除会通过后端状态机结束并归档任务，任务将从当前列表隐藏，已有标注、审核和审计记录仍会保留。`
+    ? deleteIsDraft
+      ? `确定删除草稿任务「${deleteTarget.title}」吗？草稿从未发布、没有标注数据，删除后不可恢复。`
+      : `确定结束并归档任务「${deleteTarget.title}」吗？任务会经状态机结束后归档、从当前列表隐藏，已有标注、审核和审计记录都会保留（这不是物理删除）。`
     : "";
 
   if (loading) {
@@ -217,7 +408,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
 
       {deleteMessage ? (
         <Card className="owner-fallback-notice">
-          <Badge tone={deleteMessage.tone}>{deleteMessage.tone === "success" ? "已删除" : "删除失败"}</Badge>
+          <Badge tone={deleteMessage.tone}>{deleteMessage.title ?? (deleteMessage.tone === "success" ? "已删除" : "删除失败")}</Badge>
           <span>{deleteMessage.text}</span>
         </Card>
       ) : null}
@@ -285,7 +476,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
               <option value="DRAFT">草稿</option>
               <option value="PUBLISHED">已发布</option>
               <option value="PAUSED">已暂停</option>
-              <option value="ENDED">已结束</option>
+              <option value="ENDED_ARCHIVED">已结束/已归档</option>
             </Select>
             <Select value={strategy} onChange={(event) => setStrategy(event.target.value)}>
               <option value="ALL">分发策略：全部</option>
@@ -302,7 +493,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
             </div>
             <div className="owner-table-summary">
               <span>总数据量</span>
-              <strong>{totalQuota.toLocaleString()}</strong>
+              <strong>{visibleTotalQuota.toLocaleString()}</strong>
             </div>
           </div>
 
@@ -319,12 +510,14 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                 <th>任务</th>
                 <th>状态</th>
                 <th>分发策略</th>
-                <th>数据量</th>
+                <th>进度</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
               {visibleTasks.map((task) => {
+                const deadlineView = getDeadlineView(task.deadlineAt);
+                const readOnlyTask = isEndedOrArchivedTask(task);
                 return (
                   <tr
                     className={["owner-task-row", selectedTask?.id === task.id ? "owner-task-row--selected" : ""]
@@ -345,7 +538,8 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                       <p className="owner-task-description">{taskDescription(task)}</p>
                       <div className="meta-line owner-task-meta">
                         <span>创建 {formatDate(task.createdAt)}</span>
-                        <span>截止 {formatDate(task.deadlineAt)}</span>
+                        <span>{deadlineView.label}</span>
+                        {deadlineView.hint ? <span>{deadlineView.hint}</span> : null}
                         <span>数据量 {task.quota.total.toLocaleString()}</span>
                       </div>
                     </td>
@@ -354,9 +548,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                     </td>
                     <td className="owner-table-strong">{strategyLabel(task.distributionStrategy)}</td>
                     <td>
-                      <div className="owner-progress-cell">
-                        <span>{task.quota.total.toLocaleString()} 条</span>
-                      </div>
+                      <TaskProgressSummary task={task} state={taskStats[task.id]} />
                     </td>
                     <td>
                       <div
@@ -372,22 +564,26 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                         >
                           <EyeIcon />
                         </Link>
-                        <Link
-                          to={`/owner/tasks/${task.id}/data`}
-                          className="owner-icon-action"
-                          aria-label="数据管理"
-                          data-tooltip="数据"
-                        >
-                          <DataIcon />
-                        </Link>
-                        <Link
-                          to={`/owner/tasks/${task.id}/designer`}
-                          className="owner-icon-action"
-                          aria-label="模板"
-                          data-tooltip="模板"
-                        >
-                          <TemplateIcon />
-                        </Link>
+                        {!readOnlyTask ? (
+                          <>
+                            <Link
+                              to={`/owner/tasks/${task.id}/data`}
+                              className="owner-icon-action"
+                              aria-label="数据管理"
+                              data-tooltip="数据"
+                            >
+                              <DataIcon />
+                            </Link>
+                            <Link
+                              to={`/owner/tasks/${task.id}/designer`}
+                              className="owner-icon-action"
+                              aria-label="模板"
+                              data-tooltip="模板"
+                            >
+                              <TemplateIcon />
+                            </Link>
+                          </>
+                        ) : null}
                         <Link
                           to={`/owner/tasks/${task.id}/export`}
                           className="owner-icon-action"
@@ -396,18 +592,32 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                         >
                           <DownloadIcon />
                         </Link>
-                        <button
-                          type="button"
-                          className="owner-icon-action owner-icon-action--danger"
-                          aria-label={`删除 ${task.title}`}
-                          data-tooltip="删除"
-                          onClick={() => {
-                            setDeleteMessage(null);
-                            setDeleteTarget(task);
-                          }}
-                        >
-                          <TrashIcon />
-                        </button>
+                        {task.status === "PUBLISHED" || task.status === "PAUSED" ? (
+                          <button
+                            type="button"
+                            className="owner-icon-action"
+                            aria-label={`${task.status === "PUBLISHED" ? "暂停" : "恢复"} ${task.title}`}
+                            data-tooltip={task.status === "PUBLISHED" ? "暂停" : "恢复"}
+                            disabled={statusBusyId === task.id}
+                            onClick={() => void handleToggleTaskStatus(task)}
+                          >
+                            {task.status === "PUBLISHED" ? <PauseIcon /> : <ResumeIcon />}
+                          </button>
+                        ) : null}
+                        {canArchiveOrDeleteTask(task) ? (
+                          <button
+                            type="button"
+                            className="owner-icon-action owner-icon-action--danger"
+                            aria-label={`${task.status === "DRAFT" ? "删除草稿" : "结束并归档"} ${task.title}`}
+                            data-tooltip={task.status === "DRAFT" ? "删除草稿" : "结束并归档"}
+                            onClick={() => {
+                              setDeleteMessage(null);
+                              setDeleteTarget(task);
+                            }}
+                          >
+                            {task.status === "DRAFT" ? <TrashIcon /> : <ArchiveIcon />}
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -475,31 +685,47 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
                 <span>分发策略</span>
                 <div className="owner-readonly-field">{strategyLabel(selectedTask.distributionStrategy)}</div>
               </label>
+              <label>
+                <span>截止时间</span>
+                <div className="owner-readonly-field">
+                  {selectedDeadlineView?.label ?? "无截止时间"}
+                  {selectedDeadlineView?.hint ? ` · ${selectedDeadlineView.hint}` : ""}
+                </div>
+              </label>
             </div>
 
             <div className="owner-detail-actions">
-              <Link to={`/owner/tasks/${selectedTask.id}/data`} className="lh-button">
-                数据管理
+              <Link to={`/owner/tasks/${selectedTask.id}`} className="lh-button lh-button--primary">
+                查看详情
               </Link>
-              <Link to={`/owner/tasks/${selectedTask.id}/designer`} className="lh-button lh-button--primary">
-                配置模板
-              </Link>
-              <Link to={`/owner/tasks/${selectedTask.id}/ai-precheck`} className="lh-button">
-                AI 预审配置
-              </Link>
+              {!isEndedOrArchivedTask(selectedTask) ? (
+                <>
+                  <Link to={`/owner/tasks/${selectedTask.id}/data`} className="lh-button">
+                    数据管理
+                  </Link>
+                  <Link to={`/owner/tasks/${selectedTask.id}/designer`} className="lh-button">
+                    配置模板
+                  </Link>
+                  <Link to={`/owner/tasks/${selectedTask.id}/ai-precheck`} className="lh-button">
+                    AI 预审配置
+                  </Link>
+                </>
+              ) : null}
               <Link to={`/owner/tasks/${selectedTask.id}/export`} className="lh-button">
                 导出数据
               </Link>
-              <Button
-                type="button"
-                tone="danger"
-                onClick={() => {
-                  setDeleteMessage(null);
-                  setDeleteTarget(selectedTask);
-                }}
-              >
-                删除任务
-              </Button>
+              {canArchiveOrDeleteTask(selectedTask) ? (
+                <Button
+                  type="button"
+                  tone="danger"
+                  onClick={() => {
+                    setDeleteMessage(null);
+                    setDeleteTarget(selectedTask);
+                  }}
+                >
+                  {selectedTask.status === "DRAFT" ? "删除草稿任务" : "结束并归档任务"}
+                </Button>
+              ) : null}
             </div>
           </aside>
         </div>
@@ -507,9 +733,9 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="确认删除任务"
+        title={deleteIsDraft ? "确认删除草稿任务" : "确认结束并归档任务"}
         description={deleteDialogDescription}
-        confirmText={deleting ? "删除中" : "确认删除"}
+        confirmText={deleting ? "处理中" : deleteIsDraft ? "确认删除" : "结束并归档"}
         cancelText="取消"
         tone="danger"
         onCancel={() => {

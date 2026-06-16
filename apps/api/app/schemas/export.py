@@ -144,7 +144,10 @@ class DataQualityPassportResponse(BaseModel):
     reviewerPatchCount: int | None = None
     changedFieldNames: list[str] | None = None
     aiAssistUsed: bool | None = None
-    aiAssistCallCount: int | None = None
+    aiAcceptedCount: int | None = None
+    aiDismissedCount: int | None = None
+    aiEditedCount: int | None = None
+    auditEventCount: int | None = None
     qualityLedgerRef: dict | None = None
 
 

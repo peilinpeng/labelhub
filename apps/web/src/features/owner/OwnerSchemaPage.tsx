@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type DragEvent, type MouseEvent, type SetStateAction } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { SchemaDesigner, validateDesignerSchema } from "@labelhub/schema-designer";
 import {
   checkBackwardCompatibility,
@@ -13,6 +13,7 @@ import {
 import type {
   AuditEventRecord,
   CompatibilityReport,
+  DatasetItem,
   FieldNode,
   ID,
   LabelHubRuntimeContext,
@@ -23,6 +24,7 @@ import type {
   SchemaValidationError,
   SchemaValidationResult,
   ServerComponentRegistryItem,
+  ShowItemNode,
   Task,
 } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
@@ -32,6 +34,7 @@ import {
   fetchServerRegistry,
   fetchTask,
   fetchTaskStats,
+  generateSchema,
   publishSchema,
   publishTask,
   saveSchemaDraft,
@@ -113,6 +116,17 @@ interface PublishConfigurationIssue {
   nodeId?: string;
 }
 
+interface AiSchemaDraftPreview {
+  schema: LabelHubSchema;
+  validation: SchemaValidationResult;
+  warnings: SchemaValidationError[];
+  generatedBy: {
+    modelPolicyId: string;
+    promptSnapshotHash: string;
+    llmCallId: ID;
+  };
+}
+
 interface CustomSchemaPreset {
   id: string;
   title: string;
@@ -170,11 +184,17 @@ function schemaRevisionLabel(schema: LabelHubSchema): string {
 
 export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const { taskId } = useParams<{ taskId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // 从 AI 预审页「下一步：发布任务」带 ?publish=1 进入时，自动触发发布前检查（只触发一次）。
+  const autoPublishTriggeredRef = useRef(false);
   const [serverRegistry, setServerRegistry] = useState<ServerComponentRegistryItem[]>(localServerComponentRegistry);
   const [schema, setSchema] = useState<LabelHubSchema>(() => createFallbackSchema(taskId));
   const [task, setTask] = useState<Task | undefined>();
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [datasetItemStats, setDatasetItemStats] = useState<{ total: number; available: number } | null>(null);
+  // 数据字段面板：从已导入数据派生的字段列表 + Drawer 开关（轻量 Owner 体验优化，纯前端）
+  const [datasetFields, setDatasetFields] = useState<DataFieldInfo[]>([]);
+  const [dataFieldsOpen, setDataFieldsOpen] = useState(false);
   const [taskStatsLoaded, setTaskStatsLoaded] = useState(false);
   const [aiConfigStatus, setAiConfigStatus] = useState<"loading" | "configured" | "missing" | "error">("loading");
   const [aiConfigEnabled, setAiConfigEnabled] = useState<boolean | null>(null);
@@ -205,6 +225,13 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
   const [customPresets, setCustomPresets] = useState<CustomSchemaPreset[]>(() => readCustomSchemaPresets());
   const [presetTitleInput, setPresetTitleInput] = useState("");
   const [presetDescriptionInput, setPresetDescriptionInput] = useState("");
+  const [aiSchemaOpen, setAiSchemaOpen] = useState(false);
+  const [aiSchemaPrompt, setAiSchemaPrompt] = useState("");
+  const [aiSchemaGenerating, setAiSchemaGenerating] = useState(false);
+  const [aiSchemaError, setAiSchemaError] = useState<string | null>(null);
+  const [aiSchemaPreview, setAiSchemaPreview] = useState<AiSchemaDraftPreview | null>(null);
+  // 选择性导入：记录预览里被勾选的「顶层」节点 id。group/section 作为整体勾选，不做父子联动。
+  const [aiSchemaSelectedIds, setAiSchemaSelectedIds] = useState<Set<string>>(() => new Set());
   const publishIssueListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -240,9 +267,24 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           setStatusMessage("已加载模板草稿");
         } else if (resolvedTask !== undefined) {
           const fallbackSchema = createFallbackSchema(currentTaskId, resolvedTask?.title);
-          setSchema(fallbackSchema);
+          // 未读取到草稿时，默认把上一步「新建任务」的标题与说明带入模板名称/说明，
+          // 方便 Owner 直接发布；后续点击「一键配置模版」套预设时由 handleLoadPreset 覆盖。
+          const prefilledSchema: LabelHubSchema = {
+            ...fallbackSchema,
+            meta: {
+              ...fallbackSchema.meta,
+              name: resolvedTask.title || fallbackSchema.meta.name,
+              description: resolvedTask.description || fallbackSchema.meta.description,
+            },
+            root: {
+              ...fallbackSchema.root,
+              title: resolvedTask.title || fallbackSchema.root.title,
+            },
+          };
+          setSchema(prefilledSchema);
+          // 预设高亮仍按原始 fallback 判定，避免改了名称后匹配不到内置预设。
           setActivePresetId(presetIdForSchema(fallbackSchema));
-          setStatusMessage("未读取到模板草稿，已创建空白编辑起点");
+          setStatusMessage("未读取到模板草稿，已带入任务标题与说明作为起点");
         } else {
           setStatusMessage("任务或模板草稿加载失败，请检查后端服务。");
         }
@@ -288,8 +330,10 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
           total: itemsResult.value.total,
           available: itemsResult.value.items.filter((item) => item.status === "AVAILABLE").length,
         });
+        setDatasetFields(collectDataFields(itemsResult.value.items));
       } else {
         setDatasetItemStats(null);
+        setDatasetFields([]);
       }
       setTaskStatsLoaded(true);
 
@@ -576,10 +620,21 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
       });
 
       failureStage = "PUBLISH_TASK";
-      const publishedTask = await publishTask(currentTaskId, { schemaVersionId });
-      setTask(publishedTask.task);
-      setVersionRefreshKey((key) => key + 1);
-      showNotice("发布成功，任务已进入任务市场。", "success");
+      // publishTask 合法迁移仅 ('DRAFT','publishTask')：DRAFT 任务发布后进入任务市场；
+      // 已发布/暂停等任务再次绑定会被状态机拒绝——这是版本冻结的预期行为，不算发布失败。
+      // 新模板版本已通过上一步 publishSchema 入历史，已发布任务保留原绑定（与“复制为新草稿/回滚”一致）。
+      if (task && task.status !== "DRAFT") {
+        setVersionRefreshKey((key) => key + 1);
+        showNotice(
+          "模板新版本已发布并入版本历史。该任务已是发布状态，按版本冻结策略保留原绑定；如需启用新版本，请在“版本管理”中操作。",
+          "success",
+        );
+      } else {
+        const publishedTask = await publishTask(currentTaskId, { schemaVersionId });
+        setTask(publishedTask.task);
+        setVersionRefreshKey((key) => key + 1);
+        showNotice("发布成功，任务已进入任务市场。", "success");
+      }
     } catch (error) {
       console.error("Owner 模板发布失败", error);
       await appendSchemaPublishFailedAuditEvent({
@@ -730,6 +785,25 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     void confirmPublish(preview);
   };
 
+  // 从 AI 预审页带 ?publish=1 进入：数据加载完成后自动跑发布前检查（弹出 PublishPreviewDialog
+  // 或在前置未满足时给出明确提示），并清掉 query 防止刷新/返回重复触发。
+  useEffect(() => {
+    if (autoPublishTriggeredRef.current) return;
+    if (searchParams.get("publish") !== "1") return;
+    if (loading || !taskStatsLoaded || aiConfigStatus === "loading") return;
+    autoPublishTriggeredRef.current = true;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("publish");
+        return next;
+      },
+      { replace: true },
+    );
+    void handlePublish();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading, taskStatsLoaded, aiConfigStatus]);
+
   const focusIssueNode = (nodeId: string | undefined) => {
     if (nodeId === undefined) return;
     const nodeCard = Array.from(document.querySelectorAll<HTMLElement>(".schema-node-card"))
@@ -799,6 +873,101 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     setPresetDescriptionInput("空白模板。");
     setStatusMessage("已创建空白预设模板起点");
     showNotice("已创建空白模板。请先填写预设名称和说明，再配置画布。", "info");
+  };
+
+  const openAiSchemaDraft = () => {
+    setAiSchemaOpen(true);
+    setAiSchemaError(null);
+    setAiSchemaPreview(null);
+    setAiSchemaSelectedIds(new Set());
+    if (aiSchemaPrompt.trim().length === 0) {
+      setAiSchemaPrompt(task?.description?.trim() || task?.title || schema.meta.description || "");
+    }
+  };
+
+  const closeAiSchemaDraft = () => {
+    if (aiSchemaGenerating) return;
+    setAiSchemaOpen(false);
+  };
+
+  const handleGenerateAiSchemaDraft = async () => {
+    const description = aiSchemaPrompt.trim();
+    if (description.length === 0) {
+      setAiSchemaError("请先描述你想标注什么，以及希望标注员填写哪些内容。");
+      return;
+    }
+
+    try {
+      setAiSchemaGenerating(true);
+      setAiSchemaError(null);
+      setAiSchemaPreview(null);
+      setAiSchemaSelectedIds(new Set());
+      const result = await generateSchema(resolveTaskId(taskId, schema.meta.taskId), {
+        taskDescription: description,
+        preferredNodeTypes: ["show.text", "choice.radio", "choice.checkbox", "input.textarea"],
+      });
+      const normalized = normalizeGeneratedSchemaDraft(
+        result.schemaDraft,
+        schema,
+        resolveTaskId(taskId, schema.meta.taskId),
+        task?.title ?? schema.meta.name,
+        description,
+        datasetFields.map((field) => field.name),
+      );
+      setAiSchemaPreview({
+        schema: normalized,
+        validation: result.validation,
+        warnings: result.warnings ?? [],
+        generatedBy: result.generatedBy,
+      });
+      // 默认全选生成的全部顶层节点。
+      setAiSchemaSelectedIds(new Set(normalized.root.children.map((node) => node.id)));
+    } catch (error) {
+      console.error("AI Schema Draft 生成失败", error);
+      setAiSchemaError("AI 生成失败，请稍后重试。当前手动配置不受影响。");
+    } finally {
+      setAiSchemaGenerating(false);
+    }
+  };
+
+  const handleApplyAiSchemaDraft = () => {
+    if (aiSchemaPreview === null) return;
+    if (aiSchemaSelectedIds.size === 0) return;
+    // 只把勾选的节点写入当前草稿；未勾选的不进入。仍然不自动保存、不自动发布。
+    const selectedSchema = buildSelectedSchemaDraft(aiSchemaPreview.schema, aiSchemaSelectedIds);
+    setSchema(selectedSchema);
+    setValidation(undefined);
+    setActivePresetId(`ai_schema_draft_${Date.now()}`);
+    setPresetTitleInput(selectedSchema.meta.name || "AI 生成模板草稿");
+    setPresetDescriptionInput(selectedSchema.meta.description ?? aiSchemaPrompt.trim());
+    setStatusMessage(`已应用 AI 生成的 ${selectedSchema.root.children.length} 项节点，保存草稿前不会写入后端。`);
+    setAiSchemaOpen(false);
+    showNotice("已应用所选 AI 生成节点。请检查字段后手动保存草稿。", "info");
+  };
+
+  // 选择性导入快捷操作。
+  const aiSchemaSelectableNodes = aiSchemaPreview?.schema.root.children ?? [];
+  const handleAiSchemaSelectAll = () => {
+    setAiSchemaSelectedIds(new Set(aiSchemaSelectableNodes.map((node) => node.id)));
+  };
+  const handleAiSchemaSelectAnswerFields = () => {
+    setAiSchemaSelectedIds(
+      new Set(aiSchemaSelectableNodes.filter((node) => isAnswerFieldType(node.type)).map((node) => node.id)),
+    );
+  };
+  const handleAiSchemaClearSelection = () => {
+    setAiSchemaSelectedIds(new Set());
+  };
+  const toggleAiSchemaNode = (nodeId: string) => {
+    setAiSchemaSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
   };
 
   const handlePresetTitleChange = (title: string) => {
@@ -876,6 +1045,13 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
     setValidationRules((current) => [...current, createValidationRule(fieldNodes)]);
   };
 
+  // 数据字段 → 一键添加为展示文本：在画布新增 show.text 节点并绑定 $.item.sourcePayload.<字段>。
+  const handleAddShowItemField = (fieldName: string) => {
+    setSchema((current) => appendShowItemField(current, fieldName));
+    setValidation(undefined);
+    showNotice(`已把「${friendlyFieldTitle(fieldName)}」添加到模板（展示文本）。`, "success");
+  };
+
   if (loading) {
     return <Card className="state-panel">加载模板组件中...</Card>;
   }
@@ -908,51 +1084,299 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
             配置字段结构、校验规则与联动逻辑。
           </p>
         </div>
-        <div className="schema-builder-toolbar__actions">
-          <Link to={RoutePath.OWNER_TASKS} className="lh-button">
-            返回任务
-          </Link>
-          <Button type="button" disabled={saving} onClick={() => void handleSaveDraft()}>
-            {saving && !publishing ? "保存中..." : "保存草稿"}
-          </Button>
-          <Button type="button" onClick={() => setPreviewExpanded(true)}>
-            实时预览
-          </Button>
-          <Button type="button" onClick={exportSchemaJson}>
-            导出 JSON
-          </Button>
-          <Button type="button" tone="primary" disabled={saving || publishPreviewPreparing} onClick={() => void handlePublish()}>
-            {publishing ? "发布中..." : publishPreviewPreparing ? "检查中..." : "保存并发布模板"}
-          </Button>
+        <div className="schema-builder-toolbar__actions owner-schema-actions-compact">
+          <div className="owner-schema-actions-group owner-schema-actions-group--nav">
+            <Link to={RoutePath.OWNER_TASKS} className="lh-button">
+              返回任务
+            </Link>
+            {task.status === "DRAFT" ? (
+              <Link to={`/owner/tasks/${task.id}?edit=basic`} className="lh-button">
+                编辑基础信息
+              </Link>
+            ) : null}
+            <Button type="button" onClick={() => setDataFieldsOpen(true)}>
+              数据字段
+            </Button>
+          </div>
+          <div className="owner-schema-actions-group owner-schema-actions-group--tools">
+            <Button type="button" onClick={() => setPreviewExpanded(true)}>
+              实时预览
+            </Button>
+            <Button type="button" onClick={openAiSchemaDraft}>
+              AI 生成模板草稿 Beta
+            </Button>
+            <Button type="button" onClick={exportSchemaJson}>
+              导出 JSON
+            </Button>
+          </div>
+          <div className="owner-schema-actions-group owner-schema-actions-group--primary">
+            <Button type="button" disabled={saving} onClick={() => void handleSaveDraft()}>
+              {saving && !publishing ? "保存中..." : "保存草稿"}
+            </Button>
+            <Button type="button" tone="primary" disabled={saving || publishPreviewPreparing} onClick={() => void handlePublish()}>
+              {publishing ? "发布中..." : publishPreviewPreparing ? "检查中..." : "保存并发布模板"}
+            </Button>
+          </div>
         </div>
       </Card>
 
-      <div className="schema-builder-statusbar">
-        <Badge tone={templateStatus.tone}>模板状态：{templateStatus.label}</Badge>
-        <span title="草稿每次保存自动递增的修订号，用于并发冲突检测，不等于已发布版本号">
-          <Badge tone="primary">草稿修订：第 {schema.schemaDraftRevision ?? 1} 次修改</Badge>
-        </span>
-        <span
-          title={
-            task.activeSchemaVersionId
-              ? `任务绑定的发布版本 ID：${task.activeSchemaVersionId}`
-              : "任务尚未发布任何模板版本"
-          }
-        >
+      {dataFieldsOpen ? (
+        <div className="owner-data-fields-overlay" role="presentation">
+          <button
+            type="button"
+            className="owner-data-fields-backdrop"
+            aria-label="关闭数据字段面板"
+            onClick={() => setDataFieldsOpen(false)}
+          />
+          <aside className="owner-data-fields-drawer" role="dialog" aria-modal="true" aria-label="数据字段">
+            <header className="owner-data-fields-drawer__head">
+              <div>
+                <h3>数据字段</h3>
+                <p>来自当前任务已导入数据，可一键添加为展示文本。</p>
+              </div>
+              <button
+                type="button"
+                className="owner-data-fields-drawer__close"
+                aria-label="关闭数据字段面板"
+                onClick={() => setDataFieldsOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="owner-data-fields-drawer__body">
+              {datasetFields.length === 0 ? (
+                <p className="owner-data-fields-empty">
+                  当前任务还没有可读取的数据字段。请先在数据管理导入 JSON / JSONL 数据。
+                </p>
+              ) : (
+                FIELD_SECTIONS.map((section) => {
+                  const fields = datasetFields.filter((field) => field.role === section.role);
+                  if (fields.length === 0) return null;
+                  const isAnswer = section.role === "answer";
+                  return (
+                    <section className="owner-data-fields-section" key={section.role}>
+                      <div className="owner-data-fields-section__head">
+                        <h4>{section.title}</h4>
+                        <p>{section.desc}</p>
+                      </div>
+                      {fields.map((field) => (
+                        <div
+                          className={`owner-data-field-card${isAnswer ? " owner-data-field-card--answer" : ""}`}
+                          key={field.name}
+                        >
+                          <div className="owner-data-field-card__head">
+                            <code className="owner-data-field-card__name">{field.name}</code>
+                            <Badge tone={isAnswer ? "warning" : "default"}>{field.kind}</Badge>
+                          </div>
+                          <p className="owner-data-field-card__sample" title={field.sample}>{field.sample}</p>
+                          {isAnswer ? (
+                            <>
+                              <p className="owner-data-field-card__warn">
+                                可能是答案或隐藏标签，展示给标注员可能造成泄露。
+                              </p>
+                              <Button
+                                type="button"
+                                disabled
+                                title="疑似答案 / 隐藏标签字段，默认禁止添加，避免答案泄露。"
+                              >
+                                默认禁止添加
+                              </Button>
+                            </>
+                          ) : section.role === "recommended" ? (
+                            <Button type="button" tone="primary" onClick={() => handleAddShowItemField(field.name)}>
+                              添加到模板：展示文本
+                            </Button>
+                          ) : section.role === "metadata" ? (
+                            <Button type="button" onClick={() => handleAddShowItemField(field.name)}>
+                              高级添加
+                            </Button>
+                          ) : (
+                            <Button type="button" onClick={() => handleAddShowItemField(field.name)}>
+                              添加到模板：展示文本
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </section>
+                  );
+                })
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      {aiSchemaOpen ? (
+        <div className="ai-schema-draft-layer" role="presentation">
+          <button
+            type="button"
+            className="ai-schema-draft-backdrop"
+            aria-label="关闭 AI 生成模板草稿"
+            onClick={closeAiSchemaDraft}
+          />
+          <section className="ai-schema-draft-dialog" role="dialog" aria-modal="true" aria-labelledby="ai-schema-draft-title">
+            <header className="ai-schema-draft-dialog__header">
+              <div>
+                <span>AI Schema Draft Beta</span>
+                <h3 id="ai-schema-draft-title">AI 生成模板草稿 Beta</h3>
+                <p>先生成预览，确认后才应用到当前草稿。不会自动保存，也不会自动发布。</p>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭 AI 生成模板草稿"
+                disabled={aiSchemaGenerating}
+                onClick={closeAiSchemaDraft}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="ai-schema-draft-dialog__body">
+              <label className="ai-schema-draft-prompt">
+                自然语言需求
+                <textarea
+                  value={aiSchemaPrompt}
+                  onChange={(event) => setAiSchemaPrompt(event.target.value)}
+                  placeholder="例如：我想做新闻质量评估，需要判断标题是否准确、正文是否完整、是否有低俗内容，并让标注员填写修改建议。"
+                />
+              </label>
+
+              {aiSchemaError ? (
+                <div className="ai-schema-draft-error" role="alert">{aiSchemaError}</div>
+              ) : null}
+
+              {aiSchemaPreview ? (
+                <div className="ai-schema-draft-preview">
+                  <div className="ai-schema-draft-preview__summary">
+                    <div>
+                      <strong>{aiSchemaPreview.schema.root.children.length}</strong>
+                      <span>生成节点</span>
+                    </div>
+                    <div>
+                      <strong>{collectFieldNodes(aiSchemaPreview.schema).length}</strong>
+                      <span>作答字段</span>
+                    </div>
+                    <div>
+                      <strong>{aiSchemaPreview.validation.valid ? "通过" : "需检查"}</strong>
+                      <span>AI 校验</span>
+                    </div>
+                  </div>
+                  <div className="ai-schema-draft-select-toolbar" role="group" aria-label="选择性导入快捷操作">
+                    <span className="ai-schema-draft-select-count">已选 {aiSchemaSelectedIds.size} / {aiSchemaSelectableNodes.length} 项</span>
+                    <div className="ai-schema-draft-select-actions">
+                      <Button type="button" tone="ghost" onClick={handleAiSchemaSelectAll}>全选</Button>
+                      <Button type="button" tone="ghost" onClick={handleAiSchemaSelectAnswerFields}>只选作答字段</Button>
+                      <Button type="button" tone="ghost" onClick={handleAiSchemaClearSelection}>清空</Button>
+                    </div>
+                  </div>
+                  <div className="ai-schema-draft-field-list">
+                    {collectSelectableNodeSummaries(aiSchemaPreview.schema).map((item) => (
+                      <label className="ai-schema-draft-field-row" key={item.id}>
+                        <input
+                          type="checkbox"
+                          className="ai-schema-draft-field-check"
+                          checked={aiSchemaSelectedIds.has(item.id)}
+                          onChange={() => toggleAiSchemaNode(item.id)}
+                        />
+                        <div>
+                          <strong>{item.title}</strong>
+                          <span>{item.name}</span>
+                        </div>
+                        <Badge tone="default">{item.type}</Badge>
+                        <Badge tone={item.required ? "warning" : "default"}>{item.required ? "必填" : "可选"}</Badge>
+                      </label>
+                    ))}
+                  </div>
+                  {(aiSchemaPreview.validation.errors.length > 0 || aiSchemaPreview.warnings.length > 0) ? (
+                    <div className="ai-schema-draft-issues">
+                      {aiSchemaPreview.validation.errors.map((error, index) => (
+                        <p key={`error-${index}`}><strong>校验错误：</strong>{formatSchemaIssue(error)}</p>
+                      ))}
+                      {aiSchemaPreview.warnings.map((warning, index) => (
+                        <p key={`warning-${index}`}><strong>AI warning：</strong>{formatSchemaIssue(warning)}</p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="ai-schema-draft-empty">未返回 warning 或校验错误。应用前仍建议检查字段名称、选项和必填规则。</p>
+                  )}
+                  <p className="ai-schema-draft-trace">调用记录：{aiSchemaPreview.generatedBy.llmCallId}</p>
+                </div>
+              ) : null}
+            </div>
+
+            <footer className="ai-schema-draft-dialog__actions">
+              <Button type="button" disabled={aiSchemaGenerating} onClick={() => void handleGenerateAiSchemaDraft()}>
+                {aiSchemaGenerating ? "生成中..." : "生成草稿预览"}
+              </Button>
+              <Button
+                type="button"
+                tone="primary"
+                disabled={aiSchemaPreview === null || aiSchemaGenerating || aiSchemaSelectedIds.size === 0}
+                onClick={handleApplyAiSchemaDraft}
+              >
+                {aiSchemaSelectedIds.size === 0
+                  ? "请选择至少 1 项"
+                  : `应用选中的 ${aiSchemaSelectedIds.size} 项到当前草稿`}
+              </Button>
+              <Button type="button" tone="ghost" disabled={aiSchemaGenerating} onClick={closeAiSchemaDraft}>
+                取消
+              </Button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
+      <div className="schema-builder-statusbar owner-schema-status">
+        <div className="owner-schema-status-summary">
+          <Badge tone={templateStatus.tone}>{templateStatus.label}</Badge>
           <Badge tone={boundVersionNo != null ? "success" : "default"}>
-            任务绑定版本：
             {boundVersionNo != null
-              ? `第 ${boundVersionNo} 版`
+              ? `已发布 · 第 ${boundVersionNo} 版`
               : task.activeSchemaVersionId
-                ? "已绑定已发布版本"
-                : "尚未发布"}
+                ? "已绑定版本"
+                : "未发布"}
           </Badge>
-        </span>
-        <Badge tone="default">所属任务：{task.title || "当前任务"}</Badge>
-        <Badge tone="success">可用字段组件：{serverRegistry.length} 类</Badge>
-        <span>{statusMessage}</span>
+          <Badge tone="primary">第 {schema.schemaDraftRevision ?? 1} 次修改</Badge>
+        </div>
+        <details className="owner-schema-status-details">
+          <summary>状态详情</summary>
+          <dl className="owner-schema-status-details__grid">
+            <div>
+              <dt>模板状态</dt>
+              <dd>{templateStatus.label}</dd>
+            </div>
+            <div>
+              <dt>草稿修订</dt>
+              <dd>第 {schema.schemaDraftRevision ?? 1} 次修改</dd>
+            </div>
+            <div>
+              <dt>任务绑定版本</dt>
+              <dd>
+                {boundVersionNo != null
+                  ? `第 ${boundVersionNo} 版`
+                  : task.activeSchemaVersionId
+                    ? "已绑定已发布版本"
+                    : "尚未发布"}
+              </dd>
+            </div>
+            <div>
+              <dt>所属任务</dt>
+              <dd>{task.title || "当前任务"}</dd>
+            </div>
+            <div>
+              <dt>可用字段组件</dt>
+              <dd>{serverRegistry.length} 类</dd>
+            </div>
+            {statusMessage ? (
+              <div>
+                <dt>当前状态</dt>
+                <dd>{statusMessage}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <p className="owner-schema-status-hint">{templateStatus.hint}</p>
+        </details>
       </div>
-      <p className="schema-builder-status-hint">{templateStatus.hint}</p>
 
       <TaskSetupStepper steps={setupSteps} />
 
@@ -1664,14 +2088,15 @@ async function buildPublishPreview({
   if (activeSchemaVersionId) {
     try {
       const schemaVersion = await fetchSchemaVersion(activeSchemaVersionId);
-      const oldSchema = schemaVersion.snapshot;
+      const oldSchema = readSchemaVersionSnapshot(schemaVersion);
+      if (oldSchema === undefined) {
+        throw new Error("SCHEMA_VERSION_SNAPSHOT_MISSING");
+      }
       compatibilityReport = checkBackwardCompatibility(oldSchema, schema);
       manualMappingSlots = createMigrationPlan(oldSchema, schema).manualMappingSlots;
       isFirstPublish = false;
-    } catch (error) {
-      oldSchemaStatusMessage = error instanceof Error
-        ? `未能加载上一已发布版本，本次仅执行当前草稿本地检查：${error.message}`
-        : "未能加载上一已发布版本，本次仅执行当前草稿本地检查。";
+    } catch {
+      oldSchemaStatusMessage = "未能读取上一已发布版本，本次仅执行当前草稿完整性检查。";
     }
   }
 
@@ -1703,6 +2128,17 @@ async function buildPublishPreview({
   }
 
   return result;
+}
+
+function readSchemaVersionSnapshot(schemaVersion: unknown): LabelHubSchema | undefined {
+  if (!isRecordValue(schemaVersion)) return undefined;
+  const candidate = schemaVersion.snapshot ?? schemaVersion.schema;
+  if (!isRecordValue(candidate) || !isRecordValue(candidate.root)) return undefined;
+  return candidate as unknown as LabelHubSchema;
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function createOwnerPublishAuditPreview(
@@ -1756,6 +2192,352 @@ function readPublishedSchemaVersionNo(schemaVersion: unknown, fallbackSchemaVers
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function normalizeGeneratedSchemaDraft(
+  schemaDraft: unknown,
+  currentSchema: LabelHubSchema,
+  taskId: ID,
+  taskTitle: string,
+  prompt: string,
+  availableFieldNames: string[] = [],
+): LabelHubSchema {
+  if (!isRecord(schemaDraft)) {
+    throw new Error("AI 生成结果不是对象");
+  }
+
+  const rootCandidate = isRecord(schemaDraft.root) ? schemaDraft.root : undefined;
+  const rawChildren = Array.isArray(rootCandidate?.children)
+    ? rootCandidate.children
+    : Array.isArray(schemaDraft.nodes)
+      ? schemaDraft.nodes
+      : undefined;
+  if (rawChildren === undefined) {
+    throw new Error("AI 生成结果缺少 root.children 或 nodes");
+  }
+
+  const usedNodeIds = new Set<string>(["root"]);
+  const usedFieldNames = new Set<string>();
+  const children = rawChildren.map((node, index) => normalizeGeneratedNode(node, index, usedNodeIds, usedFieldNames, availableFieldNames));
+  const now = new Date().toISOString();
+  const generatedTitle = readString(schemaDraft, "title")
+    ?? (isRecord(schemaDraft.meta) ? readString(schemaDraft.meta, "name") : undefined)
+    ?? `${taskTitle} AI 生成模板`;
+
+  return {
+    ...currentSchema,
+    contractVersion: "1.1",
+    schemaId: currentSchema.schemaId,
+    schemaDraftRevision: currentSchema.schemaDraftRevision,
+    status: "DRAFT",
+    meta: {
+      ...currentSchema.meta,
+      name: generatedTitle,
+      description: prompt,
+      taskId,
+      updatedAt: now,
+    },
+    root: {
+      id: "root",
+      kind: "CONTAINER",
+      type: "container.section",
+      title: generatedTitle,
+      children,
+    },
+  };
+}
+
+// AI 生成节点常见机器字段名 → 人类可读中文标题。只用于「展示名称」，不影响 id / name / sourcePath。
+const GENERATED_TITLE_LABELS: Record<string, string> = {
+  show_user_input: "用户输入内容",
+  user_input: "用户输入内容",
+  show_model_response: "模型回答内容",
+  model_response: "模型回答内容",
+  show_reference_answer: "参考答案内容",
+  reference_answer: "参考答案内容",
+  relevance_score: "内容相关性打分",
+  accuracy_score: "内容准确性打分",
+  content_accuracy: "内容准确性打分",
+  format_compliance: "格式合规性打分",
+  safety_score: "安全性打分",
+  safety_compliance: "安全性打分",
+  summary: "总结结论",
+  conclusion: "总结结论",
+  final_conclusion: "总结结论",
+};
+
+// 把 AI 生成节点的「展示标题」转成人类可读中文：
+// 1) 优先保留 AI 已给出的自然语言标题（含中文等非字段名字符时原样返回）；
+// 2) 命中字典的机器字段名 → 中文；
+// 3) 未命中但是 snake_case 机器字段名 → 轻量兜底（去 show_ 前缀、_score 转「打分」）；
+// 4) 实在无法判断 → 保留原值，不硬翻译。
+// 只改展示用 title，不改 id / 保存字段名 / sourcePath / 数据绑定。
+function humanizeGeneratedNodeTitle(rawTitleOrName: string, _nodeKind?: string): string {
+  const value = rawTitleOrName.trim();
+  if (value.length === 0) return value;
+  const key = value.toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(GENERATED_TITLE_LABELS, key)) {
+    return GENERATED_TITLE_LABELS[key];
+  }
+  // 仅当看起来是机器字段名（全小写 ascii snake_case 标识符）才做兜底转换；否则信任 AI 原文。
+  if (!/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/.test(value)) {
+    return value;
+  }
+  let core = value.startsWith("show_") ? value.slice("show_".length) : value;
+  let suffix = "";
+  if (core.endsWith("_score")) {
+    core = core.slice(0, -"_score".length);
+    suffix = "打分";
+  }
+  const readable = core.split("_").filter(Boolean).join(" ").trim();
+  if (readable.length === 0) return value;
+  return suffix ? `${readable} ${suffix}` : readable;
+}
+
+// AI 生成 show.* 展示节点的字段别名组：把「中文标题 / 机器名」按语义归类到真实数据字段候选。
+// 仅用于推断展示节点的 sourcePath，不影响作答字段。
+// 顺序敏感：参考答案组必须排在模型回答组之前——否则 "reference_answer" 会被模型组的裸 "answer" 误命中。
+const SHOW_FIELD_ALIASES: ReadonlyArray<{ canon: RegExp; candidates: string[] }> = [
+  {
+    canon: /(用户|输入|提问|问题|prompt|question|query|user[_-]?input|instruction|^input$|_input$)/i,
+    candidates: ["prompt", "question", "query", "user_input", "instruction", "input"],
+  },
+  {
+    canon: /(参考答案|参考|标准答案|reference[_-]?answer|reference|ground[_-]?truth|gold|expected[_-]?answer)/i,
+    candidates: ["reference_answer", "reference", "ground_truth", "gold", "expected_answer"],
+  },
+  {
+    canon: /(模型回答|模型回复|模型输出|回答|回复|输出|model[_-]?response|model[_-]?answer|answer|response|output|completion)/i,
+    candidates: ["model_response", "model_answer", "answer", "response", "output", "completion"],
+  },
+];
+
+// 推断 AI 生成展示节点应绑定的 sourcePath，尽量指向真实数据字段，避免绑定到不存在的机器名（如 show_model_response）。
+// 优先级：① AI 已给且指向真实字段的 sourcePath → 保留；② name/id 精确匹配真实字段（含去 show_ 前缀）；
+// ③ 别名匹配真实字段；④ 兜底：保留 AI 原 sourcePath，否则 `$.item.sourcePayload.<sanitizedName>`。
+function inferGeneratedShowSourcePath(
+  rawNode: Record<string, unknown>,
+  fallbackId: string,
+  availableFieldNames: string[],
+): string {
+  const pathFor = (field: string) => `$.item.sourcePayload.${field}`;
+  const fieldSet = new Set(availableFieldNames);
+  const byLower = new Map(availableFieldNames.map((f) => [f.toLowerCase(), f]));
+  const rawSourcePath = readString(rawNode, "sourcePath");
+
+  // ① AI 已给 sourcePath 且解析出的字段真实存在 → 保留
+  if (rawSourcePath) {
+    const m = /\$\.item\.sourcePayload\.([A-Za-z0-9_]+)/.exec(rawSourcePath);
+    if (m && fieldSet.has(m[1])) return rawSourcePath;
+  }
+
+  // ② name / id 精确匹配真实字段（也尝试去掉 show_ 前缀）
+  const idCandidates = [readString(rawNode, "name"), readString(rawNode, "id"), fallbackId]
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
+  for (const c of idCandidates) {
+    const lc = c.toLowerCase();
+    if (byLower.has(lc)) return pathFor(byLower.get(lc)!);
+    const stripped = lc.startsWith("show_") ? lc.slice(5) : lc;
+    if (stripped !== lc && byLower.has(stripped)) return pathFor(byLower.get(stripped)!);
+  }
+
+  // ③ 别名匹配：用 title + name + id 文本命中别名组，再在真实字段里找候选（精确或包含 token）
+  if (availableFieldNames.length > 0) {
+    const haystack = [readString(rawNode, "title"), ...idCandidates].filter(Boolean).join(" ");
+    for (const group of SHOW_FIELD_ALIASES) {
+      if (!group.canon.test(haystack)) continue;
+      for (const cand of group.candidates) {
+        if (byLower.has(cand)) return pathFor(byLower.get(cand)!);
+      }
+      const tokenHit = availableFieldNames.find((field) =>
+        group.candidates.some((cand) => field.toLowerCase().includes(cand)),
+      );
+      if (tokenHit) return pathFor(tokenHit);
+    }
+  }
+
+  // ④ 兜底
+  if (rawSourcePath) return rawSourcePath;
+  return pathFor(sanitizeIdentifier(readString(rawNode, "name") ?? fallbackId, fallbackId));
+}
+
+function normalizeGeneratedNode(
+  rawNode: unknown,
+  index: number,
+  usedNodeIds: Set<string>,
+  usedFieldNames: Set<string>,
+  availableFieldNames: string[] = [],
+): SchemaNode {
+  if (!isRecord(rawNode)) {
+    throw new Error(`AI 生成的第 ${index + 1} 个节点不是对象`);
+  }
+
+  const type = normalizeGeneratedNodeType(readString(rawNode, "type"));
+  const baseId = readString(rawNode, "id") ?? readString(rawNode, "name") ?? `ai_node_${index + 1}`;
+  const id = uniqueValue(sanitizeIdentifier(baseId, `ai_node_${index + 1}`), usedNodeIds);
+  usedNodeIds.add(id);
+  const rawTitle = readString(rawNode, "title") ?? readString(rawNode, "label") ?? readString(rawNode, "name") ?? "AI 生成字段";
+  const title = humanizeGeneratedNodeTitle(rawTitle, readString(rawNode, "kind"));
+  const description = readString(rawNode, "description");
+  const baseNode = {
+    ...cloneValue(rawNode),
+    id,
+    type,
+    title,
+    ...(description === undefined ? {} : { description }),
+  };
+
+  if (type === "container.section" || type === "container.group" || type === "container.tabs") {
+    const rawChildren = Array.isArray(rawNode.children) ? rawNode.children : [];
+    return {
+      ...baseNode,
+      kind: "CONTAINER",
+      children: rawChildren.map((child, childIndex) => normalizeGeneratedNode(child, childIndex, usedNodeIds, usedFieldNames, availableFieldNames)),
+    } as SchemaNode;
+  }
+
+  if (type.startsWith("show.")) {
+    return {
+      ...baseNode,
+      kind: "SHOW_ITEM",
+      // 展示节点优先绑定到真实数据字段（复用「数据字段」抽屉的 sourcePayload 字段名）；无法匹配才回退 sanitized name。
+      sourcePath: inferGeneratedShowSourcePath(rawNode, id, availableFieldNames),
+    } as SchemaNode;
+  }
+
+  if (type === "llm.assist") {
+    return {
+      ...baseNode,
+      kind: "LLM_ASSIST",
+      trigger: rawNode.trigger === "ON_FIELD_CHANGE" ? "ON_FIELD_CHANGE" : "MANUAL",
+      inputBindings: isRecord(rawNode.inputBindings) ? rawNode.inputBindings : {},
+      outputMode: rawNode.outputMode === "PREFILL" || rawNode.outputMode === "STRUCTURED" ? rawNode.outputMode : "SUGGESTION",
+    } as SchemaNode;
+  }
+
+  const fieldName = uniqueValue(
+    sanitizeIdentifier(readString(rawNode, "name") ?? id, `field_${index + 1}`),
+    usedFieldNames,
+  );
+  usedFieldNames.add(fieldName);
+  const fieldNode = {
+    ...baseNode,
+    kind: "FIELD",
+    name: fieldName,
+    required: typeof rawNode.required === "boolean" ? rawNode.required : false,
+  };
+  if (type.startsWith("choice.")) {
+    return {
+      ...fieldNode,
+      options: normalizeGeneratedOptions(rawNode.options),
+    } as SchemaNode;
+  }
+  return fieldNode as SchemaNode;
+}
+
+function normalizeGeneratedNodeType(type: string | undefined): NodeType {
+  const allowed = new Set<NodeType>([
+    "input.text",
+    "input.textarea",
+    "input.richtext",
+    "choice.radio",
+    "choice.checkbox",
+    "choice.select",
+    "choice.tags",
+    "upload.file",
+    "upload.image",
+    "data.json",
+    "show.text",
+    "show.richtext",
+    "show.image",
+    "show.file",
+    "show.json",
+    "container.group",
+    "container.tabs",
+    "container.section",
+    "llm.assist",
+  ]);
+  return type !== undefined && allowed.has(type as NodeType) ? type as NodeType : "input.textarea";
+}
+
+function normalizeGeneratedOptions(options: unknown): Array<{ label: string; value: string }> {
+  if (!Array.isArray(options) || options.length === 0) {
+    return [
+      { label: "是", value: "yes" },
+      { label: "否", value: "no" },
+    ];
+  }
+  return options.map((option, index) => {
+    if (!isRecord(option)) {
+      const value = sanitizeIdentifier(String(option), `option_${index + 1}`);
+      return { label: String(option), value };
+    }
+    const label = readString(option, "label") ?? readString(option, "text") ?? readString(option, "value") ?? `选项 ${index + 1}`;
+    const value = sanitizeIdentifier(readString(option, "value") ?? label, `option_${index + 1}`);
+    return { label, value };
+  });
+}
+
+function sanitizeIdentifier(value: string, fallback: string): string {
+  const normalized = value
+    .trim()
+    .replace(/[^a-zA-Z0-9_\u4e00-\u9fa5-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized.length > 0 ? normalized : fallback;
+}
+
+function readString(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+// 选择性导入的可选节点列表：只列出顶层节点。container.* 作为整体一项，不展开子节点。
+function collectSelectableNodeSummaries(schema: LabelHubSchema): Array<{
+  id: string;
+  title: string;
+  name: string;
+  type: string;
+  required: boolean;
+}> {
+  return schema.root.children.map((node) => ({
+    id: node.id,
+    title: node.title || "未命名字段",
+    name: node.kind === "FIELD" ? node.name : "展示/辅助组件",
+    type: node.type,
+    required: node.kind === "FIELD" ? node.required === true : false,
+  }));
+}
+
+// 「只选作答字段」判定：仅 choice.* 与 input.*，不含 show.* 及其它展示/容器类型。
+function isAnswerFieldType(type: string): boolean {
+  return type.startsWith("choice.") || type.startsWith("input.");
+}
+
+// 根据勾选的顶层节点 id 过滤预览 schema，得到只含选中节点的草稿。
+// 预览 schema 已由 normalizeGeneratedSchemaDraft 规范化（id 稳定且唯一），这里只做子集过滤，不重复 normalize。
+function buildSelectedSchemaDraft(schema: LabelHubSchema, selectedNodeIds: Set<string>): LabelHubSchema {
+  return {
+    ...schema,
+    meta: {
+      ...schema.meta,
+      updatedAt: new Date().toISOString(),
+    },
+    root: {
+      ...schema.root,
+      children: schema.root.children.filter((node) => selectedNodeIds.has(node.id)),
+    },
+  };
+}
+
+function formatSchemaIssue(issue: unknown): string {
+  if (typeof issue === "string") return issue;
+  if (isRecord(issue)) {
+    const message = readString(issue, "message");
+    const path = readString(issue, "path");
+    if (message !== undefined && path !== undefined) return `${message}（${path}）`;
+    if (message !== undefined) return message;
+  }
+  return "未命名问题";
 }
 
 function createConditionRule(fields: FieldNode[]): ConditionRuleDraft {
@@ -1980,6 +2762,165 @@ function resolveTaskId(taskId: string | undefined, fallbackTaskId: ID): ID {
 
 function appendNodeToRoot(schema: LabelHubSchema, type: NodeType): LabelHubSchema {
   const node = prepareNodeForAppsWebInsert(schema, createDefaultNode(type));
+  return {
+    ...schema,
+    meta: { ...schema.meta, updatedAt: new Date().toISOString() },
+    root: { ...schema.root, children: [...schema.root.children, node] },
+  };
+}
+
+// ── 数据字段面板 ────────────────────────────────────────────────────────────
+// 轻量 Owner 体验：读取已导入数据的 sourcePayload 字段，一键添加为 show.text 展示文本。
+// 不做字段转换 / 自动 Schema 生成；友好名映射仅对通用字段名做中文美化，未命中回退字段名。
+
+type DataFieldKind = "文本" | "数字" | "布尔" | "数组" | "对象" | "链接" | "空值";
+
+// 字段角色：推荐展示 / 元数据 / 疑似答案(隐藏标签) / 其他。按字段名启发式归类（通用，不写死数据集）。
+type FieldRole = "recommended" | "metadata" | "answer" | "other";
+
+interface DataFieldInfo {
+  name: string;
+  kind: DataFieldKind;
+  sample: string;
+  role: FieldRole;
+}
+
+const RECOMMENDED_FIELD_NAMES = new Set([
+  "prompt", "question", "query", "instruction",
+  "content", "content_markdown", "text", "body", "passage",
+  "model_answer", "answer", "response",
+  "model_a_answer", "model_b_answer", "reference",
+]);
+const METADATA_FIELD_NAMES = new Set([
+  "id", "lang", "language", "category", "difficulty",
+  "source", "tags", "created_at", "updated_at", "media_type", "type",
+]);
+const ANSWER_FIELD_NAMES = new Set([
+  "margin", "label", "gold", "ground_truth", "groundtruth", "target",
+  "winner", "chosen", "score", "expected_label", "correct_answer",
+  "gold_label", "gt", "preference", "preferred", "verdict", "is_correct",
+]);
+
+// 安全优先：先判疑似答案/隐藏标签（防答案泄露），再推荐展示，再元数据，最后兜底其他。
+function classifyFieldRole(name: string): FieldRole {
+  const n = name.toLowerCase();
+  const tokens = n.split(/[^a-z0-9]+/).filter(Boolean);
+  const hasToken = (set: Set<string>) => tokens.some((t) => set.has(t));
+  if (
+    ANSWER_FIELD_NAMES.has(n) ||
+    hasToken(ANSWER_FIELD_NAMES) ||
+    /ground_?truth|gold|winner|chosen|correct|expected_label|is_?correct/.test(n)
+  ) {
+    return "answer";
+  }
+  if (RECOMMENDED_FIELD_NAMES.has(n) || hasToken(RECOMMENDED_FIELD_NAMES)) return "recommended";
+  if (
+    METADATA_FIELD_NAMES.has(n) ||
+    hasToken(METADATA_FIELD_NAMES) ||
+    /^id$|_id$|_at$|^created|^updated/.test(n)
+  ) {
+    return "metadata";
+  }
+  return "other";
+}
+
+const FIELD_SECTIONS: ReadonlyArray<{ role: FieldRole; title: string; desc: string }> = [
+  { role: "recommended", title: "推荐展示字段", desc: "适合直接展示给标注员的内容字段。" },
+  { role: "metadata", title: "元数据字段", desc: "数据的辅助信息，一般不必展示给标注员。" },
+  { role: "answer", title: "疑似答案 / 隐藏标签字段", desc: "可能是答案或隐藏标签，默认禁止添加以防泄露。" },
+  { role: "other", title: "其他字段", desc: "无法自动判断用途的字段，可按需添加。" },
+];
+
+const FRIENDLY_FIELD_TITLES: Record<string, string> = {
+  prompt: "用户问题",
+  model_answer: "模型回答",
+  reference: "参考答案",
+  expected_dimensions: "期望评估维度",
+  content_markdown: "Markdown 内容",
+  media_url: "媒体链接",
+};
+
+function friendlyFieldTitle(fieldName: string): string {
+  return FRIENDLY_FIELD_TITLES[fieldName] ?? fieldName;
+}
+
+function isUrlLikeValue(value: string): boolean {
+  const v = value.trim();
+  return /^https?:\/\//i.test(v) || /^\/\//.test(v);
+}
+
+function inferDataFieldKind(value: unknown): DataFieldKind {
+  if (value === null || value === undefined || value === "") return "空值";
+  if (Array.isArray(value)) return value.length === 0 ? "空值" : "数组";
+  if (typeof value === "boolean") return "布尔";
+  if (typeof value === "number") return "数字";
+  if (typeof value === "object") return "对象";
+  if (typeof value === "string") return isUrlLikeValue(value) ? "链接" : "文本";
+  return "文本";
+}
+
+function formatDataFieldSample(value: unknown): string {
+  if (value === null || value === undefined) return "（空值）";
+  let text: string;
+  if (typeof value === "string") text = value;
+  else if (typeof value === "number" || typeof value === "boolean") text = String(value);
+  else {
+    try {
+      text = JSON.stringify(value);
+    } catch {
+      text = String(value);
+    }
+  }
+  text = text.replace(/\s+/g, " ").trim();
+  if (text === "") return "（空值）";
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+}
+
+// 从已导入 items 派生字段列表：字段名跨条 union（保序），示例值取首个有值样本（无则取首条原值）。
+function collectDataFields(items: DatasetItem[]): DataFieldInfo[] {
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items.slice(0, 50)) {
+    for (const key of Object.keys(item.sourcePayload ?? {})) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        order.push(key);
+      }
+    }
+  }
+  return order.map((name) => {
+    let sampleValue: unknown;
+    for (const item of items) {
+      const v = (item.sourcePayload ?? {})[name];
+      const empty = v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+      if (!empty) {
+        sampleValue = v;
+        break;
+      }
+    }
+    if (sampleValue === undefined && items.length > 0) {
+      sampleValue = (items[0].sourcePayload ?? {})[name];
+    }
+    return {
+      name,
+      kind: inferDataFieldKind(sampleValue),
+      sample: formatDataFieldSample(sampleValue),
+      role: classifyFieldRole(name),
+    };
+  });
+}
+
+// 一键添加：创建 show.text 节点，绑定原始字段并套用友好标题；去掉默认空 fallback，
+// 使字段缺失时能命中 ShowItemRenderer 的"字段不存在"友好提示。
+function appendShowItemField(schema: LabelHubSchema, fieldName: string): LabelHubSchema {
+  const base = createDefaultNode("show.text") as ShowItemNode;
+  const showNode = {
+    ...base,
+    title: friendlyFieldTitle(fieldName),
+    sourcePath: `$.item.sourcePayload.${fieldName}`,
+    transform: undefined,
+  } as ShowItemNode;
+  const node = prepareNodeForAppsWebInsert(schema, showNode);
   return {
     ...schema,
     meta: { ...schema.meta, updatedAt: new Date().toISOString() },

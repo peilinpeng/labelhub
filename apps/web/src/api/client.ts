@@ -1,5 +1,22 @@
 import type { ApiError } from "@labelhub/contracts";
 
+/**
+ * 携带 HTTP 状态码与后端错误码的请求错误。
+ * 调用方可据此区分 409（REVISION_CONFLICT）、422（VALIDATION_FAILED）、
+ * 502（LLM_ASSIST_FAILED）等，做就地的软提示与恢复，而非一律当未知错误。
+ * 仍是 Error 子类，原有 `instanceof Error` / `.message` 的调用方不受影响。
+ */
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 const ROLE_CREDENTIALS: Record<string, { email: string; password: string }> = {
   OWNER:    { email: "owner@labelhub.test",    password: "Seed@1234" },
   LABELER:  { email: "labeler@labelhub.test",  password: "Seed@1234" },
@@ -97,6 +114,17 @@ export async function apiPatch<T>(url: string, body: unknown): Promise<T> {
   return handleResponse<T>(response);
 }
 
+export async function apiDelete<T = void>(url: string): Promise<T> {
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      "Idempotency-Key": crypto.randomUUID(),
+      ...getAuthHeader(),
+    },
+  });
+  return handleResponse<T>(response);
+}
+
 /** 上传二进制文件内容（数据集导入用）。不发 Idempotency-Key，避免中间件按写操作缓存。 */
 export async function apiUploadBinary(url: string, file: Blob, contentType: string): Promise<void> {
   const response = await fetch(url, {
@@ -108,6 +136,43 @@ export async function apiUploadBinary(url: string, file: Blob, contentType: stri
     const text = await response.text().catch(() => "");
     throw new Error(`文件上传失败 (${response.status}) ${text.slice(0, 200)}`);
   }
+}
+
+/**
+ * 下载二进制制品（导出文件等）。带认证，失败时抛 ApiRequestError 供调用方就地提示。
+ * 返回 blob 与从 Content-Disposition 解析出的文件名（可能为 null）。
+ */
+export async function apiGetBlob(url: string): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await fetch(url, { headers: { ...getAuthHeader() } });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    let message: string | undefined;
+    let code: string | undefined;
+    try {
+      const err = JSON.parse(text) as ApiError;
+      message = err?.message;
+      code = err?.code;
+    } catch {
+      // 非 JSON 错误体：保留默认提示。
+    }
+    throw new ApiRequestError(
+      message ?? `Request failed: ${response.status} ${response.statusText}`,
+      response.status,
+      code,
+    );
+  }
+  const blob = await response.blob();
+  return { blob, filename: parseContentDispositionFilename(response.headers.get("content-disposition")) };
+}
+
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8?.[1]) {
+    try { return decodeURIComponent(utf8[1].trim()); } catch { /* fall through */ }
+  }
+  const quoted = /filename="?([^";]+)"?/i.exec(header);
+  return quoted?.[1]?.trim() ?? null;
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -122,7 +187,11 @@ async function handleResponse<T>(response: Response): Promise<T> {
     // 这里只把 401 当普通错误抛出，由各调用方就地做软提示（OwnerAIPage 等已有 catch 处理）；
     // 真正的会话失效会导致所有请求 401，登录态在下次角色校验时自然回到登录流程。
     const error = data as ApiError | null;
-    throw new Error(error?.message ?? `Request failed: ${response.status} ${response.statusText}`);
+    throw new ApiRequestError(
+      error?.message ?? `Request failed: ${response.status} ${response.statusText}`,
+      response.status,
+      error?.code,
+    );
   }
   return unwrapDataEnvelope(data) as T;
 }

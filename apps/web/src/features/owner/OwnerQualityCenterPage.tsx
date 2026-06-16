@@ -15,6 +15,7 @@ interface OwnerQualityCenterPageProps {
 }
 
 type QualityTabId = "ai" | "review" | "patch" | "export" | "audit";
+type AuditFilter = "all" | "risk";
 
 // AI Assist 建议状态人话化（看板列展示）。
 const AI_ASSIST_STATUS_LABELS: Partial<Record<AuditEventType, string>> = {
@@ -121,6 +122,10 @@ function countType(events: AuditEventRecord[], type: AuditEventType): number {
   return events.filter((event) => event.type === type).length;
 }
 
+function isRiskEvent(event: AuditEventRecord): boolean {
+  return event.severity !== "INFO";
+}
+
 // 富事件看板：人话事件名 + 角色 + 时间 + 严重度 + 摘要 + 关联实体，绝不展示原始 type/payload。
 function QualityEventBoard({
   title,
@@ -138,7 +143,7 @@ function QualityEventBoard({
   emptyText: string;
   error: string | null;
   variant?: "default" | "ai" | "patch";
-  secondary?: { to?: string; label: string; disabledHint?: string };
+  secondary?: { to?: string; label: string; disabledHint?: string; onClick?: () => void };
   taskTitleOf: (taskId: string) => string | undefined;
 }) {
   return (
@@ -150,7 +155,11 @@ function QualityEventBoard({
         </div>
         <div className="quality-board__head-aside">
           <Badge tone={events.length > 0 ? "primary" : "default"}>最近 {events.length} 条</Badge>
-          {secondary?.to ? (
+          {secondary?.onClick ? (
+            <button className="quality-board__link quality-board__link--button" type="button" onClick={secondary.onClick}>
+              {secondary.label} →
+            </button>
+          ) : secondary?.to ? (
             <Link className="quality-board__link" to={secondary.to}>
               {secondary.label} →
             </Link>
@@ -232,6 +241,7 @@ function OwnerQualityCenterContent() {
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<QualityTabId>("ai");
+  const [auditFilter, setAuditFilter] = useState<AuditFilter>("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -286,7 +296,7 @@ function OwnerQualityCenterContent() {
   const stats = useMemo(() => {
     return {
       recentAudit: events.length,
-      risk: events.filter((event) => event.severity !== "INFO").length,
+      risk: events.filter(isRiskEvent).length,
       aiAccepted: countType(events, "AI_ASSIST_ACCEPTED"),
       aiEditAccepted: countType(events, "AI_ASSIST_EDITED"),
       aiDismissed: countType(events, "AI_ASSIST_DISMISSED"),
@@ -306,6 +316,13 @@ function OwnerQualityCenterContent() {
   const patchEvents = useMemo(() => events.filter((event) => isPatchSignal(event.type)), [events]);
   const exportEvents = useMemo(() => events.filter((event) => isExportSignal(event.type)), [events]);
   const auditEvents = events;
+  const riskEvents = useMemo(() => auditEvents.filter(isRiskEvent), [auditEvents]);
+  const visibleAuditEvents = auditFilter === "risk" ? riskEvents : auditEvents;
+
+  const showAuditRecords = (filter: AuditFilter) => {
+    setAuditFilter(filter);
+    setActiveTab("audit");
+  };
 
   // 分段看板配置：一次只展示一个，tab 上的数量来自真实 events。默认 AI 预审。
   const boards = useMemo(
@@ -322,9 +339,7 @@ function OwnerQualityCenterContent() {
             variant="ai"
             error={eventsError}
             emptyText="暂无 AI 质量线索。AI 预审产出或审核员处理 AI 建议后，这里会显示相关记录。"
-            secondary={resolvedTaskId
-              ? { to: `/owner/tasks/${resolvedTaskId}/ai-precheck`, label: "配置 AI 预审规则" }
-              : { label: "配置 AI 预审规则", disabledHint: "请先创建任务后再配置 AI 预审规则。" }}
+            secondary={{ label: "查看审计追溯", onClick: () => showAuditRecords("all") }}
             taskTitleOf={taskTitleOf}
           />
         ),
@@ -385,16 +400,29 @@ function OwnerQualityCenterContent() {
         node: (
           <QualityEventBoard
             title="审计与追溯"
-            description="最近的标注、审核、AI 检查、导出与模板发布动作，按时间倒序。"
-            events={auditEvents.slice(0, 8)}
+            description={
+              auditFilter === "risk"
+                ? "仅看风险信号：当前显示 WARNING / ERROR 事件。"
+                : "显示当前已加载的最近 100 条审计事件。"
+            }
+            events={visibleAuditEvents}
             error={eventsError}
-            emptyText="暂无审计记录。系统产生标注、审核、AI 检查、导出或模板发布动作后，这里会自动记录。"
+            emptyText={
+              auditFilter === "risk"
+                ? "当前已加载审计事件中暂无 WARNING / ERROR 风险信号。"
+                : "暂无审计记录。系统产生标注、审核、AI 检查、导出或模板发布动作后，这里会自动记录。"
+            }
+            secondary={
+              auditFilter === "risk"
+                ? { label: "查看已加载审计记录", onClick: () => showAuditRecords("all") }
+                : undefined
+            }
             taskTitleOf={taskTitleOf}
           />
         ),
       },
     ],
-    [aiEvents, reviewEvents, patchEvents, exportEvents, auditEvents, eventsError, resolvedTaskId, taskTitleOf],
+    [aiEvents, reviewEvents, patchEvents, exportEvents, auditEvents, auditFilter, eventsError, riskEvents, taskTitleOf, visibleAuditEvents],
   );
 
   const activeBoard = boards.find((board) => board.id === activeTab) ?? boards[0];
@@ -438,7 +466,14 @@ function OwnerQualityCenterContent() {
           </OverviewGroup>
           <OverviewGroup title="追溯记录">
             <OverviewStat label="最近审计事件" value={stats.recentAudit} />
-            <OverviewStat label="最近风险信号" value={stats.risk} tone="warning" />
+            <OverviewStat
+              label="最近风险信号"
+              value={stats.risk}
+              tone="warning"
+              active={activeTab === "audit" && auditFilter === "risk"}
+              hint="点击查看风险事件"
+              onClick={() => showAuditRecords("risk")}
+            />
           </OverviewGroup>
         </div>
       </section>
@@ -483,15 +518,39 @@ function OverviewStat({
   label,
   value,
   tone = "default",
+  active = false,
+  hint,
+  onClick,
 }: {
   label: string;
   value: number | string;
   tone?: "default" | "primary" | "success" | "warning";
+  active?: boolean;
+  hint?: string;
+  onClick?: () => void;
 }) {
-  return (
-    <div className={`quality-overview-stat quality-overview-stat--${tone}`}>
+  const className = [
+    "quality-overview-stat",
+    `quality-overview-stat--${tone}`,
+    onClick ? "quality-overview-stat--clickable" : "",
+    active ? "quality-overview-stat--active" : "",
+  ].filter(Boolean).join(" ");
+
+  const content = (
+    <>
       <span>{label}</span>
       <strong>{value}</strong>
+      {hint ? <small>{hint}</small> : null}
+    </>
+  );
+
+  return onClick ? (
+    <button className={className} type="button" onClick={onClick}>
+      {content}
+    </button>
+  ) : (
+    <div className={className}>
+      {content}
     </div>
   );
 }

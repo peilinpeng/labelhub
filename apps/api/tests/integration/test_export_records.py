@@ -34,6 +34,24 @@ def test_build_passport_basic(client, auth, db_session):
     assert passport["changedFieldNames"] == []
 
 
+def test_build_passport_audit_event_count(client, auth, db_session):
+    """auditEventCount 取合规账本 audit_logs 中本提交的治理动作数，且与直查一致（不再恒为 0）。"""
+    from app.models.audit import AuditLog
+
+    ctx = setup_published_task(client, db_session, auth["OWNER"])
+    sub = _make_accepted_submission(client, auth, db_session, ctx["task_id"], {"summary": "ans"})
+
+    expected = (
+        db_session.query(AuditLog)
+        .filter_by(entity_type="SUBMISSION", entity_id=sub.id)
+        .count()
+    )
+    passport = build_passport(db_session, sub)
+    # 经过 claim+submit 的真实链路至少写了 SUBMISSION_CREATED / AI_REVIEW_ENQUEUED 等审计
+    assert expected >= 1
+    assert passport["auditEventCount"] == expected
+
+
 def test_build_passport_with_reviewer_patches(client, auth, db_session):
     ctx = setup_published_task(client, db_session, auth["OWNER"])
     sub = _make_accepted_submission(client, auth, db_session, ctx["task_id"], {"summary": "原始"})
@@ -49,8 +67,65 @@ def test_build_passport_with_reviewer_patches(client, auth, db_session):
     passport = build_passport(db_session, sub)
     assert passport["reviewerPatchCount"] == 1
     assert passport["changedFieldNames"] == ["summary"]
-    # finalAnswerHash 基于应用 patch 后的最终答案
+    # 直接调用未传 exported_answers → 回退到应用 patch 后的最终答案
     assert passport["finalAnswerHash"] == hash_canonical_json({"summary": "修正后"})
+
+
+def test_passport_hash_respects_answer_source(client, auth, db_session):
+    """方案A 回归：finalAnswerHash 必须对“实际导出的那份答案”取，而非恒为补丁后答案。
+    ORIGINAL 导出 → 指纹=原始答案；PATCHED 导出 → 指纹=补丁后答案。"""
+    ctx = setup_published_task(client, db_session, auth["OWNER"])
+    sub = _make_accepted_submission(client, auth, db_session, ctx["task_id"], {"summary": "原始"})
+    db_session.add(ReviewResult(
+        id="rev_" + uuid4().hex, submission_id=sub.id, schema_version_id=sub.schema_version_id,
+        stage="HUMAN_REVIEW", decision="PASS",
+        result_json={"patches": [{"fieldName": "summary", "nextValue": "修正后"}]},
+        actor_id="usr_reviewer_1",
+    ))
+    db_session.commit()
+
+    original = {"summary": "原始"}
+    patched = {"summary": "修正后"}
+    # ORIGINAL 导出：指纹对原始答案（修复前这里会错误地等于补丁后答案）
+    p_original = build_passport(db_session, sub, exported_answers=original)
+    assert p_original["finalAnswerHash"] == hash_canonical_json(original)
+    # PATCHED 导出：指纹对补丁后答案
+    p_patched = build_passport(db_session, sub, exported_answers=patched)
+    assert p_patched["finalAnswerHash"] == hash_canonical_json(patched)
+    # patch 元信息与 answerSource 无关，两种导出都如实反映审核改动
+    assert p_original["reviewerPatchCount"] == p_patched["reviewerPatchCount"] == 1
+    assert p_original["changedFieldNames"] == ["summary"]
+
+
+def test_passport_ai_assist_counts(client, auth, db_session):
+    """aiAccepted/Edited/Dismissed 来自 ai_assist_actions；aiAssistUsed 只在被采纳/改采纳时为真。"""
+    from app.models.ai_assist import AiAssistAction
+
+    ctx = setup_published_task(client, db_session, auth["OWNER"])
+    sub = _make_accepted_submission(client, auth, db_session, ctx["task_id"], {"summary": "ans"})
+
+    # 只 dismiss → 看了但没用，aiAssistUsed 应为 False
+    db_session.add(AiAssistAction(
+        id="aaa_" + uuid4().hex, suggestion_id="aas_x_0", submission_id=sub.id,
+        action="dismiss", resulting_status="DISMISSED", actor_json={"id": "usr_reviewer_1"},
+    ))
+    db_session.commit()
+    p = build_passport(db_session, sub)
+    assert p["aiDismissedCount"] == 1
+    assert p["aiAcceptedCount"] == 0 and p["aiEditedCount"] == 0
+    assert p["aiAssistUsed"] is False
+
+    # 再加一条 accept → 真正影响了答案，aiAssistUsed 翻 True
+    db_session.add(AiAssistAction(
+        id="aaa_" + uuid4().hex, suggestion_id="aas_x_1", submission_id=sub.id,
+        action="accept", resulting_status="ACCEPTED", actor_json={"id": "usr_reviewer_1"},
+    ))
+    db_session.commit()
+    p2 = build_passport(db_session, sub)
+    assert p2["aiAcceptedCount"] == 1 and p2["aiDismissedCount"] == 1
+    assert p2["aiAssistUsed"] is True
+    # qualityLedgerRef 带上 AI 辅助动作事件 id（契约对齐）
+    assert len(p2["qualityLedgerRef"]["aiAssistEventIds"]) == 2
 
 
 def test_batch_hash_order_independent(db_session):

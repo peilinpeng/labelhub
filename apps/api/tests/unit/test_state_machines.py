@@ -43,6 +43,7 @@ class TestSubmissionStateMachine:
     @pytest.mark.parametrize("current,command,expected", [
         ("SUBMITTED", "enqueueAIReview", "AI_REVIEWING"),
         ("AI_REVIEWING", "aiReviewPass", "AI_PASSED"),
+        ("AI_REVIEWING", "aiReviewAutoAccept", "ACCEPTED"),
         ("AI_REVIEWING", "aiReviewReturn", "RETURNED"),
         ("AI_REVIEWING", "aiReviewNeedHuman", "NEEDS_HUMAN_REVIEW"),
         ("AI_REVIEWING", "aiReviewFailedToHuman", "NEEDS_HUMAN_REVIEW"),
@@ -79,6 +80,7 @@ class TestAssignmentStateMachine:
         ("DRAFTING", "submitAssignment", "SUBMITTED"),
         ("RETURNED", "submitAssignment", "SUBMITTED"),
         ("SUBMITTED", "humanReviewPass", "ACCEPTED"),
+        ("SUBMITTED", "aiReviewAutoAccept", "ACCEPTED"),
         ("SUBMITTED", "aiReviewReturn", "RETURNED"),
         ("CLAIMED", "expireAssignment", "EXPIRED"),
     ])

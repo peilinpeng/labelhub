@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Role } from "../../app/routes";
-import { batchDecideReview, claimReview, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
-import type { ReviewDecisionRequest } from "@labelhub/contracts";
+import { batchDecideReview, claimReview, fetchReviewQueueCount, getReviewDetail, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
+import type { AIPrecheckDecision, ReviewDecisionRequest } from "@labelhub/contracts";
 import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import { formatBeijingClock } from "../../utils/formatTime";
 import { getQueueDisplay } from "./review-display";
@@ -12,6 +12,17 @@ interface ReviewerWorkspaceProps {
 }
 
 type QueueFilter = "pending" | "passed" | "returned" | "manual" | "failed";
+
+type DimensionScore = {
+  key: string;
+  score: number | null;
+  reason?: string;
+};
+
+type DimensionScoreState =
+  | { status: "loading"; scores: DimensionScore[]; aiDecision?: null }
+  | { status: "ready"; scores: DimensionScore[]; aiDecision: AIPrecheckDecision | null }
+  | { status: "error"; scores: DimensionScore[]; aiDecision?: null };
 
 function statusLabel(status: ReviewQueueItem["submission"]["status"]): string {
   if (status === "AI_PASSED") return "建议通过";
@@ -26,6 +37,53 @@ function statusTone(status: ReviewQueueItem["submission"]["status"]): "success" 
   if (status === "NEEDS_HUMAN_REVIEW" || status === "HUMAN_REVIEWING") return "warning";
   if (status === "RETURNED" || status === "REJECTED") return "danger";
   return "default";
+}
+
+// AI 预审代理给出的「原始建议」，与人工最终决策相互独立。
+// 之前徽章误把 submission.status（含人工结论）当成「AI 建议」，会出现
+// 「四维全通过却显示 AI 建议已打回」的自相矛盾——实为人工打回，AI 其实建议通过。
+function aiDecisionLabel(decision: AIPrecheckDecision | null | undefined): string {
+  if (decision === "PASS") return "建议通过";
+  if (decision === "RETURN") return "建议打回";
+  if (decision === "NEED_HUMAN_REVIEW") return "建议转人工";
+  return "未产出";
+}
+
+function aiDecisionTone(decision: AIPrecheckDecision | null | undefined): "success" | "warning" | "danger" | "default" {
+  if (decision === "PASS") return "success";
+  if (decision === "RETURN") return "danger";
+  if (decision === "NEED_HUMAN_REVIEW") return "warning";
+  return "default";
+}
+
+// 终态结论徽章。RETURNED/REJECTED/ACCEPTED 既可能由人工作出，也可能由 AI 自动流转
+// （AUTO_PASS_RETURN 策略）。据后端 humanDecided 区分归属，避免把 AI 自动决策误标成「人工」：
+//   人工已介入 → 「人工 · 已通过/已打回」
+//   AI 自动流转 → 「AI 自动 · 已通过/已打回」
+// 尚未产生终态（待审/审核中）时返回 null，不展示。
+function outcomeBadge(
+  status: ReviewQueueItem["submission"]["status"],
+  humanDecided: boolean | undefined,
+): { actor: string; label: string } | null {
+  let label: string | null = null;
+  if (status === "ACCEPTED") label = "已通过";
+  else if (status === "RETURNED" || status === "REJECTED") label = "已打回";
+  if (label === null) return null;
+  return { actor: humanDecided ? "人工" : "AI 自动", label };
+}
+
+// 侧边栏队列徽章。此前误用 statusLabel(submission.status)：NEEDS_HUMAN_REVIEW/
+// HUMAN_REVIEWING 被一律标成「建议打回」，但该状态仅表示「已转人工」，不代表 AI 结论
+// （advisory 模式下高分提交也进此状态）——导致整列恒显「建议打回」，与详情页头部自相矛盾。
+// 现按详情页头部同款逻辑取真实 aiDecision / flowMode：
+//   终态 → 已通过/已打回；HUMAN_REVIEW_ONLY → 中性质检提示；否则展示 AI 原始建议。
+function queueBadge(item: ReviewQueueItem): { label: string; tone: "success" | "warning" | "danger" | "default" } {
+  const status = item.submission.status;
+  if (status === "ACCEPTED") return { label: "已通过", tone: "success" };
+  if (status === "RETURNED" || status === "REJECTED") return { label: "已打回", tone: "danger" };
+  if (item.flowMode === "HUMAN_REVIEW_ONLY") return { label: "质检提示", tone: "default" };
+  const decision = item.aiDecision as AIPrecheckDecision | null;
+  return { label: aiDecisionLabel(decision), tone: aiDecisionTone(decision) };
 }
 
 function formatTime(value: string): string {
@@ -49,41 +107,61 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
   const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([]);
   const [batchMessage, setBatchMessage] = useState<string | null>(null);
   const [batching, setBatching] = useState(false);
+  const [dimensionScoresBySubmissionId, setDimensionScoresBySubmissionId] = useState<Record<string, DimensionScoreState>>({});
+  const requestedDimensionScoreIdsRef = useRef<Set<string>>(new Set());
   // 批量打回统一原因：复用 decision 的 reason / comment 字段，打回必填，不再下发伪造默认文案。
   const [batchReturnReason, setBatchReturnReason] = useState("");
+  // Tab 数字：独立于当前选中 Tab 的全量统计。不能从当前 Tab 的 submissions 客户端聚合，
+  // 否则非当前 Tab（已通过 / 已打回）会恒为 0，必须点击该 Tab 后才显示真实数字。
+  const [counts, setCounts] = useState({ pending: 0, passed: 0, returned: 0, manual: 0, failed: 0 });
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        setLoading(true);
-        const data = await listReviewQueue({ status: reviewQueueStatusFor(filter) });
-        // 后端/mock 可能返回缺少嵌套 submission 的脏数据，统一在入口过滤，
-        // 保证下游 stats / 过滤 / 选中 / 渲染读取 item.submission.* 时不会崩溃。
-        const safeData = data.filter(
-          (item): item is ReviewQueueItem =>
-            item != null && item.submission != null && typeof item.submission.id === "string",
-        );
-        setSubmissions(safeData);
-        setSelectedId((current) => current ?? safeData[0]?.submission?.id ?? null);
-        setSelectedBatchIds([]);
-        setOfflineNotice(null);
-      } catch (error) {
-        console.warn("审核队列加载失败：", error);
-        setSubmissions([]);
-        setSelectedId(null);
-        setOfflineNotice("审核队列加载失败，请稍后重试。");
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const loadQueue = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await listReviewQueue({ status: reviewQueueStatusFor(filter) });
+      // 后端/mock 可能返回缺少嵌套 submission 的脏数据，统一在入口过滤，
+      // 保证下游过滤 / 选中 / 渲染读取 item.submission.* 时不会崩溃。
+      const safeData = data.filter(
+        (item): item is ReviewQueueItem =>
+          item != null && item.submission != null && typeof item.submission.id === "string",
+      );
+      setSubmissions(safeData);
+      setSelectedId((current) => current ?? safeData[0]?.submission?.id ?? null);
+      setSelectedBatchIds([]);
+      setOfflineNotice(null);
+    } catch (error) {
+      console.warn("审核队列加载失败：", error);
+      setSubmissions([]);
+      setSelectedId(null);
+      setOfflineNotice("审核队列加载失败，请稍后重试。");
+    } finally {
+      setLoading(false);
+    }
   }, [filter]);
 
-  const stats = useMemo(() => {
-    const pending = submissions.filter((item) => item.submission.status === "NEEDS_HUMAN_REVIEW").length;
-    const passed = submissions.filter((item) => item.submission.status === "AI_PASSED" || item.submission.status === "ACCEPTED").length;
-    const returned = submissions.filter((item) => item.submission.status === "RETURNED" || item.submission.status === "REJECTED").length;
-    return { pending, passed, returned, manual: pending, failed: 0 };
-  }, [submissions]);
+  const loadCounts = useCallback(async () => {
+    try {
+      const [pending, passed, returned] = await Promise.all([
+        fetchReviewQueueCount("NEEDS_HUMAN_REVIEW"),
+        fetchReviewQueueCount("ACCEPTED"),
+        fetchReviewQueueCount("RETURNED"),
+      ]);
+      // 「转人工」与「待审核」共用 NEEDS_HUMAN_REVIEW 状态（reviewQueueStatusFor 同口径）；
+      // 队列中无独立「失败」状态（AI 失败会转人工），保持 0。
+      setCounts({ pending, passed, returned, manual: pending, failed: 0 });
+    } catch (error) {
+      console.warn("审核队列统计加载失败：", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadQueue();
+  }, [loadQueue]);
+
+  // Tab 数字首屏即加载，且不随选中 Tab 变化（与列表请求解耦）。
+  useEffect(() => {
+    void loadCounts();
+  }, [loadCounts]);
 
   const filteredSubmissions = submissions.filter((item) => {
     if (filter === "passed") return item.submission.status === "AI_PASSED" || item.submission.status === "ACCEPTED";
@@ -96,6 +174,42 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
   const selected = submissions.find((item) => item.submission.id === selectedId) ?? filteredSubmissions[0] ?? submissions[0];
   const selectedDisplay = selected ? getQueueDisplay(selected) : null;
   const selectedBatchItems = filteredSubmissions.filter((item) => selectedBatchIds.includes(item.submission.id) && isBatchSelectable(item));
+  const selectedDimensionScoreState = selected ? dimensionScoresBySubmissionId[selected.submission.id] : undefined;
+
+  useEffect(() => {
+    const submissionId = selected?.submission.id;
+    if (!submissionId || requestedDimensionScoreIdsRef.current.has(submissionId)) return;
+    requestedDimensionScoreIdsRef.current.add(submissionId);
+    setDimensionScoresBySubmissionId((current) => ({
+      ...current,
+      [submissionId]: { status: "loading", scores: [] },
+    }));
+    let cancelled = false;
+    void (async () => {
+      try {
+        const detail = await getReviewDetail(submissionId);
+        const scores = normalizeDimensionScores(detail.aiResult?.aiResult?.dimensionScores);
+        const aiDecision = detail.aiResult?.decision ?? null;
+        if (!cancelled) {
+          setDimensionScoresBySubmissionId((current) => ({
+            ...current,
+            [submissionId]: { status: "ready", scores, aiDecision },
+          }));
+        }
+      } catch (error) {
+        console.warn("AI 维度评分加载失败：", error);
+        if (!cancelled) {
+          setDimensionScoresBySubmissionId((current) => ({
+            ...current,
+            [submissionId]: { status: "error", scores: [] },
+          }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.submission.id]);
 
   const toggleBatchId = (submissionId: string) => {
     setSelectedBatchIds((current) =>
@@ -180,6 +294,8 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
       );
       setSubmissions(safeData);
       setSelectedBatchIds([]);
+      // 决策会改变各状态条数，同步刷新 Tab 数字。
+      void loadCounts();
       if (decision === "RETURN" && successCount > 0) setBatchReturnReason("");
     } catch (error) {
       setBatchMessage(error instanceof Error ? `批量操作失败：${error.message}` : "批量操作失败。");
@@ -218,7 +334,7 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           <h2>我的审核概览</h2>
           <span>仅展示与你审核任务相关的真实队列数据</span>
         </div>
-        {stats.pending + stats.passed + stats.returned === 0 ? (
+        {counts.pending + counts.passed + counts.returned === 0 ? (
           <div className="empty-state">
             暂无审核记录。完成审核后，这里会显示你的审核反馈与退回记录。
           </div>
@@ -226,15 +342,15 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           <div className="reviewer-overview__grid">
             <div className="reviewer-overview__item reviewer-overview__item--warning">
               <span>待我处理</span>
-              <strong>{stats.pending}</strong>
+              <strong>{counts.pending}</strong>
             </div>
             <div className="reviewer-overview__item reviewer-overview__item--success">
               <span>当前队列已通过</span>
-              <strong>{stats.passed}</strong>
+              <strong>{counts.passed}</strong>
             </div>
             <div className="reviewer-overview__item reviewer-overview__item--danger">
               <span>当前队列已退回</span>
-              <strong>{stats.returned}</strong>
+              <strong>{counts.returned}</strong>
             </div>
             <div className="reviewer-overview__item">
               <span>AI 预审辅助</span>
@@ -246,13 +362,27 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
 
       <div className="review-ai-layout">
         <Card className="review-ai-queue">
+          <div className="review-ai-queue__toolbar">
+            <span>AI 预审为异步处理，提交后稍候可刷新查看最新结果。</span>
+            <Button
+              type="button"
+              tone="default"
+              disabled={loading}
+              onClick={() => {
+                void loadQueue();
+                void loadCounts();
+              }}
+            >
+              刷新队列
+            </Button>
+          </div>
           <div className="review-ai-tabs" role="tablist" aria-label="AI 预审状态">
             {[
-              ["pending", "待审核", stats.pending],
-              ["passed", "已通过", stats.passed],
-              ["returned", "已打回", stats.returned],
-              ["manual", "转人工", stats.manual],
-              ["failed", "失败", stats.failed],
+              ["pending", "待审核", counts.pending],
+              ["passed", "已通过", counts.passed],
+              ["returned", "已打回", counts.returned],
+              ["manual", "转人工", counts.manual],
+              ["failed", "失败", counts.failed],
             ].map(([key, label, count]) => (
               <button
                 className={filter === key ? "review-ai-tab review-ai-tab--active" : "review-ai-tab"}
@@ -333,7 +463,10 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                     </span>
                     <span className="review-ai-item__sub">标注员 {item.submission.labelerId}</span>
                     <span className="review-ai-item__badges">
-                      <Badge tone={statusTone(item.submission.status)}>{statusLabel(item.submission.status)}</Badge>
+                      {(() => {
+                        const badge = queueBadge(item);
+                        return <Badge tone={badge.tone}>{badge.label}</Badge>;
+                      })()}
                       {item.submission.status === "FINAL_REVIEWING" ? <Badge tone="primary">终审</Badge> : <Badge tone="default">复审</Badge>}
                     </span>
                   </button>
@@ -350,14 +483,34 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
           <main className="review-ai-detail">
             <section className="review-ai-detail__heading">
               <div>
-                <h2>{selectedDisplay?.title ?? selected.taskTitle}提交复核</h2>
+                <h2>{formatSubmissionTitle(selectedDisplay?.title, selected.submission.id, selectedIndex(submissions, selected.submission.id))}提交复核</h2>
                 <p>
-                  提交编号：{selected.submission.id} · 第 {selected.submission.attemptNo} 轮 · 提交于{" "}
+                  提交号：{shortSubmissionId(selected.submission.id)} · 第 {selected.submission.attemptNo} 轮 · 提交于{" "}
                   {formatTime(selected.submission.createdAt)} · 标注员{" "}
                   {selectedDisplay?.labeler ?? selected.submission.labelerId}
                 </p>
               </div>
-              <Badge tone={statusTone(selected.submission.status)}>AI 建议：{statusLabel(selected.submission.status)}</Badge>
+              <div className="review-ai-detail__badges">
+                {selected.flowMode === "HUMAN_REVIEW_ONLY" ? (
+                  // 仅质检提示模式：AI 不给通过/打回结论，只展示「AI 质检提示」中性标签，
+                  // 通过/打回完全交由审核员决定。维度评分与问题提示仍在下方面板展示。
+                  <Badge tone="default">AI 质检提示 · 由审核员决策</Badge>
+                ) : selectedDimensionScoreState?.status === "ready" ? (
+                  <Badge tone={aiDecisionTone(selectedDimensionScoreState.aiDecision)}>
+                    AI 建议：{aiDecisionLabel(selectedDimensionScoreState.aiDecision)}
+                  </Badge>
+                ) : (
+                  <Badge tone="default">AI 建议：加载中…</Badge>
+                )}
+                {(() => {
+                  const outcome = outcomeBadge(selected.submission.status, selected.humanDecided);
+                  return outcome ? (
+                    <Badge tone={statusTone(selected.submission.status)}>
+                      {outcome.actor}：{outcome.label}
+                    </Badge>
+                  ) : null;
+                })()}
+              </div>
             </section>
 
             <div className="review-flow-strip">
@@ -395,24 +548,51 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                   <h3>AI 预审代理</h3>
                   <span>维度评分</span>
                 </div>
-                <div className="review-ai-empty">
-                  <strong>暂无维度评分</strong>
-                  <span>本条提交需要人工确认字段完整性和审核结论。</span>
-                </div>
+                <DimensionScoresPreview state={selectedDimensionScoreState} />
               </Card>
             </div>
 
             <Card className="review-ai-actionbar">
-              <div className="review-ai-actionbar__status">
-                <strong>{selectedDisplay?.recommendation ?? statusLabel(selected.submission.status)}</strong>
-                <span>{selectedDisplay?.issue ?? "该提交需要人工确认字段完整性和审核结论。"}</span>
-              </div>
-              <Link
-                className="lh-button lh-button--primary review-ai-actionbar__btn"
-                to={`/reviewer/items/${selected.submission.id}`}
-              >
-                进入人工审核
-              </Link>
+              {(() => {
+                // 已终态（已通过/已打回）的提交：动作栏展示审核结论与归属，而非「待人工复核 + 进入人工审核」。
+                // 此前无论状态恒显待审核提示与再审按钮，导致刚打回的提交主面板仍像待办、结论只在右上角小徽章里——
+                // 用户会误以为「已打回没有生效/没显示」。终态下只保留只读的「查看审核详情」入口。
+                const outcome = outcomeBadge(selected.submission.status, selected.humanDecided);
+                if (outcome) {
+                  return (
+                    <>
+                      <div className="review-ai-actionbar__status">
+                        <strong>{outcome.actor} · {outcome.label}</strong>
+                        <span>
+                          {selected.submission.status === "ACCEPTED"
+                            ? "该提交已完成审核并通过。"
+                            : "该提交已被打回，标注员可据反馈修改后重新提交。"}
+                        </span>
+                      </div>
+                      <Link
+                        className="lh-button review-ai-actionbar__btn"
+                        to={`/reviewer/items/${selected.submission.id}`}
+                      >
+                        查看审核详情
+                      </Link>
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <div className="review-ai-actionbar__status">
+                      <strong>{selectedDisplay?.recommendation ?? statusLabel(selected.submission.status)}</strong>
+                      <span>{humanizeAiReason(selectedDisplay?.issue ?? "该提交需要人工确认字段完整性和审核结论。")}</span>
+                    </div>
+                    <Link
+                      className="lh-button lh-button--primary review-ai-actionbar__btn"
+                      to={`/reviewer/items/${selected.submission.id}`}
+                    >
+                      进入人工审核
+                    </Link>
+                  </>
+                );
+              })()}
             </Card>
 
           </main>
@@ -437,7 +617,13 @@ function isBatchSelectable(item: ReviewQueueItem): boolean {
 
 // 提交字段的人话标签：把技术 key 映射成审核员可读的中文，未知 key 原样保留。
 const FIELD_LABELS: Record<string, string> = {
+  submission_material: "补充审核材料",
+  answer: "标注答案",
   title: "标题",
+  content: "内容",
+  category: "分类",
+  evidence: "证据说明",
+  comment: "备注",
   itemId: "数据编号",
   taskTitle: "所属任务",
   labeler: "标注员",
@@ -453,4 +639,129 @@ function formatFieldValue(value: unknown): string {
     return String(value);
   }
   return JSON.stringify(value);
+}
+
+function DimensionScoresPreview({ state }: { state: DimensionScoreState | undefined }) {
+  if (state?.status === "loading" || state === undefined) {
+    return (
+      <div className="review-ai-empty">
+        <strong>正在加载 AI 评分...</strong>
+        <span>维度评分会随当前选中的提交自动刷新。</span>
+      </div>
+    );
+  }
+
+  if (state.scores.length === 0) {
+    return (
+      <div className="review-ai-empty">
+        <strong>本条提交暂未返回维度评分</strong>
+        <span>当前提交暂无 AI 维度评分，可进入人工审核查看 AI 结论与字段级建议。</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="review-ai-score-list" aria-label="AI 维度评分">
+      <strong style={{ display: "block", marginBottom: 10 }}>已读取 {state.scores.length} 项 AI 维度评分</strong>
+      {state.scores.map((score) => {
+        const percent = normalizeScorePercent(score.score);
+        const label = dimensionLabel(score.key);
+        return (
+          <div className="review-ai-score-row" key={score.key} style={{ gridTemplateColumns: "minmax(128px, 1fr) minmax(0, 2fr) 96px" }}>
+            <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }} title={score.key}>{label}</span>
+            <div>
+              <div className="review-ai-score-track" aria-hidden="true">
+                <span
+                  className={percent >= 80 ? "review-ai-score-fill review-ai-score-fill--success" : "review-ai-score-fill"}
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              {score.reason ? (
+                <small style={{ display: "block", marginTop: 4, color: "#64748b", fontWeight: 700, lineHeight: 1.45, overflowWrap: "anywhere" }}>
+                  {humanizeAiReason(score.reason, score.key)}
+                </small>
+              ) : null}
+            </div>
+            <strong>{Math.round(percent)} 分 · {scoreVerdict(percent)}</strong>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function normalizeDimensionScores(value: unknown): DimensionScore[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (item == null || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const key = typeof record.key === "string" && record.key.trim() ? record.key : "unknown";
+    const rawScore = typeof record.score === "number" && Number.isFinite(record.score) ? record.score : null;
+    const reason = typeof record.reason === "string" ? record.reason : undefined;
+    return [{ key, score: rawScore, reason }];
+  });
+}
+
+function normalizeScorePercent(rawScore: number | null): number {
+  if (rawScore == null) return 0;
+  const normalizedScore = rawScore <= 1 ? rawScore * 100 : rawScore;
+  return Math.max(0, Math.min(100, normalizedScore));
+}
+
+const DIMENSION_LABELS: Record<string, string> = {
+  // ReviewConfig.dimensions_json 实际下发的 key（见 seed_demo / seed_competition）：
+  // relevance / accuracy / compliance / safety —— 缺失这些映射会导致维度全部显示「未命名维度」。
+  relevance: "内容相关性",
+  accuracy: "内容准确性",
+  compliance: "格式合规性",
+  safety: "安全性",
+  completeness: "完整性",
+  readability: "可读性",
+  content_accuracy: "内容准确性",
+  format_compliance: "格式合规性",
+  factuality: "事实准确性",
+  category: "分类一致性",
+  evidence: "证据充分性",
+  format: "格式规范性",
+};
+
+function dimensionLabel(key: string): string {
+  return DIMENSION_LABELS[key] ?? "未命名维度";
+}
+
+function scoreVerdict(percent: number): string {
+  if (percent >= 80) return "通过";
+  if (percent >= 60) return "需复核";
+  return "不通过";
+}
+
+function humanizeAiReason(text?: string, dimensionKey?: string): string {
+  if (!text) return "";
+  let output = text
+    .replace(/缺少具体的题目内容、标注答案和对应schema的详细信息，无法进行自动维度评分。/g, "提交内容较少，AI 无法判断答案是否符合题目要求，建议人工复核。")
+    .replace(/目标标注schema/g, "目标标注规则")
+    .replace(/标注schema/g, "标注规则")
+    .replace(/schema/g, "表单规则")
+    .replace(/自动维度评分/g, "自动评分")
+    .replace(/自动预审打分/g, "自动评分");
+  if (dimensionKey === "content_accuracy" && /缺少具体的题目内容|题目要求/.test(output)) {
+    output = "提交内容较少，AI 无法判断答案是否准确，建议人工复核。";
+  }
+  return output;
+}
+
+function shortSubmissionId(id: string): string {
+  return id.length > 18 ? `${id.slice(0, 10)}...${id.slice(-4)}` : id;
+}
+
+function selectedIndex(items: ReviewQueueItem[], submissionId: string): number {
+  const index = items.findIndex((item) => item.submission.id === submissionId);
+  return index >= 0 ? index + 1 : 1;
+}
+
+function formatSubmissionTitle(title: string | undefined, submissionId: string, index: number): string {
+  if (!title || title === submissionId || /^sub_[a-z0-9]+$/i.test(title) || /^item_[a-z0-9]+$/i.test(title) || /^\d+$/.test(title)) {
+    return `第 ${index} 条提交`;
+  }
+  return title;
 }

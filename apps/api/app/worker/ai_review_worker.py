@@ -142,6 +142,75 @@ def _extract_ai_result(response) -> dict:
     raise ValueError("LLM 未返回 tool_call 或可解析正文")
 
 
+def _route_with_confidence(raw_decision: str, confidence, threshold: float) -> tuple[str, bool]:
+    """置信度感知路由（human-in-the-loop）。
+
+    LLM 给 PASS 但 confidence 低于阈值时，降级为 NEED_HUMAN_REVIEW，不把"不确定的通过"
+    自动放行。仅收紧不放宽：RETURN / NEED_HUMAN_REVIEW 原样返回，永不因此自动通过更多。
+    返回 (有效决策, 是否发生了降级)。
+    """
+    low = (
+        raw_decision == "PASS"
+        and isinstance(confidence, (int, float))
+        and float(confidence) < threshold
+    )
+    return ("NEED_HUMAN_REVIEW" if low else raw_decision), low
+
+
+# 仅此模式允许 AI 决策自动流转到终态（自动通过 / 自动打回）。
+# 其余模式（AI_THEN_HUMAN / HUMAN_REVIEW_ONLY）下 AI 结论仅作参考，一律转人工复核。
+AUTO_FLOW_MODE = "AUTO_PASS_RETURN"
+
+
+def _normalize_fraction(value) -> float | None:
+    """把分数 / 阈值统一归一化到 0..1。totalScore 契约为 0-100，阈值配置为 0-1，
+    这里按「>1 视为百分制、除以 100」抹平两种量纲，避免硬比较时鸡同鸭讲。"""
+    if not isinstance(value, (int, float)):
+        return None
+    v = float(value)
+    return v / 100.0 if v > 1 else v
+
+
+def _decide_by_threshold(total_score, thresholds: dict) -> str:
+    """AUTO 模式的硬阈值闸门：按 totalScore 与 passScore / returnScore 的数值比较得出决策，
+    不再单纯信任 LLM 自报的 decision——阈值才真正「说了算」。
+
+    score >= passScore → PASS；score < returnScore → RETURN；落在中间或缺分 → 转人工。
+    """
+    score = _normalize_fraction(total_score)
+    if score is None:
+        return "NEED_HUMAN_REVIEW"
+    # 阈值键名存在两套约定：前端存 passScore/returnScore，seed_competition 存 autoPass/autoReturn。
+    # 两者都兼容，避免老配置（autoPass/autoReturn）下闸门取不到阈值而恒转人工。
+    pass_score = _normalize_fraction(thresholds.get("passScore", thresholds.get("autoPass")))
+    return_score = _normalize_fraction(thresholds.get("returnScore", thresholds.get("autoReturn")))
+    if pass_score is not None and score >= pass_score:
+        return "PASS"
+    if return_score is not None and score < return_score:
+        return "RETURN"
+    return "NEED_HUMAN_REVIEW"
+
+
+def _route_by_strategy(
+    raw_decision: str, mode: str, total_score=None, thresholds: dict | None = None
+) -> tuple[str, bool]:
+    """审核策略门控：把 owner 配置的 conclusionMapping.mode 真正落到流转上。
+
+    - AUTO_PASS_RETURN：用 totalScore 与阈值硬比较（_decide_by_threshold）决定 PASS/RETURN/转人工，
+      自动通过线由数值闸门把关，而非只信 LLM 的 decision。
+    - 其余模式（AI_THEN_HUMAN / HUMAN_REVIEW_ONLY）：AI 结论仅作人工参考，PASS/RETURN 一律
+      降级为 NEED_HUMAN_REVIEW，绝不无人工自动流转。
+
+    返回 (有效决策, 是否相对 LLM 原始判断发生改写)。
+    """
+    if mode == AUTO_FLOW_MODE:
+        decided = _decide_by_threshold(total_score, thresholds or {})
+        return decided, decided != raw_decision
+    if raw_decision in ("PASS", "RETURN"):
+        return "NEED_HUMAN_REVIEW", True
+    return raw_decision, False
+
+
 def _render_prompt(template_str: str, context: dict) -> str:
     return Template(template_str).render(**context)
 
@@ -189,6 +258,32 @@ def _handle_submission_return(db, submission, actor_id: str) -> None:
             actor_id=actor_id,
             after={"reason": "AI Review 判定退回", "submissionId": submission.id},
         )
+
+
+def _handle_auto_accept(db, submission, actor_id: str) -> None:
+    """AUTO_PASS_RETURN 策略下高分自动通过：把 assignment 推进到 ACCEPTED、题目置为 COMPLETED，
+    与人工"通过单审"的收尾保持一致（区别仅在 actor 为系统、无 HUMAN_REVIEW 评审记录）。"""
+    from app.models.assignment import Assignment
+    from app.state_machines.assignment_sm import apply_transition as assign_transition
+
+    assignment = db.query(Assignment).filter_by(id=submission.assignment_id).first()
+    if assignment and assignment.status == "SUBMITTED":
+        assignment.status = assign_transition(assignment.status, "aiReviewAutoAccept")
+        write_audit_log(
+            db,
+            entity_type="ASSIGNMENT",
+            entity_id=assignment.id,
+            action="REVIEW_ACCEPTED",
+            actor_id=actor_id,
+            after={"reason": "AI Review 高分自动通过", "submissionId": submission.id},
+        )
+    try:
+        from app.models.dataset import DatasetItem
+        item = db.query(DatasetItem).filter_by(id=submission.item_id).first()
+        if item is not None:
+            item.status = "COMPLETED"
+    except ImportError:
+        pass
 
 
 def _execute_review(db, job_id: str) -> None:
@@ -339,17 +434,37 @@ def _execute_review(db, job_id: str) -> None:
     )
     db.add(review_result)
 
-    decision = ai_result["decision"]
-    if decision == "PASS":
+    # 路由分两道闸，AI_PRECHECK 记录上面已存 LLM 原始决策，这里只调整路由用的有效决策，
+    # 原始判断保留供人机一致性对账：
+    #   1) 审核策略门控（_route_by_strategy）：AUTO_PASS_RETURN 模式用 totalScore 硬阈值决定
+    #      PASS/RETURN；其余模式（AI 预审后人工复核 / 仅质检提示）一律降级转人工，绝不无人工自动流转。
+    #   2) 置信度感知路由（_route_with_confidence）：自动模式下，低置信度的 PASS 再降级转人工。
+    raw_decision = ai_result["decision"]
+    confidence = ai_result.get("confidence")
+    threshold = settings.AI_REVIEW_CONFIDENCE_THRESHOLD
+    conclusion_mapping = review_config.conclusion_mapping_json or {}
+    flow_mode = conclusion_mapping.get("mode", "AI_THEN_HUMAN")
+    thresholds_cfg = review_config.thresholds_json or {}
+
+    strategy_decision, strategy_downgrade = _route_by_strategy(
+        raw_decision, flow_mode, ai_result.get("totalScore"), thresholds_cfg
+    )
+    decision, low_confidence_downgrade = _route_with_confidence(strategy_decision, confidence, threshold)
+
+    action = "AI_REVIEW_SUCCEEDED"
+    if decision == "PASS" and flow_mode == AUTO_FLOW_MODE:
+        # 高分自动通过 → 直接落终态 ACCEPTED，无需人工（见 _handle_auto_accept）。
+        command = "aiReviewAutoAccept"
+        action = "AI_REVIEW_AUTO_ACCEPTED"
+        _handle_auto_accept(db, submission, system_actor_id)
+    elif decision == "PASS":
+        # 理论上策略门控已保证非 AUTO 模式不会出现 PASS；保留旧路径作兜底（建议通过待人工）。
         command = "aiReviewPass"
-        action = "AI_REVIEW_SUCCEEDED"
     elif decision == "RETURN":
         command = "aiReviewReturn"
-        action = "AI_REVIEW_SUCCEEDED"
         _handle_submission_return(db, submission, system_actor_id)
     else:
         command = "aiReviewNeedHuman"
-        action = "AI_REVIEW_SUCCEEDED"
 
     new_sub_status = apply_transition(submission.status, command)
     submission.status = new_sub_status
@@ -360,7 +475,17 @@ def _execute_review(db, job_id: str) -> None:
         entity_id=submission.id,
         action=action,
         actor_id=system_actor_id,
-        after={"decision": decision, "totalScore": ai_result.get("totalScore"), "jobId": job.id},
+        after={
+            "decision": decision,
+            "rawDecision": raw_decision,
+            "confidence": confidence,
+            "confidenceThreshold": threshold,
+            "flowMode": flow_mode,
+            "strategyDowngrade": strategy_downgrade,
+            "lowConfidenceDowngrade": low_confidence_downgrade,
+            "totalScore": ai_result.get("totalScore"),
+            "jobId": job.id,
+        },
     )
 
     job.status = "SUCCEEDED"

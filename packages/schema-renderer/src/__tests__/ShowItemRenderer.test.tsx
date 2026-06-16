@@ -95,6 +95,50 @@ describe("ShowItemRenderer 媒体渲染", () => {
     expect(container.textContent).toContain("（无）");
   });
 
+  test("文本类字段绑定不存在（undefined）→ 友好提示而非白屏", () => {
+    const { container } = renderShow(
+      showNode({ type: "show.text", sourcePath: "$.item.sourcePayload.prompt" }),
+      {}, // 无 prompt 字段
+    );
+    expect(container.textContent).toContain("字段 prompt 不存在");
+    expect(container.querySelector("section")).not.toBeNull();
+  });
+
+  test("字段存在但为空字符串 → 不误报字段不存在", () => {
+    const { container } = renderShow(
+      showNode({ type: "show.text", sourcePath: "$.item.sourcePayload.prompt" }),
+      { prompt: "" },
+    );
+    // 空值按原逻辑隐藏（无 fallback），不应出现"字段不存在"提示
+    expect(container.textContent).not.toContain("不存在");
+  });
+
+  test("媒体类字段不存在 → 仍隐藏，不显示字段提示", () => {
+    const { container } = renderShow(
+      showNode({ type: "show.image", sourcePath: "$.item.sourcePayload.media_url" }),
+      {},
+    );
+    expect(container.querySelector("section")).toBeNull();
+    expect(container.textContent).not.toContain("不存在");
+  });
+
+  test("基础数组（expected_dimensions）用顿号连接展示", () => {
+    const { container } = renderShow(
+      showNode({ type: "show.text", sourcePath: "$.item.sourcePayload.expected_dimensions" }),
+      { expected_dimensions: ["准确性", "完整性", "流畅度"] },
+    );
+    expect(container.textContent).toContain("准确性、完整性、流畅度");
+  });
+
+  test("空数组按空值处理 → 整块隐藏，不报字段不存在", () => {
+    const { container } = renderShow(
+      showNode({ type: "show.text", sourcePath: "$.item.sourcePayload.expected_dimensions" }),
+      { expected_dimensions: [] },
+    );
+    expect(container.querySelector("section")).toBeNull();
+    expect(container.textContent).not.toContain("不存在");
+  });
+
   test("Markdown 中 javascript: 链接被丢弃（防 XSS）", () => {
     const { container } = renderShow(
       showNode({ type: "show.richtext", sourcePath: "$.item.sourcePayload.content_markdown" }),

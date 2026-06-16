@@ -40,6 +40,11 @@ class ConclusionMappingInput(BaseModel):
     passWhen: str = ""
     returnWhen: str = ""
     humanReviewOtherwise: bool = True
+    # 审核流转策略，决定 AI 决策是否允许自动流转（worker 据此门控）：
+    #   AI_THEN_HUMAN     —— AI 预审后一律进入人工复核，AI 结论仅作参考（默认，最安全）
+    #   AUTO_PASS_RETURN  —— 高分自动通过 / 低分自动打回 / 中间转人工
+    #   HUMAN_REVIEW_ONLY —— 只生成 AI 质检提示，由审核员决策（等同一律转人工）
+    mode: str = "AI_THEN_HUMAN"
 
 
 class CreateReviewConfigRequest(BaseModel):

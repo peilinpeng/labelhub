@@ -38,7 +38,7 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
   // 空对象 patch（AI 未给出任何字段建议）不应渲染可点的"确认应用"按钮——否则会
   // 跳过 preflight（其判定也以 length > 0 为准）却仍可点击，应用空操作并误记 ACCEPTED。
   const hasSuggestedPatch =
-    response?.suggestedPatch !== undefined &&
+    response?.suggestedPatch != null &&
     Object.keys(response.suggestedPatch).length > 0 &&
     requireUserConfirm(node);
   const preflightBlocked = preflightResult !== undefined && !preflightResult.ok;
@@ -89,7 +89,9 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
                   <li key={item.fieldName}>
                     <div className="ai-quality-panel__field">
                       <strong>{item.label}</strong>
-                      {item.label !== item.fieldName ? <small>{item.fieldName}</small> : null}
+                      {item.label !== item.fieldName && shouldShowTechnicalFieldName(item.fieldName) ? (
+                        <small>{item.fieldName}</small>
+                      ) : null}
                     </div>
                     <div className="ai-quality-panel__diff">
                       <span>{item.currentValue}</span>
@@ -116,6 +118,11 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
             <button
               className="ai-quality-panel__apply"
               disabled={!canApply}
+              title={
+                canApply
+                  ? undefined
+                  : "该建议需要你先人工补充必填项，系统无法自动写入字段。请按上方提示补全后，点「我已补充，重新检查」。"
+              }
               type="button"
               onClick={() => {
                 if (!canApply) return;
@@ -138,6 +145,28 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
               }}
             >
               一键采纳
+            </button>
+          ) : null}
+          {hasSuggestedPatch && !canApply ? (
+            // 建议被 preflight 拦截（需人工补充必填项）时，给出明确的下一步：用户补全后
+            // 重新跑一次 preflight（不重新调用 LLM）。补全后若不再缺项，一键采纳会自动恢复可用。
+            <button
+              className="ai-quality-panel__recheck lh-button"
+              type="button"
+              title="我已按提示补充了必要说明，重新校验本条建议是否可以采纳。"
+              onClick={() => {
+                const patch = response?.suggestedPatch;
+                if (patch === undefined) return;
+                const ops = convertSuggestedPatchToPreflightPatch(patch);
+                const preflight = runSchemaPreflight({
+                  schema: renderContext.schema,
+                  currentAnswers: renderContext.answers,
+                  patch: ops,
+                });
+                setPreflightResult(preflight);
+              }}
+            >
+              我已补充，重新检查
             </button>
           ) : null}
           <button
@@ -263,7 +292,7 @@ async function runLLMAssist(
 
     // 有 suggestedPatch 且非空时执行 preflight
     const patch = result.suggestedPatch;
-    if (patch !== undefined && Object.keys(patch).length > 0) {
+    if (patch != null && Object.keys(patch).length > 0) {
       const ops = convertSuggestedPatchToPreflightPatch(patch);
       const preflight = runSchemaPreflight({
         schema: renderContext.schema,
@@ -320,7 +349,7 @@ function buildSuggestionItems(
   patch: AnswerPayload | undefined,
   answers: AnswerPayload,
 ): Array<{ fieldName: string; label: string; currentValue: string; suggestedValue: string }> {
-  if (patch === undefined) return [];
+  if (patch == null) return [];
   return Object.entries(patch)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([fieldName, value]) => ({
@@ -336,8 +365,16 @@ function fieldLabel(fieldName: string): string {
     qualityScore: "质量评分",
     rewriteSuggestion: "修改建议",
     factCheckNote: "事实核查说明",
+    relevance: "相关性",
+    accuracy: "准确性",
+    compliance: "格式合规",
+    safety: "安全性",
   };
   return labels[fieldName] ?? fieldName;
+}
+
+function shouldShowTechnicalFieldName(fieldName: string): boolean {
+  return !["relevance", "accuracy", "compliance", "safety"].includes(fieldName);
 }
 
 function formatAnswerValue(value: unknown): string {

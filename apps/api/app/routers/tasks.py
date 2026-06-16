@@ -490,11 +490,30 @@ def archive_task(
     )
 
 
+# ── DELETE /tasks/{task_id}（删除草稿任务）──────────────────────────────────
+# 仅 DRAFT 可删除（从未发布、无标注/审核数据，硬删安全）；非 DRAFT → 409，
+# 应改用结束 / 归档以保留记录。
+
+@router.delete(
+    "/tasks/{task_id}",
+    status_code=204,
+    summary="删除草稿任务（仅 DRAFT）",
+)
+def delete_draft_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER")),
+) -> None:
+    """删除草稿任务，级联清理 schema 草稿 / 版本 / 数据项 / 审计日志。非 DRAFT 返回 409。"""
+    task_domain.delete_draft_task(db, task_id, actor)
+
+
 # ---------------------------------------------------------------------------
 # Schema 路由（契约 §23.1）
 # ---------------------------------------------------------------------------
 
 from app.services import schema_domain
+from app.utils.schema_normalize import normalize_schema_payload
 from app.schemas.task import (
     SaveSchemaDraftRequest, SaveSchemaDraftResponse,
     SchemaDraftResponse,
@@ -526,9 +545,11 @@ def save_schema_draft(
     传入 baseSchemaDraftRevision 且与当前修订号不一致时返回 409 SCHEMA_DRAFT_CONFLICT。
     """
     draft, log = schema_domain.save_schema_draft(db, task_id, actor, body)
+    # 校验沿用原始存储形态（validate_schema 同时兼容 root 与扁平 nodes）；
+    # 响应 schema 归一化为 canonical，保证前端拿到稳定形态。
     validation_result = schema_domain.validate_schema(draft.schema_json)
     return SaveSchemaDraftResponse(
-        schema=draft.schema_json,
+        schema=normalize_schema_payload(draft.schema_json, draft.task_id, draft.id),
         schemaDraftRevision=draft.schema_draft_revision,
         validation=SchemaValidationResultResponse(**validation_result),
         auditLog=AuditLogSummaryResponse.from_orm_obj(log),

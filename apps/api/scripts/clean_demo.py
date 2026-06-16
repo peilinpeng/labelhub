@@ -28,6 +28,7 @@ from app.models.dataset import DatasetItem
 from app.models.assignment import Assignment, Draft
 from app.models.submission import Submission
 from app.models.review import ReviewConfig, AIReviewJob, ReviewResult
+from app.models.ai_assist import AiAssistAction
 from app.models.export import ExportJob
 from app.models.export_record import ExportRecord
 from app.models.llm import LLMCallLog
@@ -49,6 +50,7 @@ def _delete_tasks(db, task_ids: list[str]) -> None:
     if sub_ids:
         _del(ReviewResult, ReviewResult.submission_id.in_(sub_ids))
         _del(AIReviewJob, AIReviewJob.submission_id.in_(sub_ids))
+        _del(AiAssistAction, AiAssistAction.submission_id.in_(sub_ids))
         _del(ExportRecord, ExportRecord.submission_id.in_(sub_ids))
         _del(LLMCallLog, LLMCallLog.submission_id.in_(sub_ids))
     if job_ids:

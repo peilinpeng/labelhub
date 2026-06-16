@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
 import { queryAuditEvents } from "../../api/audit";
@@ -43,22 +43,109 @@ type ReviewDetailWithTrace = ReviewDetailResponse & {
   } | null;
 };
 
+function isEmptyValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length === 0;
+  return value === undefined || value === null || value === "";
+}
+
 function valueText(value: unknown): string {
-  if (Array.isArray(value)) return value.join("，");
+  if (Array.isArray(value)) return value.length > 0 ? value.join("，") : "未填写";
   if (value === undefined || value === null || value === "") return "未填写";
   return String(value);
 }
 
-// AI 预审维度 key 的中文展示名（与 Owner 端 AI 预审规则维度一致）。未知 key 原样回退。
 const DIMENSION_LABELS: Record<string, string> = {
-  factuality: "事实完整性",
-  category: "类别准确性",
+  relevance: "内容相关性",
+  accuracy: "内容准确性",
+  compliance: "格式合规性",
+  safety: "安全性",
+  completeness: "完整性",
+  readability: "可读性",
+  content_accuracy: "内容准确性",
+  format_compliance: "格式合规性",
+  factuality: "事实准确性",
+  category: "分类一致性",
   evidence: "证据充分性",
-  format: "格式合规",
+  format: "格式规范性",
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  submission_material: "补充审核材料",
+  answer: "标注答案",
+  title: "标题",
+  content: "内容",
+  category: "分类",
+  evidence: "证据说明",
+  comment: "备注",
+  cleaned_title: "清洗后标题",
+  news_title: "新闻标题",
+  keywords: "关键词",
+  issue_tags: "问题标签",
+  news_category: "新闻分类",
+  // 源数据（题目/参考材料）通用字段
+  prompt: "题目 / 提示",
+  question: "问题",
+  reference: "参考答案",
+  model_answer: "模型回答",
+  response_a: "回答 A",
+  response_b: "回答 B",
+  model_a: "模型 A",
+  model_b: "模型 B",
+  task_type: "任务类型",
+  dimensions: "评判维度",
+  tags: "标签",
+  lang: "语言",
+  source: "来源",
+  media_url: "媒体链接",
+  media_type: "媒体类型",
+  content_markdown: "正文",
+  difficulty: "难度",
+  expected_dimensions: "预期评判维度",
+  id: "编号",
+  // 问答质量标注 提交字段
+  relevance: "相关性评分",
+  accuracy: "准确性评分",
+  compliance: "合规性评分",
+  safety: "安全性评分",
+  completeness: "完整性评分",
+  readability: "可读性评分",
+  issue_types: "问题类型",
+  detail_comment: "详细评语",
+  one_line_summary: "一句话总结",
+  // 偏好对比标注 提交字段
+  preferred: "更优回答",
+  margin: "优势幅度",
+  safety_flag: "安全标记",
+  annotator_note: "标注说明",
+  judge_dimensions: "评判维度",
+  one_line_conclusion: "一句话结论",
 };
 
 function dimensionLabel(key: string): string {
-  return DIMENSION_LABELS[key] ?? key;
+  return DIMENSION_LABELS[key] ?? "未命名维度";
+}
+
+function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? humanizeKey(key);
+}
+
+// 按当前任务真实 schema 字段动态渲染 payload，而非写死某套字段。
+// 这样问答质量 / 偏好对比等不同任务都能正确展示各自的字段。
+function PayloadFieldList({ payload, hideEmpty = false }: { payload: Record<string, unknown>; hideEmpty?: boolean }) {
+  const entries = Object.entries(payload).filter(([, value]) => !hideEmpty || !isEmptyValue(value));
+  if (entries.length === 0) {
+    return <div className="empty-state">暂无字段数据</div>;
+  }
+  return (
+    <dl>
+      {entries.map(([key, value]) => (
+        <Fragment key={key}>
+          <dt>{fieldLabel(key)}</dt>
+          <dd>{valueText(value)}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
 }
 
 export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
@@ -318,7 +405,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
     labeler: detail.submission.labelerId,
     payload: answers,
     previousPayload: sourcePayload,
-    issue: aiResult?.summary ?? "该提交需要人工确认字段完整性和审核结论。",
+    issue: humanizeAiReason(aiResult?.summary ?? "该提交需要人工确认字段完整性和审核结论。"),
     recommendation: "待人工复核",
   };
   // 当前正在审核的提交始终出现在队列顶部（即便其状态已不在待审队列里），便于定位与高亮。
@@ -350,15 +437,15 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
           <span className="review-human-queue-col__meta">共 {queueItems.length} 条</span>
         </header>
         <nav className="review-human-queue">
-          {queueItems.map((item) => (
+          {queueItems.map((item, index) => (
             <Link
               className={item.id === detail.submission.id ? "review-human-queue-item review-human-queue-item--active" : "review-human-queue-item"}
               key={item.id}
               to={`/reviewer/items/${item.id}`}
-              title={`提交 ${item.id}`}
+              title={`提交 ${shortSubmissionId(item.id)}`}
             >
-              <span>{item.id}</span>
-              <strong>{item.title}</strong>
+              <span>提交号：{shortSubmissionId(item.id)}</span>
+              <strong>{formatSubmissionTitle(item.title, item.id, index + 1)}</strong>
               <small>
                 <Badge tone="warning">{item.recommendation}</Badge>
               </small>
@@ -371,8 +458,8 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
       <main className="review-human-main">
         <div className="review-human-toolbar">
           <div className="review-human-toolbar__title" title={`提交 ${detail.submission.id} · 题目 ${detail.item.id}`}>
-            <h1>{display.title}</h1>
-            <p>{display.taskTitle} · 模板 r{detail.schema.schemaVersionNo ?? "-"} · {reviewPolicyLabel}</p>
+            <h1>{formatSubmissionTitle(display.title, detail.submission.id, 1)}</h1>
+            <p>{display.taskTitle} · 表单版本 r{detail.schema.schemaVersionNo ?? "-"} · {reviewPolicyLabel}</p>
           </div>
           <div className="review-human-toolbar__actions">
             <Badge tone={reviewStage === "FINAL_REVIEW" ? "primary" : "warning"}>第 {detail.submission.attemptNo} 轮 · {reviewStageLabel}</Badge>
@@ -390,25 +477,13 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         <div className="review-human-compare">
           <Card className="review-human-compare-card">
             <h3>原始数据</h3>
-            <dl>
-              <dt>cleaned_title</dt>
-              <dd>{valueText(display.previousPayload.cleaned_title ?? display.previousPayload.news_title ?? sourcePayload.title ?? display.title)}</dd>
-              <dt>category</dt>
-              <dd>{valueText(display.previousPayload.category ?? display.previousPayload.news_category ?? sourcePayload.category)}</dd>
-              <dt>keywords</dt>
-              <dd>{valueText(display.previousPayload.keywords ?? display.previousPayload.issue_tags ?? sourcePayload.keywords)}</dd>
-            </dl>
+            <p className="review-human-compare-card__hint">标注员标注前拿到的源数据（题目 / 参考材料）。</p>
+            <PayloadFieldList payload={sourcePayload} hideEmpty />
           </Card>
           <Card className="review-human-compare-card">
             <h3>本轮提交</h3>
-            <dl>
-              <dt>cleaned_title</dt>
-              <dd>{valueText(display.payload.cleaned_title ?? display.payload.news_title ?? answers.cleaned_title ?? answers.rewriteSuggestion ?? display.title)}</dd>
-              <dt>category</dt>
-              <dd><mark>{valueText(display.payload.category ?? display.payload.news_category ?? answers.category)}</mark></dd>
-              <dt>keywords</dt>
-              <dd><mark>{valueText(display.payload.keywords ?? display.payload.issue_tags ?? answers.keywords)}</mark></dd>
-            </dl>
+            <p className="review-human-compare-card__hint">标注员本轮提交的标注内容，供你人工复核。</p>
+            <PayloadFieldList payload={answers} />
           </Card>
         </div>
 
@@ -422,14 +497,14 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
           {dimensionScores.length > 0 ? (
             <div className="review-human-ai__scores">
               {dimensionScores.map((score) => (
-                <span key={score.key}>{dimensionLabel(score.key)} <strong>{score.score}</strong></span>
+                <span key={score.key}>{dimensionLabel(score.key)}：<strong>{Math.round(normalizeScorePercent(score.score))} 分</strong></span>
               ))}
             </div>
           ) : <div className="empty-state">暂无 AI 维度评分</div>}
           {typeof aiResult?.confidence === "number" ? (
-            <p className="review-human-ai__confidence">AI 置信度 {Math.round(aiResult.confidence * 100)}%</p>
+            <p className="review-human-ai__confidence">模型自评置信度 {Math.round(normalizeScorePercent(aiResult.confidence))}%</p>
           ) : null}
-          <p>{aiResult?.summary ?? display.issue}</p>
+          <p>{humanizeAiReason(aiResult?.summary ?? display.issue)}</p>
         </Card>
 
         <AiAssistPanel
@@ -507,7 +582,7 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
                   <ul>
                     {previewPatches.map((patch) => (
                       <li key={patch.fieldName}>
-                        <span>{patch.fieldName}</span>
+                        <span title={`字段：${patch.fieldName}`}>{fieldLabel(patch.fieldName)}</span>
                         <em>{valueText(patch.previousValue)} → {valueText(patch.nextValue)}</em>
                       </li>
                     ))}
@@ -660,7 +735,7 @@ function FieldCorrectionPanel({
             className={changed ? "review-correction__row review-correction__row--changed" : "review-correction__row"}
             key={key}
           >
-            <div className="review-correction__field">{key}</div>
+            <div className="review-correction__field" title={`字段：${key}`}>{fieldLabel(key)}</div>
             <div className="review-correction__current">
               <span className="review-correction__tag">当前值</span>
               <span className="review-correction__value">{valueText(current)}</span>
@@ -730,4 +805,38 @@ function FieldEditor({
     return <Textarea rows={3} value={text} onChange={(event) => onChange(event.target.value)} />;
   }
   return <Input value={text} onChange={(event) => onChange(event.target.value)} />;
+}
+
+function normalizeScorePercent(rawScore: number | null | undefined): number {
+  if (rawScore == null || !Number.isFinite(rawScore)) return 0;
+  const normalizedScore = rawScore <= 1 ? rawScore * 100 : rawScore;
+  return Math.max(0, Math.min(100, normalizedScore));
+}
+
+function humanizeKey(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function humanizeAiReason(text?: string): string {
+  if (!text) return "";
+  return text
+    .replace(/缺少具体的题目内容、标注答案和对应schema的详细信息，无法进行自动维度评分。/g, "提交内容较少，AI 无法判断答案是否符合题目要求，建议人工复核。")
+    .replace(/目标标注schema/g, "目标标注规则")
+    .replace(/标注schema/g, "标注规则")
+    .replace(/schema/g, "表单规则")
+    .replace(/自动维度评分/g, "自动评分")
+    .replace(/自动预审打分/g, "自动评分");
+}
+
+function shortSubmissionId(id: string): string {
+  return id.length > 18 ? `${id.slice(0, 10)}...${id.slice(-4)}` : id;
+}
+
+function formatSubmissionTitle(title: string | undefined, submissionId: string, index: number): string {
+  if (!title || title === submissionId || /^sub_[a-z0-9]+$/i.test(title) || /^item_[a-z0-9]+$/i.test(title) || /^\d+$/.test(title)) {
+    return `第 ${index} 条提交`;
+  }
+  return title;
 }

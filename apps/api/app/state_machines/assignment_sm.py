@@ -10,6 +10,7 @@ _ALLOWED: dict[tuple[str, str], str] = {
     ("CLAIMED",   "expireAssignment"):   "EXPIRED",
     ("DRAFTING",  "expireAssignment"):   "EXPIRED",
     ("SUBMITTED", "aiReviewReturn"):     "RETURNED",
+    ("SUBMITTED", "aiReviewAutoAccept"): "ACCEPTED",
     ("SUBMITTED", "humanReviewReturn"):  "RETURNED",
     ("SUBMITTED", "humanReviewPass"):    "ACCEPTED",
     ("SUBMITTED", "humanReviewReject"):  "CANCELED",

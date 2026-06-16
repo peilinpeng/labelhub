@@ -63,6 +63,16 @@ def _publish(client, auth_owner, task_id, revision):
     )
 
 
+def _field_names(schema: dict) -> set:
+    """从 canonical 响应 schema（root.children）提取 FieldNode.name 集合。
+
+    后端在响应边界把简化 {nodes} 草稿归一化为 canonical {root:{children}}，
+    因此断言统一走 root.children。
+    """
+    children = (schema.get("root") or {}).get("children") or []
+    return {n.get("name") for n in children if n.get("name")}
+
+
 # ── TC-DES-09：Schema 草稿保存，schemaDraftRevision 自增 ────────────────────
 
 def test_save_draft_increments_revision(client, auth):
@@ -78,8 +88,10 @@ def test_save_draft_increments_revision(client, auth):
     r2 = _save_draft(client, auth["OWNER"], tid, SCHEMA_V2)
     assert r2.status_code == 200, r2.text
     assert r2.json()["schemaDraftRevision"] == 2
-    # 草稿内容已被覆盖为最新提交
-    assert r2.json()["schema"] == SCHEMA_V2
+    # 草稿内容已被覆盖为最新提交；响应为归一化后的 canonical 形态（root.children）
+    schema = r2.json()["schema"]
+    assert schema["meta"]["taskId"] == tid  # 信封字段补齐，前端不再崩
+    assert _field_names(schema) == {"summary"}
 
 
 def test_get_draft_returns_latest(client, auth):
@@ -93,7 +105,9 @@ def test_get_draft_returns_latest(client, auth):
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["schemaDraftRevision"] == 2
-    assert data["schema"] == SCHEMA_V2
+    # 归一化后的 canonical 草稿：含 root、meta.taskId，字段集合仍为 V2
+    assert data["schema"]["meta"]["taskId"] == tid
+    assert _field_names(data["schema"]) == {"summary"}
 
 
 def test_save_draft_stale_base_revision_conflict_409(client, auth):
@@ -125,10 +139,10 @@ def test_publish_creates_immutable_snapshot(client, auth):
     # 发布后继续修改草稿（模拟“创建新版本”的编辑），草稿 revision 递增
     _save_draft(client, auth["OWNER"], tid, SCHEMA_V2)
 
-    # 已发布版本快照仍是 V1，未被后续草稿编辑污染（冻结）
+    # 已发布版本快照仍是 V1，未被后续草稿编辑污染（冻结）；响应为 canonical 形态
     resp = client.get(f"/api/v1/schema-versions/{sv_id}", headers=auth["OWNER"])
     assert resp.status_code == 200, resp.text
-    assert resp.json()["schema"] == SCHEMA_V1
+    assert _field_names(resp.json()["schema"]) == {"summary", "category"}
 
 
 def test_publish_with_stale_revision_conflict_409(client, auth):
@@ -178,14 +192,61 @@ def test_old_version_retrievable_after_new_publish(client, auth):
     # V1 快照仍含两个字段（旧答卷可按 V1 渲染，category 不丢失）
     r_v1 = client.get(f"/api/v1/schema-versions/{v1['id']}", headers=auth["OWNER"])
     assert r_v1.status_code == 200, r_v1.text
-    v1_names = {n.get("name") for n in r_v1.json()["schema"]["nodes"]}
-    assert v1_names == {"summary", "category"}
+    assert _field_names(r_v1.json()["schema"]) == {"summary", "category"}
 
     # V2 快照只含 summary
     r_v2 = client.get(f"/api/v1/schema-versions/{v2['id']}", headers=auth["OWNER"])
     assert r_v2.status_code == 200, r_v2.text
-    v2_names = {n.get("name") for n in r_v2.json()["schema"]["nodes"]}
-    assert v2_names == {"summary"}
+    assert _field_names(r_v2.json()["schema"]) == {"summary"}
+
+
+# ── 发布向后兼容性闸门（后端权威）：绑定版本存在时 BREAKING 变更阻断发布 ────────
+
+def test_publish_blocked_by_breaking_change_against_active_version(client, auth, db_session):
+    """删除字段相对当前绑定版本属 BREAKING → 422 SCHEMA_INVALID，details 带 breakingChanges。"""
+    from app.models.task import Task
+
+    task = create_task(client, auth["OWNER"])
+    tid = task["id"]
+
+    rev1 = _save_draft(client, auth["OWNER"], tid, SCHEMA_V1).json()["schemaDraftRevision"]
+    v1 = _publish(client, auth["OWNER"], tid, rev1).json()["schemaVersion"]
+
+    # 模拟任务已发布并绑定 V1（仅 publish_task 会写 active_schema_version_id）
+    t = db_session.query(Task).filter_by(id=tid).first()
+    t.active_schema_version_id = v1["id"]
+    db_session.commit()
+
+    # 演进到 V2（删除 category）→ 破坏性变更，发布应被后端闸门阻断
+    rev2 = _save_draft(client, auth["OWNER"], tid, SCHEMA_V2).json()["schemaDraftRevision"]
+    resp = _publish(client, auth["OWNER"], tid, rev2)
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["code"] == "SCHEMA_INVALID"
+    codes = [c["code"] for c in resp.json()["details"]["breakingChanges"]]
+    assert "FIELD_REMOVED" in codes
+
+
+def test_publish_non_breaking_change_against_active_version_ok(client, auth, db_session):
+    """仅新增字段属非破坏性 → 即使已绑定版本仍允许发布（不误伤正常演进）。"""
+    from app.models.task import Task
+
+    task = create_task(client, auth["OWNER"])
+    tid = task["id"]
+
+    rev1 = _save_draft(client, auth["OWNER"], tid, SCHEMA_V1).json()["schemaDraftRevision"]
+    v1 = _publish(client, auth["OWNER"], tid, rev1).json()["schemaVersion"]
+    t = db_session.query(Task).filter_by(id=tid).first()
+    t.active_schema_version_id = v1["id"]
+    db_session.commit()
+
+    # 在 V1 基础上新增一个字段（非破坏性）
+    schema_add = {"nodes": SCHEMA_V1["nodes"] + [{
+        "id": "node-extra", "type": "input.text", "name": "extra",
+        "label": "额外", "required": False, "validationRules": [],
+    }]}
+    rev2 = _save_draft(client, auth["OWNER"], tid, schema_add).json()["schemaDraftRevision"]
+    resp = _publish(client, auth["OWNER"], tid, rev2)
+    assert resp.status_code == 201, resp.text
 
 
 def test_schema_version_accessible_by_labeler_and_reviewer(client, auth):

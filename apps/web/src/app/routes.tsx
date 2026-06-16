@@ -11,7 +11,8 @@ export enum RoutePath {
   OWNER_TASKS_AI_PRECHECK = "/owner/tasks/:taskId/ai-precheck",
   OWNER_TASKS_AI_CONFIG = "/owner/tasks/:taskId/ai-config",
   OWNER_TASKS_EXPORT = "/owner/tasks/:taskId/export",
-  
+  OWNER_ANALYTICS = "/owner/analytics",
+
   LABELER_TASKS = "/labeler/tasks",
   LABELER_WORKSPACE = "/labeler/workspace/:assignmentId",
   LABELER_SUBMISSIONS = "/labeler/submissions",

@@ -1,4 +1,7 @@
 """集成测试：任务生命周期（TC-TASK-01~06）。"""
+from datetime import datetime, timedelta, timezone
+
+from app.models.task import Task
 from tests.helpers import create_task, publish_schema, add_item, publish_task
 
 
@@ -17,6 +20,38 @@ def test_list_tasks_returns_created(client, auth):
     assert data["total"] == 2
     titles = {t["title"] for t in data["tasks"]}
     assert {"任务A", "任务B"} <= titles
+
+
+def test_patch_without_deadline_keeps_existing_deadline(client, auth, db_session):
+    deadline = datetime.now(timezone.utc) + timedelta(days=3)
+    task = create_task(client, auth["OWNER"], deadlineAt=deadline.isoformat())
+
+    resp = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        json={"title": "仅改标题"},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["deadlineAt"] is not None
+
+    stored = db_session.get(Task, task["id"])
+    assert stored.deadline_at is not None
+
+
+def test_patch_deadline_null_clears_deadline(client, auth, db_session):
+    deadline = datetime.now(timezone.utc) + timedelta(days=3)
+    task = create_task(client, auth["OWNER"], deadlineAt=deadline.isoformat())
+
+    resp = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        json={"deadlineAt": None},
+        headers=auth["OWNER"],
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["deadlineAt"] is None
+
+    stored = db_session.get(Task, task["id"])
+    assert stored.deadline_at is None
 
 
 def test_publish_task_transitions_to_published(client, auth, db_session):
@@ -165,3 +200,48 @@ def test_task_stats_requires_owner(client, auth, db_session):
     ctx = setup_published_task(client, db_session, auth["OWNER"])
     resp = client.get(f"/api/v1/tasks/{ctx['task_id']}/stats", headers=auth["LABELER"])
     assert resp.status_code == 403
+
+
+# ── TC-TASK-07：删除草稿任务（仅 DRAFT，级联清理）────────────────────────────
+
+def test_delete_draft_task_succeeds_and_cascades(client, auth, db_session):
+    """DRAFT 任务可删除 → 204；schema 草稿/版本/数据项/审计随之清理，GET 任务 404。"""
+    from app.models.schema import SchemaDraft, SchemaVersion
+    from app.models.dataset import DatasetItem
+
+    task = create_task(client, auth["OWNER"])
+    tid = task["id"]
+    publish_schema(client, auth["OWNER"], tid)   # 建 schema 草稿 + 版本
+    add_item(db_session, tid)                     # 建数据项
+
+    resp = client.delete(f"/api/v1/tasks/{tid}", headers=auth["OWNER"])
+    assert resp.status_code == 204, resp.text
+
+    # 任务已不存在
+    assert client.get(f"/api/v1/tasks/{tid}", headers=auth["OWNER"]).status_code == 404
+    # 子实体级联清理干净
+    assert db_session.query(SchemaDraft).filter_by(task_id=tid).count() == 0
+    assert db_session.query(SchemaVersion).filter_by(task_id=tid).count() == 0
+    assert db_session.query(DatasetItem).filter_by(task_id=tid).count() == 0
+
+
+def test_delete_non_draft_task_rejected_409(client, auth, db_session):
+    """已发布任务禁止删除 → 409；应改用结束 / 归档以保留记录。"""
+    task = create_task(client, auth["OWNER"])
+    tid = task["id"]
+    sv = publish_schema(client, auth["OWNER"], tid)
+    add_item(db_session, tid)
+    publish_task(client, auth["OWNER"], tid, sv)  # → PUBLISHED
+
+    resp = client.delete(f"/api/v1/tasks/{tid}", headers=auth["OWNER"])
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["code"] == "INVALID_STATE_TRANSITION"
+    # 任务仍在
+    assert client.get(f"/api/v1/tasks/{tid}", headers=auth["OWNER"]).status_code == 200
+
+
+def test_delete_draft_task_requires_owner(client, auth):
+    """非 Owner 不能删除任务 → 403。"""
+    task = create_task(client, auth["OWNER"])
+    resp = client.delete(f"/api/v1/tasks/{task['id']}", headers=auth["LABELER"])
+    assert resp.status_code == 403, resp.text

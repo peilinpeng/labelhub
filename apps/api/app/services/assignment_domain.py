@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -36,6 +37,14 @@ _NON_FIELD_TYPES = {
 }
 
 
+def _to_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _collect_field_names(nodes: list, result: set) -> None:
     for node in nodes:
         node_type = node.get("type", "")
@@ -69,6 +78,150 @@ def _find_node_by_id(nodes: list, node_id: str) -> dict | None:
             if found:
                 return found
     return None
+
+
+_DIMENSION_LABELS = {
+    "relevance": ["相关性", "relevance"],
+    "accuracy": ["准确性", "accuracy"],
+    "compliance": ["合规性", "格式合规", "format compliance", "compliance"],
+    "safety": ["安全性", "safety"],
+}
+
+
+def _binding_source_key(binding: dict) -> str | None:
+    source = binding.get("from")
+    if isinstance(source, str) and source.startswith("$."):
+        return source[2:].split(".", 1)[0]
+    target = binding.get("toFieldName")
+    return target if isinstance(target, str) and target else None
+
+
+def _first_text_value(value: object) -> str | None:
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, dict):
+        for key in ("comment", "rationale", "reason", "suggestion", "summary", "message"):
+            text = _first_text_value(value.get(key))
+            if text:
+                score = value.get("score")
+                if isinstance(score, (int, float)):
+                    return f"{score:g} 分。{text}"
+                return text
+    return None
+
+
+def _extract_json_payload(output_text: str) -> dict | None:
+    text = output_text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _lookup_structured_output(payload: dict, key: str) -> str | None:
+    direct = _first_text_value(payload.get(key))
+    if direct:
+        return direct
+
+    dimension_scores = payload.get("dimensionScores")
+    if isinstance(dimension_scores, dict):
+        return _first_text_value(dimension_scores.get(key))
+    if isinstance(dimension_scores, list):
+        for item in dimension_scores:
+            if isinstance(item, dict) and item.get("key") == key:
+                return _first_text_value(item)
+    return None
+
+
+def _clean_llm_comment(text: str) -> str:
+    cleaned = re.split(r"\n\s*#{1,6}\s+", text.strip(), maxsplit=1)[0]
+    cleaned = re.sub(r"^#{1,6}\s*", "", cleaned)
+    cleaned = re.sub(r"^\s*(?:[-*]\s*)?\d+[.)、]\s*", "", cleaned)
+    cleaned = re.sub(r"^\s*[：:]\s*", "", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip("；;，, \n\t")
+
+
+def _extract_markdown_dimension_comments(output_text: str) -> dict[str, str]:
+    comments: dict[str, str] = {}
+    normalized = output_text.replace("\r\n", "\n")
+    for key, labels in _DIMENSION_LABELS.items():
+        label_pattern = "|".join(re.escape(label) for label in labels)
+        pattern = re.compile(
+            rf"(?:^|\n)\s*(?:[-*]\s*)?\d*[.)、]?\s*(?:{label_pattern})\s*"
+            rf"(?:[:：]|\s*\d+(?:\.\d+)?\s*分[:：]?)\s*"
+            rf"(?P<body>.*?)(?=\n\s*(?:[-*]\s*)?\d*[.)、]?\s*(?:"
+            rf"{'|'.join(re.escape(label) for values in _DIMENSION_LABELS.values() for label in values)}"
+            rf")\s*(?:[:：]|\s*\d+(?:\.\d+)?\s*分[:：]?)|\n\s*#{1,6}\s+|\Z)",
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        match = pattern.search(normalized)
+        if match:
+            comment = _clean_llm_comment(match.group("body"))
+            if comment:
+                comments[key] = comment
+    return comments
+
+
+def _extract_summary(output_text: str, payload: dict | None) -> str:
+    if payload is not None:
+        for key in ("summary", "message", "conclusion"):
+            text = _first_text_value(payload.get(key))
+            if text:
+                return text
+
+    heading_match = re.search(
+        r"#{1,6}\s*(?:一句话结论|总结|总体建议|结论)\s*(?P<body>.*)$",
+        output_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if heading_match:
+        first_line = heading_match.group("body").strip().splitlines()[0] if heading_match.group("body").strip() else ""
+        if first_line:
+            return _clean_llm_comment(first_line)
+
+    lines = [_clean_llm_comment(line) for line in output_text.splitlines() if _clean_llm_comment(line)]
+    for line in reversed(lines):
+        if not any(label in line for labels in _DIMENSION_LABELS.values() for label in labels):
+            return line
+    return lines[0] if lines else "AI 已生成质量检查建议，请结合字段建议人工复核。"
+
+
+def _build_llm_assist_response_payload(output_text: str, bindings: list[dict]) -> tuple[dict, dict | None]:
+    """把模型输出拆成“总结一次展示”与“按字段应用”的 patch。
+
+    兼容 JSON 与 Markdown 两类模型输出；多 outputBindings 时不再把整段原文复制到每个字段。
+    """
+    payload = _extract_json_payload(output_text)
+    markdown_comments = {} if payload is not None else _extract_markdown_dimension_comments(output_text)
+    output_payload = {
+        "summary": _extract_summary(output_text, payload),
+        "rawText": output_text,
+    }
+
+    patch: dict[str, str] = {}
+    for binding in bindings:
+        target = binding.get("toFieldName")
+        if not isinstance(target, str) or not target:
+            continue
+        source_key = _binding_source_key(binding)
+        value = None
+        if payload is not None and source_key:
+            value = _lookup_structured_output(payload, source_key)
+        if value is None and source_key:
+            value = markdown_comments.get(source_key)
+        if value is None and len(bindings) == 1:
+            value = output_payload["summary"]
+        if value:
+            patch[target] = value
+
+    return output_payload, (patch or None)
 
 
 def _validate_answers(schema_json: dict, answers: dict) -> dict:
@@ -122,6 +275,10 @@ def claim_item(db: Session, task_id: str, actor: object, req: object) -> tuple:
     if task.status != "PUBLISHED":
         raise ValidationFailedException("任务未发布，无法领取")
 
+    deadline = _to_utc(task.deadline_at)
+    if deadline is not None and deadline <= datetime.now(timezone.utc):
+        raise ValidationFailedException("任务已截止，无法继续领取。")
+
     if task.active_schema_version_id is None:
         raise ValidationFailedException("任务未配置 Schema 版本")
 
@@ -129,13 +286,16 @@ def claim_item(db: Session, task_id: str, actor: object, req: object) -> tuple:
     if strategy["type"] == "ASSIGNMENT" and actor.id not in strategy.get("assigneeIds", []):
         raise PermissionDeniedException("当前用户未被指定为该任务的标注员")
 
+    # 仅当存在「进行中且未提交」的领取(CLAIMED/DRAFTING)时阻止再领，
+    # 以便标注员在工作台内逐条标完整个任务：当前条提交(SUBMITTED)后即可领下一条。
+    # SUBMITTED/RETURNED 不再阻塞领取（已提交的在审核流程中、退回的可后续修订）。
     active = db.query(Assignment).filter(
         Assignment.task_id == task_id,
         Assignment.labeler_id == actor.id,
-        Assignment.status.in_(["CLAIMED", "DRAFTING", "SUBMITTED", "RETURNED"]),
+        Assignment.status.in_(["CLAIMED", "DRAFTING"]),
     ).first()
     if active:
-        raise ValidationFailedException("您已领取该任务，请完成当前作答后再领取")
+        raise ValidationFailedException("您有未提交的领取记录，请先完成当前数据再领取下一条")
 
     q = db.query(DatasetItem).filter(
         DatasetItem.task_id == task_id,
@@ -229,6 +389,10 @@ def get_assignment_context(db: Session, assignment_id: str, actor: object) -> di
         "task": task,
         "item": item,
         "schema_version_id": schema_version.id,
+        # schema_id / schema_version_no 仅用于响应层把快照归一化为 canonical
+        # PublishedLabelHubSchema（补 schemaId / schemaVersionNo），不参与业务判定。
+        "schema_id": schema_version.schema_id,
+        "schema_version_no": schema_version.schema_version_no,
         "schema_json": schema_version.schema_json,
         "draft": draft,
         "last_return_reason": last_return_reason,
@@ -329,18 +493,23 @@ def llm_assist(db: Session, assignment_id: str, actor: object, req: object) -> d
 
     latency_ms = int((time.monotonic() - started) * 1000)
 
-    # 依据 llm.assist 节点的 outputBindings 构造可一键应用的草稿补丁（best-effort）
+    # 依据 llm.assist 节点的 outputBindings 构造可一键应用的草稿补丁（best-effort）。
+    # 多字段绑定时按维度/字段拆分模型输出，避免把整段 Markdown 总评重复写入每个字段。
+    output_payload: object = output_text
     suggested_patch: dict | None = None
     bindings = node.get("outputBindings") or []
     if bindings:
-        suggested_patch = {
-            b["toFieldName"]: output_text
-            for b in bindings
-            if b.get("toFieldName")
-        } or None
+        if len(bindings) == 1:
+            suggested_patch = {
+                b["toFieldName"]: output_text
+                for b in bindings
+                if b.get("toFieldName")
+            } or None
+        else:
+            output_payload, suggested_patch = _build_llm_assist_response_payload(output_text, bindings)
 
     # outputHash 由后端生成（前端不二次计算），用 canonical-json 保证前后端一致
-    output_hash = hash_canonical_json({"output": output_text, "suggestedPatch": suggested_patch})
+    output_hash = hash_canonical_json({"output": output_payload, "suggestedPatch": suggested_patch})
 
     llm_log.status = "SUCCEEDED"
     llm_log.output_hash = output_hash
@@ -355,7 +524,7 @@ def llm_assist(db: Session, assignment_id: str, actor: object, req: object) -> d
 
     db.commit()
     return {
-        "output": output_text,
+        "output": output_payload,
         "suggested_patch": suggested_patch,
         "call_id": call_id,
         "latency_ms": latency_ms,

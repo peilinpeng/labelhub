@@ -31,8 +31,9 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
   const [promptTemplate, setPromptTemplate] = useState(defaultPromptTemplate);
   const [dimensions, setDimensions] = useState(defaultDimensions);
   const [configId, setConfigId] = useState<string | null>(null);
-  const [triggerTiming, setTriggerTiming] = useState("AFTER_SUBMIT");
-  const [reviewFlowMode, setReviewFlowMode] = useState("AI_THEN_HUMAN");
+  const [reviewFlowMode, setReviewFlowMode] = useState<
+    "AI_THEN_HUMAN" | "AUTO_PASS_RETURN" | "HUMAN_REVIEW_ONLY"
+  >("AI_THEN_HUMAN");
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -76,6 +77,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
         setThreshold(0.8);
         setReturnThreshold(0.45);
         setMaxRetries(3);
+        setReviewFlowMode("AI_THEN_HUMAN");
         setPromptTemplate(defaultPromptTemplate);
         setDimensions(defaultDimensions);
         const config = await getReviewConfig(selectedTaskId);
@@ -92,6 +94,8 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
         setThreshold(Number(thresholds.passScore ?? thresholds.autoPass ?? 0.8));
         setReturnThreshold(Number(thresholds.returnScore ?? thresholds.autoReturn ?? 0.45));
         setMaxRetries(config.maxRetries);
+        // 回读审核流转策略；旧配置无 mode 字段时按最安全的「AI 预审后人工复核」兜底。
+        setReviewFlowMode(config.conclusionMapping?.mode ?? "AI_THEN_HUMAN");
         setOwnerNotice(null);
       } catch (error) {
         if (!cancelled) {
@@ -140,9 +144,15 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
       passWhen: `totalScore >= ${threshold}`,
       returnWhen: `totalScore < ${returnThreshold}`,
       humanReviewOtherwise: true,
+      // 把 owner 选择的流转策略真正持久化，后端 worker 据此门控是否允许 AI 自动通过/打回。
+      mode: reviewFlowMode,
     },
     maxRetries,
-  }), [dimensions, enabled, maxRetries, model, promptTemplate, returnThreshold, threshold]);
+  }), [dimensions, enabled, maxRetries, model, promptTemplate, returnThreshold, reviewFlowMode, threshold]);
+
+  // 仅「高分自动通过，低分自动打回，中间转人工」策略下才启用自动通过/打回阈值；
+  // 其余策略（AI 预审后人工复核 / 仅生成质检提示）AI 不参与自动流转，不展示阈值。
+  const autoFlowEnabled = reviewFlowMode === "AUTO_PASS_RETURN";
 
   const weightSum = useMemo(() => dimensions.reduce((acc, d) => acc + d.weight, 0), [dimensions]);
   // 拖动与加载都已强制归一化为 1，这里作为保存前的安全闸门，避免万一保存出和≠1 的权重。
@@ -251,45 +261,46 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
               </Select>
             </label>
             <label className="field-label">
-              检查触发时机
-              <Select value={triggerTiming} onChange={(event) => setTriggerTiming(event.target.value)} disabled={!enabled}>
-                <option value="AFTER_SUBMIT">提交后进入预审队列</option>
-                <option value="BEFORE_HUMAN_REVIEW">审核前自动预审</option>
-              </Select>
-              <small className="field-hint">当前后端按任务 ReviewConfig 执行预审；此处用于明确本任务的流程说明，不写入未支持的 contracts 字段。</small>
-            </label>
-            <label className="field-label">
               检查结果如何进入审核流
-              <Select value={reviewFlowMode} onChange={(event) => setReviewFlowMode(event.target.value)} disabled={!enabled}>
+              <Select value={reviewFlowMode} onChange={(event) => setReviewFlowMode(event.target.value as typeof reviewFlowMode)} disabled={!enabled}>
                 <option value="AI_THEN_HUMAN">AI 预审后进入人工复核</option>
                 <option value="AUTO_PASS_RETURN">高分自动通过，低分自动打回，中间转人工</option>
                 <option value="HUMAN_REVIEW_ONLY">只生成 AI 质检提示，由审核员决策</option>
               </Select>
+              <small className="field-hint">该策略会随 ReviewConfig 保存并由后端预审 worker 执行：仅「高分自动通过…」允许 AI 自动通过/打回，其余策略下 AI 结论仅作参考、一律转人工复核。</small>
             </label>
-            <label className="field-label">
-              自动通过阈值：{threshold}
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={threshold}
-                onChange={(event) => setThreshold(parseFloat(event.target.value))}
-                disabled={!enabled}
-              />
-            </label>
-            <label className="field-label">
-              自动打回阈值
-              <Input
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                value={returnThreshold}
-                onChange={(event) => setReturnThreshold(parseFloat(event.target.value))}
-                disabled={!enabled}
-              />
-            </label>
+            {autoFlowEnabled ? (
+              <>
+                <label className="field-label">
+                  自动通过阈值：{threshold}
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={threshold}
+                    onChange={(event) => setThreshold(parseFloat(event.target.value))}
+                    disabled={!enabled}
+                  />
+                </label>
+                <label className="field-label">
+                  自动打回阈值
+                  <Input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={returnThreshold}
+                    onChange={(event) => setReturnThreshold(parseFloat(event.target.value))}
+                    disabled={!enabled}
+                  />
+                </label>
+              </>
+            ) : (
+              <p className="field-hint">
+                当前策略不启用自动通过/打回，AI 结果仅作为人工审核参考。
+              </p>
+            )}
             <label className="field-label">
               失败重试次数
               <Input
@@ -360,7 +371,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
             ) : null}
             {configId ? (
               <div className="owner-ai-next-actions">
-                <Link to={`/owner/tasks/${selectedTaskId}/designer`} className="lh-button lh-button--primary">
+                <Link to={`/owner/tasks/${selectedTaskId}/designer?publish=1`} className="lh-button lh-button--primary">
                   下一步：发布任务
                 </Link>
               </div>
@@ -378,9 +389,15 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
               <div><span>审核摘要</span><strong>一句话结论与置信度</strong></div>
             </div>
             <div className="owner-ai-policy-list">
-              <div><span>自动通过</span><strong>总分 ≥ {threshold}</strong></div>
-              <div><span>转人工</span><strong>{returnThreshold} ≤ 总分 &lt; {threshold}</strong></div>
-              <div><span>自动打回</span><strong>总分 &lt; {returnThreshold}</strong></div>
+              {autoFlowEnabled ? (
+                <>
+                  <div><span>自动通过</span><strong>总分 ≥ {threshold}</strong></div>
+                  <div><span>转人工</span><strong>{returnThreshold} ≤ 总分 &lt; {threshold}</strong></div>
+                  <div><span>自动打回</span><strong>总分 &lt; {returnThreshold}</strong></div>
+                </>
+              ) : (
+                <div><span>审核流转</span><strong>AI 结果仅作人工审核参考，不自动通过/打回</strong></div>
+              )}
               <div><span>失败兜底</span><strong>重试 {maxRetries} 次后转人工</strong></div>
             </div>
           </div>
@@ -397,10 +414,28 @@ const defaultDimensions: ReviewConfigPayload["dimensions"] = [
   { key: "format", label: "格式合规", description: "答案格式和必填项是否合规", weight: 0.2, scoreRange: [0, 1] },
 ];
 
-const defaultPromptTemplate = `你是 LabelHub 的 AI 预审 Agent。
-请基于题目内容、标注答案和当前 schema 输出结构化审核结果。
-必须使用 function_calling JSON 结构返回 decision、totalScore、dimensionScores、fieldIssues、summary、confidence。
-不要直接修改标注答案；需要人工处理时返回 NEED_HUMAN_REVIEW。`;
+// 默认模板必须用 Jinja 占位符注入【真实样本内容】，否则 worker 渲染后 LLM 收不到任何
+// 题目/答案，会对所有样本盲评出相同分数。占位符对应 worker 的 _build_prompt_context：
+// item.sourcePayload（导入的源数据）/ submission.answers（标注答案）/ dimensions（维度）。
+// 模板任务无关（不写死 model_answer / response_a 等字段名），任意导入数据均可工作。
+const defaultPromptTemplate = `你是 LabelHub 的 AI 预审 Agent。请基于下面这条样本的真实内容，对【标注答案】做质量预审。
+
+【题目 / 源数据】
+{{ item.sourcePayload }}
+
+【标注答案】
+{{ submission.answers }}
+
+请对标注答案逐维度打分（每维 0-100 的整数），维度如下：
+{% for d in dimensions %}- {{ d.key }}：{{ d.label }}
+{% endfor %}
+要求：
+1. dimensionScores 中每项的 key 必须使用上面的英文维度 key（如 relevance / accuracy），不要用中文。
+2. score 必须依据本样本的具体内容给出，不同样本应有不同分数；reason 用一句中文引用本样本的具体情况。
+3. totalScore 取各维度的加权或平均（0-100）。
+4. decision：质量明显合格→PASS；存在明显问题应退回→RETURN；把握不足→NEED_HUMAN_REVIEW。
+5. summary 用一句中文总结，需引用本样本的具体内容；confidence 为你的把握（0-1）。
+请通过 submit_ai_review_result 函数提交结构化结果。`;
 
 function normalizeDimensions(value: ReviewConfigPayload["dimensions"]): ReviewConfigPayload["dimensions"] {
   const filled = value.length > 0 ? value.map((item) => ({

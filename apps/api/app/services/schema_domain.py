@@ -25,6 +25,7 @@ from app.middleware.error_handler import (
 )
 from app.services.audit_domain import write_audit_log
 from app.utils.hashing import hash_canonical_json
+from app.utils.schema_compat import detect_breaking_changes
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +267,23 @@ def publish_schema_version(
         raise SchemaInvalidException(
             f"Schema 校验失败，无法发布。错误：{'; '.join(validation['errors'])}"
         )
+
+    # 4.5 向后兼容性闸门（后端权威）：与任务当前绑定版本做纯比较，
+    # 存在 BREAKING 级变更（删字段 / 不兼容类型变化 / 删选项值）时阻断发布。
+    # 首次发布或未绑定版本（active_schema_version_id 为空）跳过，与前端口径一致。
+    if task.active_schema_version_id:
+        active_version = (
+            db.query(SchemaVersion)
+            .filter_by(id=task.active_schema_version_id)
+            .first()
+        )
+        if active_version is not None:
+            breaking = detect_breaking_changes(active_version.schema_json, draft.schema_json)
+            if breaking:
+                raise SchemaInvalidException(
+                    "Schema 存在破坏性变更，已阻止发布。请先调整模板或提供迁移策略后再发布。",
+                    details={"breakingChanges": breaking},
+                )
 
     # 5. 计算下一个版本号（按 task 维度递增）
     max_no = (

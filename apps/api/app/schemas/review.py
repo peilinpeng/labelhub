@@ -93,6 +93,9 @@ class SubmissionSummary(BaseModel):
     schemaVersionId: str
     attemptNo: int
     status: str
+    # 契约 Submission.answers：标注员提交的完整答案快照。人工审核详情页需据此
+    # 渲染「本轮提交」，此前漏序列化导致审核员看不到真实标注内容。
+    answers: dict[str, Any]
     createdAt: datetime
     updatedAt: datetime
 
@@ -107,6 +110,7 @@ class SubmissionSummary(BaseModel):
             schemaVersionId=s.schema_version_id,
             attemptNo=s.attempt_no,
             status=s.status,
+            answers=s.answers_json or {},
             createdAt=s.created_at,
             updatedAt=s.updated_at,
         )
@@ -157,6 +161,12 @@ class ReviewQueueItem(BaseModel):
     taskTitle: str
     itemId: str
     aiDecision: str | None = None
+    # 是否已有人工（复审/终审）结论。用于前端区分终态究竟由 AI 自动流转还是人工作出，
+    # 避免把 AI 自动打回/通过的提交误标成「人工」决策。
+    humanDecided: bool = False
+    # 该任务的审核流转策略（conclusionMapping.mode）。HUMAN_REVIEW_ONLY 模式下 AI 只产质检
+    # 提示、不给通过/打回结论，前端据此隐藏「AI 建议」结论徽章。
+    flowMode: str | None = None
 
 
 class ReviewQueueResponse(BaseModel):
@@ -284,3 +294,21 @@ class GetReviewConfigResponse(BaseModel):
 
 class UpdateReviewConfigResponse(BaseModel):
     reviewConfig: ReviewConfigResponse
+
+
+class ReviewAgreementConfusion(BaseModel):
+    aiPassHumanPass: int
+    aiPassHumanReturn: int
+    aiReturnHumanPass: int
+    aiReturnHumanReturn: int
+
+
+class ReviewAgreementResponse(BaseModel):
+    """AI 预审 vs 人工最终决策的一致性指标（只读统计）。"""
+    taskId: str | None = None
+    evaluated: int               # 计入一致率的样本数（AI 给确定判断且有人工决策）
+    agreementCount: int
+    agreementRate: float | None  # evaluated=0 时为 null
+    aiAbstain: int               # AI=NEED_HUMAN_REVIEW（主动转人工，不计入一致率）
+    confusion: ReviewAgreementConfusion
+    submissionsConsidered: int

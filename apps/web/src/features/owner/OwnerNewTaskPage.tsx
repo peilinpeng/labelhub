@@ -55,6 +55,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
   const [description, setDescription] = useState("");
   const [instruction, setInstruction] = useState("");
   const [quotaTotal, setQuotaTotal] = useState(100);
+  const [deadlineLocal, setDeadlineLocal] = useState("");
   const [distributionType, setDistributionType] = useState<DistributionType>("FIRST_COME_FIRST_SERVED");
   const [reviewPolicyType, setReviewPolicyType] = useState<ReviewPolicyType>("SINGLE_REVIEW");
   const [assigneeIdsInput, setAssigneeIdsInput] = useState("");
@@ -99,6 +100,7 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
       const task = await createTask({
         title: title.trim(),
         description: description.trim(),
+        deadlineAt: deadlineLocal ? new Date(deadlineLocal).toISOString() : undefined,
         instructionRichText: instruction.trim() ? markdownToDoc(instruction) : undefined,
         quota: { total: quotaTotal },
         distributionStrategy:
@@ -202,6 +204,15 @@ export default function OwnerNewTaskPage({ role }: OwnerNewTaskPageProps) {
               onChange={(event) => setQuotaTotal(Number(event.target.value))}
               placeholder="100"
             />
+          </label>
+          <label className="field-label">
+            截止时间
+            <Input
+              type="datetime-local"
+              value={deadlineLocal}
+              onChange={(event) => setDeadlineLocal(event.target.value)}
+            />
+            <small className="field-hint">可选。到期后标注员将不能继续领取新题。</small>
           </label>
           <label className="field-label">
             分发策略 *

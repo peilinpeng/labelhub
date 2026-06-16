@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import Actor, require_roles
-from app.services import review_domain
+from app.services import review_domain, review_eval_domain
+from app.utils.schema_normalize import normalize_schema_payload
 from app.schemas.review import (
     ClaimReviewResponse,
     ReviewDecisionRequest,
@@ -14,6 +15,7 @@ from app.schemas.review import (
     ReviewQueueResponse,
     ReviewQueueItem,
     ReviewDetailResponse,
+    ReviewAgreementResponse,
     AITraceResponse,
     SubmissionSummary,
     ReviewResultResponse,
@@ -41,12 +43,24 @@ def get_review_queue(
     items = []
     for sub in submissions:
         from app.models.task import Task
-        from app.models.review import ReviewResult
+        from app.models.review import ReviewResult, ReviewConfig
         task = db.query(Task).filter_by(id=sub.task_id).first()
+        review_config = db.query(ReviewConfig).filter_by(task_id=sub.task_id).first()
+        flow_mode = (review_config.conclusion_mapping_json or {}).get("mode") if review_config else None
         ai_result = (
             db.query(ReviewResult)
             .filter_by(submission_id=sub.id, stage="AI_PRECHECK")
             .first()
+        )
+        # 是否存在人工阶段的评审结论（复审/终审），用于前端区分终态归属（AI 自动 vs 人工）。
+        human_decided = (
+            db.query(ReviewResult.id)
+            .filter(
+                ReviewResult.submission_id == sub.id,
+                ReviewResult.stage.in_(("HUMAN_REVIEW", "FINAL_REVIEW")),
+            )
+            .first()
+            is not None
         )
         items.append(ReviewQueueItem(
             submission=SubmissionSummary.from_orm(sub),
@@ -54,8 +68,23 @@ def get_review_queue(
             taskTitle=task.title if task else "",
             itemId=sub.item_id,
             aiDecision=ai_result.decision if ai_result else None,
+            humanDecided=human_decided,
+            flowMode=flow_mode,
         ))
     return ReviewQueueResponse(items=items, total=total, page=page, pageSize=pageSize)
+
+
+@router.get(
+    "/review/agreement",
+    response_model=ReviewAgreementResponse,
+    summary="AI 预审与人工最终决策的一致性指标（只读，质量评估）",
+)
+def get_review_agreement(
+    taskId: str | None = Query(None, description="按任务过滤；不传则跨全部任务统计"),
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(require_roles("OWNER", "REVIEWER", "ADMIN")),
+) -> ReviewAgreementResponse:
+    return ReviewAgreementResponse(**review_eval_domain.compute_agreement(db, taskId))
 
 
 @router.get(
@@ -69,7 +98,18 @@ def get_review_detail(
     actor: Actor = Depends(require_roles("REVIEWER", "OWNER", "ADMIN")),
 ) -> ReviewDetailResponse:
     detail = review_domain.get_review_detail(db, submission_id, actor)
-    schema_json = detail["schema_version"].schema_json if detail["schema_version"] else {}
+    # 归一化为 canonical PublishedLabelHubSchema，与 Reviewer 前端（detail.schema.root /
+    # schemaVersionNo / SchemaRenderer）的 canonical 期望一致；无版本时退化为安全空 schema。
+    _sv = detail["schema_version"]
+    _task_id = detail["task"].id if detail["task"] else ""
+    schema_json = normalize_schema_payload(
+        _sv.schema_json if _sv else {},
+        _task_id,
+        _sv.schema_id if _sv else None,
+        published=True,
+        schema_version_id=_sv.id if _sv else None,
+        schema_version_no=_sv.schema_version_no if _sv else None,
+    )
     # AI 预审记录按契约 AIReviewResultRecord 序列化：result_json 即 AIReviewResult
     # （totalScore/dimensionScores/fieldIssues/summary/confidence），需置于 aiResult
     # 字段，与前端 detail.aiResult.aiResult.* 的读取对齐（resultJson 形状前端读不到）。

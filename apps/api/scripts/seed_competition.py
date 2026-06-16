@@ -316,6 +316,57 @@ _REVIEW_CONCLUSION_MAPPING = {
 
 
 # ---------------------------------------------------------------------------
+# AI 预审 Prompt 模板（Jinja，渲染时注入每题真实内容）
+# _build_prompt_context 提供 item.sourcePayload / submission.answers / dimensions。
+# 关键：dimensionScores 的 key 必须用英文维度 key（前端 DIMENSION_LABELS 按英文 key 取中文名）。
+# ---------------------------------------------------------------------------
+
+_QA_REVIEW_PROMPT = """你是「大模型问答质量」预审 AI。请基于下面这条样本的真实内容，独立评估【待评估回答】的质量。
+
+【用户问题】
+{{ item.sourcePayload.prompt }}
+
+【待评估回答（model_answer）】
+{{ item.sourcePayload.model_answer }}
+
+【参考答案（reference）】
+{{ item.sourcePayload.reference | default('（无）') }}
+
+请对【待评估回答】逐维度打分（每维 0-100 的整数），维度如下：
+{% for d in dimensions %}- {{ d.key }}：{{ d.label }}
+{% endfor %}
+要求：
+1. dimensionScores 中每项的 key 必须用上面的英文维度 key（如 relevance / accuracy），不要用中文。
+2. score 必须依据本回答的具体内容给出，不同样本应有不同分数；reason 用一句中文引用本回答的具体情况。
+3. totalScore 取各维度的加权/平均（0-100）。
+4. decision：质量明显合格→PASS；存在明显问题应退回→RETURN；把握不足→NEED_HUMAN_REVIEW。
+5. summary 一句中文，需引用本回答的具体内容；confidence 为你的把握（0-1）。
+请通过 submit_ai_review_result 函数提交结构化结果。"""
+
+_PREF_REVIEW_PROMPT = """你是「偏好对比（RLHF）」预审 AI。请基于下面这条样本的真实内容，比较回答 A 与回答 B。
+
+【用户问题】
+{{ item.sourcePayload.prompt }}
+
+【回答 A（response_a）】
+{{ item.sourcePayload.response_a }}
+
+【回答 B（response_b）】
+{{ item.sourcePayload.response_b }}
+
+请对「本次偏好判定所依据的质量」逐维度打分（每维 0-100 的整数），维度如下：
+{% for d in dimensions %}- {{ d.key }}：{{ d.label }}
+{% endfor %}
+要求：
+1. dimensionScores 中每项的 key 必须用上面的英文维度 key（如 relevance / completeness），不要用中文。
+2. score 必须依据 A/B 的具体内容给出，不同样本应有不同分数；reason 用一句中文引用具体差异。
+3. summary 用一句中文给出更优的一方（A 更优 / B 更优 / 平局）及理由，需引用具体内容。
+4. decision：判定清晰可信→PASS；需要人工复核→NEED_HUMAN_REVIEW；样本质量过差→RETURN。
+5. totalScore 0-100；confidence 0-1。
+请通过 submit_ai_review_result 函数提交结构化结果。"""
+
+
+# ---------------------------------------------------------------------------
 # 任务定义（固定 ID，便于排查；幂等以标题判断）
 # ---------------------------------------------------------------------------
 
@@ -329,7 +380,7 @@ _TASKS = [
                 "sv": "sv_qa_quality_v1", "rc": "rc_qa_quality"},
         "schema": _QA_SCHEMA,
         "dimensions": _QA_REVIEW_DIMENSIONS,
-        "review_prompt": "请基于相关性、准确性、格式合规、安全性对该标注打分并给出结论。",
+        "review_prompt": _QA_REVIEW_PROMPT,
         "item_prefix": "item_qa",
     },
     {
@@ -341,7 +392,7 @@ _TASKS = [
                 "sv": "sv_pref_compare_v1", "rc": "rc_pref_compare"},
         "schema": _PREF_SCHEMA,
         "dimensions": _PREF_REVIEW_DIMENSIONS,
-        "review_prompt": "请基于相关性、准确性、完整性、可读性对该偏好判定打分并给出结论。",
+        "review_prompt": _PREF_REVIEW_PROMPT,
         "item_prefix": "item_pc",
     },
 ]
