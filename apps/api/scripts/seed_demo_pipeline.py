@@ -150,7 +150,7 @@ def _reset_history(db, task_id: str) -> None:
 # 单任务流水线
 # ---------------------------------------------------------------------------
 
-def _run_task(db, task_id: str, answers_fn, per_task: int, leave_queue: int,
+def _run_task(db, task_id: str, answers_fn, flow_mode: str, per_task: int, leave_queue: int,
               disagree_rate: float, rng: random.Random, dry_run: bool) -> dict:
     task = db.query(Task).filter_by(id=task_id).first()
     if task is None:
@@ -159,6 +159,14 @@ def _run_task(db, task_id: str, answers_fn, per_task: int, leave_queue: int,
     review_config = db.query(ReviewConfig).filter_by(task_id=task_id).first()
     if sv_id is None or review_config is None or not review_config.enabled:
         raise SystemExit(f"❌ 任务 {task_id} 缺 active schema / 启用的 ReviewConfig，请先跑 seed_competition.py")
+
+    # 把审核流转策略写入 ReviewConfig.mode，让 worker 的策略门控按本任务策略流转：
+    # AUTO_PASS_RETURN 才允许 AI 按硬阈值自动通过/打回，其余模式一律转人工。
+    if not dry_run:
+        review_config.conclusion_mapping_json = {
+            **(review_config.conclusion_mapping_json or {}), "mode": flow_mode}
+        db.commit()
+        print(f"  审核流转策略 mode = {flow_mode}（thresholds={review_config.thresholds_json}）")
 
     items = (db.query(DatasetItem).filter_by(task_id=task_id)
              .order_by(DatasetItem.id.asc()).limit(per_task).all())
@@ -185,7 +193,8 @@ def _run_task(db, task_id: str, answers_fn, per_task: int, leave_queue: int,
 
     # 1) 构造提交 + 同步真跑 AI
     ai_dist = {"PASS": 0, "RETURN": 0, "NEED_HUMAN_REVIEW": 0}
-    ai_passed_sub_ids: list[str] = []
+    auto_returned = 0  # AUTO 模式下被 AI 按硬阈值自动打回（无人工）
+    reviewable: list[tuple[str, str]] = []  # (sub_id, AI 原始决策) —— 仍待人工的提交（AI_PASSED / NEEDS_HUMAN_REVIEW）
     for i, item in enumerate(items):
         answers = answers_fn(item.source_payload or {}, rng) if task_id == PREF_TASK else answers_fn(i, rng)
         asn_id = f"asn_pipe_{i:03d}_{uuid4().hex[:6]}"
@@ -223,21 +232,34 @@ def _run_task(db, task_id: str, answers_fn, per_task: int, leave_queue: int,
         ai = db.query(ReviewResult).filter_by(submission_id=sub_id, stage="AI_PRECHECK").first()
         ai_dec = ai.decision if ai else "FAILED"
         ai_dist[ai_dec] = ai_dist.get(ai_dec, 0) + 1
-        if ai_dec == "PASS":
-            ai_passed_sub_ids.append(sub_id)
-        print(f"  [{i + 1}/{len(items)}] AI decision={ai_dec}  latency={latency}ms")
+        final_status = db.get(Submission, sub_id).status
+        # 仍待人工的提交都可被审核员处理：AUTO 模式的 AI_PASSED、各模式降级的 NEEDS_HUMAN_REVIEW。
+        # AUTO 模式下低分被 AI 自动打回（RETURNED）则无人工、不进此列。
+        if final_status in ("AI_PASSED", "NEEDS_HUMAN_REVIEW"):
+            reviewable.append((sub_id, ai_dec))
+        elif final_status == "RETURNED":
+            auto_returned += 1
+        print(f"  [{i + 1}/{len(items)}] AI={ai_dec}  → {final_status}  latency={latency}ms")
 
-    # 2) 人工审核分流（只能审 AI_PASSED：AI=RETURN→RETURNED 不可审）
-    #    留 leave_queue 条不审（现场队列非空），其余审：按 disagree_rate 翻转为 RETURN。
-    rng.shuffle(ai_passed_sub_ids)
-    reserve = ai_passed_sub_ids[:leave_queue]
-    to_review = ai_passed_sub_ids[leave_queue:]
-    n_flip = int(round(disagree_rate * len(to_review)))
+    # 2) 人工审核分流。可审的是所有仍待人工的提交（AI_PASSED + NEEDS_HUMAN_REVIEW）。
+    #    留 leave_queue 条不审（现场队列非空）；其余审核：人工默认认同 AI 的原始判断（PASS↔PASS、
+    #    RETURN↔RETURN），按 disagree_rate 在「AI 给了确定判断(PASS/RETURN)」的样本上故意翻转，
+    #    制造非平凡一致率（一致率分母只算 AI=PASS/RETURN 的样本，NEED_HUMAN 为弃权不计）。
+    rng.shuffle(reviewable)
+    reserve = reviewable[:leave_queue]
+    to_review = reviewable[leave_queue:]
+    # 在「AI 有确定判断」的样本里挑前 n_flip 个翻转
+    decisive_idx = [j for j, (_, ai_dec) in enumerate(to_review) if ai_dec in ("PASS", "RETURN")]
+    n_flip = int(round(disagree_rate * len(decisive_idx)))
+    flip_set = set(decisive_idx[:n_flip])
     accepted = returned = 0
-    for j, sub_id in enumerate(to_review):
-        flip = (j < n_flip)  # 前 n_flip 条故意与 AI(PASS) 不一致 → 人工 RETURN
+    for j, (sub_id, ai_dec) in enumerate(to_review):
+        # 人工目标决策：认同 AI（PASS/RETURN 原样；NEED_HUMAN 弃权 → 人工默认通过）
+        human = "PASS" if ai_dec in ("PASS", "NEED_HUMAN_REVIEW") else "RETURN"
+        if j in flip_set:  # 故意与 AI 不一致
+            human = "RETURN" if human == "PASS" else "PASS"
         claim_review(db, sub_id, REVIEWER_ACTOR)
-        if flip:
+        if human == "RETURN":
             req = ReviewDecisionRequest(stage="HUMAN_REVIEW", decision="RETURN",
                                         reason="人工复核：答案与参考存在偏差，退回修订。")
             returned += 1
@@ -247,10 +269,11 @@ def _run_task(db, task_id: str, answers_fn, per_task: int, leave_queue: int,
         submit_review_decision(db, sub_id, REVIEWER_ACTOR, req)
 
     agg = compute_agreement(db, task_id)
-    print(f"  AI 决策分布: {ai_dist}  |  人工: ACCEPTED={accepted} RETURNED={returned} 留队列(AI_PASSED)={len(reserve)}")
+    print(f"  AI 决策分布: {ai_dist}  | AI 自动打回(无人工)={auto_returned}")
+    print(f"  人工: ACCEPTED={accepted} RETURNED={returned} 留队列={len(reserve)}")
     print(f"  一致率: evaluated={agg['evaluated']} agreementRate={agg['agreementRate']} aiAbstain={agg['aiAbstain']}")
-    return {"task": task_id, "ai_dist": ai_dist, "accepted": accepted, "returned": returned,
-            "reserved": len(reserve), "agreement": agg}
+    return {"task": task_id, "mode": flow_mode, "ai_dist": ai_dist, "auto_returned": auto_returned,
+            "accepted": accepted, "returned": returned, "reserved": len(reserve), "agreement": agg}
 
 
 def _drop_news(db) -> None:
@@ -275,11 +298,15 @@ def main() -> None:
     args = parser.parse_args()
 
     rng = random.Random(args.seed)
+    # 每任务带审核流转策略，让演示数据真正体现「三种审核流」中的两种（① 为 ③ 的展示变体，
+    # 现场切下拉即可）：
+    #   QA   → AUTO_PASS_RETURN（②）：高分按硬阈值自动通过、低分自动打回、中间转人工
+    #   pref → AI_THEN_HUMAN（③）：AI 仅给建议，全量转人工复核
     targets = []
     if args.task in ("qa", "both"):
-        targets.append((QA_TASK, _qa_answers))
+        targets.append((QA_TASK, _qa_answers, "AUTO_PASS_RETURN"))
     if args.task in ("pref", "both"):
-        targets.append((PREF_TASK, _pref_answers))
+        targets.append((PREF_TASK, _pref_answers, "AI_THEN_HUMAN"))
 
     db = SessionLocal()
     try:
@@ -291,8 +318,8 @@ def main() -> None:
             _drop_news(db)
 
         results = []
-        for task_id, fn in targets:
-            results.append(_run_task(db, task_id, fn, args.per_task, args.leave_queue,
+        for task_id, fn, flow_mode in targets:
+            results.append(_run_task(db, task_id, fn, flow_mode, args.per_task, args.leave_queue,
                                      args.disagree_rate, rng, args.dry_run))
 
         if args.dry_run:
@@ -304,8 +331,9 @@ def main() -> None:
         print("=" * 64)
         for r in results:
             agg = r["agreement"]
-            print(f"{r['task']}: AI {r['ai_dist']} | ACCEPTED={r['accepted']} RETURNED={r['returned']} "
-                  f"队列保留={r['reserved']} | 一致率 evaluated={agg['evaluated']} rate={agg['agreementRate']}")
+            print(f"{r['task']} [{r['mode']}]: AI {r['ai_dist']} 自动打回={r['auto_returned']} | "
+                  f"ACCEPTED={r['accepted']} RETURNED={r['returned']} 队列保留={r['reserved']} | "
+                  f"一致率 evaluated={agg['evaluated']} rate={agg['agreementRate']}")
             if agg["evaluated"] < 5:
                 print(f"  ⚠️  evaluated={agg['evaluated']} 偏小（Doubao 多判转人工）。建议增大 --per-task 重跑。")
     finally:
