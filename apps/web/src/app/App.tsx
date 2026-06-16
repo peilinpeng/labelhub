@@ -6,6 +6,7 @@ import OwnerSchemaPage from "../features/owner/OwnerSchemaPage";
 import OwnerAIPage from "../features/owner/OwnerAIPage";
 import OwnerExportPage from "../features/owner/OwnerExportPage";
 import OwnerQualityCenterPage from "../features/owner/OwnerQualityCenterPage";
+import OwnerAnalyticsPage from "../features/owner/OwnerAnalyticsPage";
 import OwnerNewTaskPage from "../features/owner/OwnerNewTaskPage";
 import OwnerTaskDetailPage from "../features/owner/OwnerTaskDetailPage";
 import OwnerDatasetPage from "../features/owner/OwnerDatasetPage";
@@ -47,6 +48,7 @@ const shellCopy: Record<Role, { title: string; subtitle: string; navItems: Shell
       { label: "新建任务", path: RoutePath.OWNER_TASKS_NEW },
       { label: "AI 预审规则", path: RoutePath.OWNER_AI_CONFIG },
       { label: "质量中心", path: "/owner/quality" },
+      { label: "绩效看板", path: RoutePath.OWNER_ANALYTICS },
     ],
   },
   LABELER: {
@@ -255,6 +257,7 @@ function AppRoutes({ role }: { role: Role }) {
       <Route path={RoutePath.OWNER_TASKS_AI_CONFIG} element={<OwnerAIPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_EXPORT} element={<OwnerExportPage role={role} />} />
       <Route path="/owner/quality" element={<OwnerQualityCenterPage role={role} />} />
+      <Route path={RoutePath.OWNER_ANALYTICS} element={<OwnerAnalyticsPage role={role} />} />
 
       <Route path={RoutePath.LABELER_TASKS} element={<LabelerWorkspace role={role} />} />
       <Route path={RoutePath.LABELER_WORKSPACE} element={<AssignmentPage role={role} />} />

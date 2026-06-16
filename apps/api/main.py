@@ -21,6 +21,7 @@ from app.routers import ai_assist
 from app.routers import exports
 from app.routers import files
 from app.routers import audit_events
+from app.routers import analytics
 # from app.routers import ai_review
 
 app = FastAPI(title="LabelHub API", version="1.0.0")
@@ -43,6 +44,7 @@ app.include_router(ai_assist.router, prefix="/api/v1")
 app.include_router(exports.router, prefix="/api/v1")
 app.include_router(files.router, prefix="/api/v1")
 app.include_router(audit_events.router, prefix="/api/v1")
+app.include_router(analytics.router, prefix="/api/v1")
 # app.include_router(ai_review.router, prefix="/api/v1")
 
 

@@ -306,6 +306,34 @@ export const handlers = [
     return exportJob === undefined ? errorJson("RESOURCE_NOT_FOUND", "导出任务不存在", 404) : okJson({ exportJob });
   }),
 
+  // 绩效看板（只读聚合）。mock 返回一份代表性数据，保证页面渲染与空状态逻辑可被验证。
+  http.get("/api/v1/analytics/dashboard", () =>
+    okJson({
+      scope: { taskId: null, taskTitle: null },
+      aiCost: {
+        byPurpose: [
+          { purpose: "AI_REVIEW", scope: "global", calls: 24, succeeded: 22, failed: 2, failureRate: 0.083, totalTokens: 48230, tokenCoverage: 1, avgLatencyMs: 1820 },
+          { purpose: "LLM_ASSIST", scope: "global", calls: 13, succeeded: 13, failed: 0, failureRate: 0, totalTokens: 9120, tokenCoverage: 1, avgLatencyMs: 940 },
+          { purpose: "SCHEMA_GENERATION", scope: "global", calls: 5, succeeded: 5, failed: 0, failureRate: 0, totalTokens: 15400, tokenCoverage: 1, avgLatencyMs: 3100 },
+        ],
+        totalCalls: 42,
+        totalTokens: 72750,
+        schemaGenerationTaskScoped: false,
+      },
+      labelers: [
+        { labelerId: "usr_demo_labeler", displayName: "演示标注员", submitted: 11, accepted: 8, returned: 2, rejected: 0, inReview: 1, acceptRate: 0.8, returnRate: 0.2, avgAiScore: 86.5, reviewerPatchedFields: 4 },
+      ],
+      aiQuality: {
+        aiRawTotal: 18,
+        byRawDecision: { PASS: 9, RETURN: 4, NEED_HUMAN_REVIEW: 5 },
+        humanReviewRate: 0.278,
+        evaluated: 13,
+        agreements: 11,
+        agreementRate: 0.846,
+      },
+    }),
+  ),
+
   http.get("/api/v1/marketplace/tasks", () => okJson(listMarketplaceTasks())),
 
   http.post("/api/v1/tasks/:taskId/claim", async ({ request, params }) => {

@@ -232,3 +232,58 @@ export async function downloadExportFile(exportId: string): Promise<{ blob: Blob
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
+
+// ---------------------------------------------------------------------------
+// 绩效看板（只读聚合）。contracts 未定义此响应类型，故本地声明。
+// 对应后端 GET /api/v1/analytics/dashboard。
+// ---------------------------------------------------------------------------
+
+export interface AnalyticsAiCostRow {
+  purpose: "AI_REVIEW" | "LLM_ASSIST" | "SCHEMA_GENERATION";
+  scope: "task" | "global";
+  calls: number;
+  succeeded: number;
+  failed: number;
+  failureRate: number | null;
+  totalTokens: number;
+  tokenCoverage: number | null;
+  avgLatencyMs: number | null;
+}
+
+export interface AnalyticsLabelerRow {
+  labelerId: string;
+  displayName: string;
+  submitted: number;
+  accepted: number;
+  returned: number;
+  rejected: number;
+  inReview: number;
+  acceptRate: number | null;
+  returnRate: number | null;
+  avgAiScore: number | null;
+  reviewerPatchedFields: number;
+}
+
+export interface AnalyticsDashboard {
+  scope: { taskId: string | null; taskTitle: string | null };
+  aiCost: {
+    byPurpose: AnalyticsAiCostRow[];
+    totalCalls: number;
+    totalTokens: number;
+    schemaGenerationTaskScoped: boolean;
+  };
+  labelers: AnalyticsLabelerRow[];
+  aiQuality: {
+    aiRawTotal: number;
+    byRawDecision: { PASS?: number; RETURN?: number; NEED_HUMAN_REVIEW?: number };
+    humanReviewRate: number | null;
+    evaluated: number;
+    agreements: number;
+    agreementRate: number | null;
+  };
+}
+
+export async function fetchAnalyticsDashboard(taskId?: string): Promise<AnalyticsDashboard> {
+  const query = taskId ? `?taskId=${encodeURIComponent(taskId)}` : "";
+  return apiGet<AnalyticsDashboard>(`/api/v1/analytics/dashboard${query}`);
+}
