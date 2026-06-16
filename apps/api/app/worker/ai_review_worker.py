@@ -260,6 +260,32 @@ def _handle_submission_return(db, submission, actor_id: str) -> None:
         )
 
 
+def _handle_auto_accept(db, submission, actor_id: str) -> None:
+    """AUTO_PASS_RETURN 策略下高分自动通过：把 assignment 推进到 ACCEPTED、题目置为 COMPLETED，
+    与人工"通过单审"的收尾保持一致（区别仅在 actor 为系统、无 HUMAN_REVIEW 评审记录）。"""
+    from app.models.assignment import Assignment
+    from app.state_machines.assignment_sm import apply_transition as assign_transition
+
+    assignment = db.query(Assignment).filter_by(id=submission.assignment_id).first()
+    if assignment and assignment.status == "SUBMITTED":
+        assignment.status = assign_transition(assignment.status, "aiReviewAutoAccept")
+        write_audit_log(
+            db,
+            entity_type="ASSIGNMENT",
+            entity_id=assignment.id,
+            action="REVIEW_ACCEPTED",
+            actor_id=actor_id,
+            after={"reason": "AI Review 高分自动通过", "submissionId": submission.id},
+        )
+    try:
+        from app.models.dataset import DatasetItem
+        item = db.query(DatasetItem).filter_by(id=submission.item_id).first()
+        if item is not None:
+            item.status = "COMPLETED"
+    except ImportError:
+        pass
+
+
 def _execute_review(db, job_id: str) -> None:
     from app.models.llm import LLMCallLog
     from app.models.review import AIReviewJob, ReviewConfig, ReviewResult
@@ -426,7 +452,13 @@ def _execute_review(db, job_id: str) -> None:
     decision, low_confidence_downgrade = _route_with_confidence(strategy_decision, confidence, threshold)
 
     action = "AI_REVIEW_SUCCEEDED"
-    if decision == "PASS":
+    if decision == "PASS" and flow_mode == AUTO_FLOW_MODE:
+        # 高分自动通过 → 直接落终态 ACCEPTED，无需人工（见 _handle_auto_accept）。
+        command = "aiReviewAutoAccept"
+        action = "AI_REVIEW_AUTO_ACCEPTED"
+        _handle_auto_accept(db, submission, system_actor_id)
+    elif decision == "PASS":
+        # 理论上策略门控已保证非 AUTO 模式不会出现 PASS；保留旧路径作兜底（建议通过待人工）。
         command = "aiReviewPass"
     elif decision == "RETURN":
         command = "aiReviewReturn"

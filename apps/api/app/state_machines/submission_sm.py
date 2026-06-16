@@ -3,6 +3,8 @@ from app.middleware.error_handler import InvalidStateTransitionException
 _ALLOWED: dict[tuple[str, str], str] = {
     ("SUBMITTED",          "enqueueAIReview"):       "AI_REVIEWING",
     ("AI_REVIEWING",       "aiReviewPass"):           "AI_PASSED",
+    # AUTO_PASS_RETURN 策略下高分直接自动通过到终态，无需人工确认（见 ai_review_worker）。
+    ("AI_REVIEWING",       "aiReviewAutoAccept"):     "ACCEPTED",
     ("AI_REVIEWING",       "aiReviewReturn"):         "RETURNED",
     ("AI_REVIEWING",       "aiReviewNeedHuman"):      "NEEDS_HUMAN_REVIEW",
     ("AI_REVIEWING",       "aiReviewFailedToHuman"):  "NEEDS_HUMAN_REVIEW",

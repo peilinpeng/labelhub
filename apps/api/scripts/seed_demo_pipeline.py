@@ -194,6 +194,7 @@ def _run_task(db, task_id: str, answers_fn, flow_mode: str, per_task: int, leave
     # 1) 构造提交 + 同步真跑 AI
     ai_dist = {"PASS": 0, "RETURN": 0, "NEED_HUMAN_REVIEW": 0}
     auto_returned = 0  # AUTO 模式下被 AI 按硬阈值自动打回（无人工）
+    auto_accepted = 0  # AUTO 模式下高分自动通过到终态 ACCEPTED（无人工）
     reviewable: list[tuple[str, str]] = []  # (sub_id, AI 原始决策) —— 仍待人工的提交（AI_PASSED / NEEDS_HUMAN_REVIEW）
     for i, item in enumerate(items):
         answers = answers_fn(item.source_payload or {}, rng) if task_id == PREF_TASK else answers_fn(i, rng)
@@ -239,6 +240,8 @@ def _run_task(db, task_id: str, answers_fn, flow_mode: str, per_task: int, leave
             reviewable.append((sub_id, ai_dec))
         elif final_status == "RETURNED":
             auto_returned += 1
+        elif final_status == "ACCEPTED":
+            auto_accepted += 1
         print(f"  [{i + 1}/{len(items)}] AI={ai_dec}  → {final_status}  latency={latency}ms")
 
     # 2) 人工审核分流。可审的是所有仍待人工的提交（AI_PASSED + NEEDS_HUMAN_REVIEW）。
@@ -269,11 +272,12 @@ def _run_task(db, task_id: str, answers_fn, flow_mode: str, per_task: int, leave
         submit_review_decision(db, sub_id, REVIEWER_ACTOR, req)
 
     agg = compute_agreement(db, task_id)
-    print(f"  AI 决策分布: {ai_dist}  | AI 自动打回(无人工)={auto_returned}")
+    print(f"  AI 决策分布: {ai_dist}  | AI 自动通过={auto_accepted} 自动打回={auto_returned}（均无人工）")
     print(f"  人工: ACCEPTED={accepted} RETURNED={returned} 留队列={len(reserve)}")
     print(f"  一致率: evaluated={agg['evaluated']} agreementRate={agg['agreementRate']} aiAbstain={agg['aiAbstain']}")
     return {"task": task_id, "mode": flow_mode, "ai_dist": ai_dist, "auto_returned": auto_returned,
-            "accepted": accepted, "returned": returned, "reserved": len(reserve), "agreement": agg}
+            "auto_accepted": auto_accepted, "accepted": accepted, "returned": returned,
+            "reserved": len(reserve), "agreement": agg}
 
 
 def _drop_news(db) -> None:
@@ -331,8 +335,8 @@ def main() -> None:
         print("=" * 64)
         for r in results:
             agg = r["agreement"]
-            print(f"{r['task']} [{r['mode']}]: AI {r['ai_dist']} 自动打回={r['auto_returned']} | "
-                  f"ACCEPTED={r['accepted']} RETURNED={r['returned']} 队列保留={r['reserved']} | "
+            print(f"{r['task']} [{r['mode']}]: AI {r['ai_dist']} 自动通过={r['auto_accepted']} 自动打回={r['auto_returned']} | "
+                  f"人工 ACCEPTED={r['accepted']} RETURNED={r['returned']} 队列保留={r['reserved']} | "
                   f"一致率 evaluated={agg['evaluated']} rate={agg['agreementRate']}")
             if agg["evaluated"] < 5:
                 print(f"  ⚠️  evaluated={agg['evaluated']} 偏小（Doubao 多判转人工）。建议增大 --per-task 重跑。")
