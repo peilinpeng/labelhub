@@ -93,6 +93,9 @@ class SubmissionSummary(BaseModel):
     schemaVersionId: str
     attemptNo: int
     status: str
+    # 契约 Submission.answers：标注员提交的完整答案快照。人工审核详情页需据此
+    # 渲染「本轮提交」，此前漏序列化导致审核员看不到真实标注内容。
+    answers: dict[str, Any]
     createdAt: datetime
     updatedAt: datetime
 
@@ -107,6 +110,7 @@ class SubmissionSummary(BaseModel):
             schemaVersionId=s.schema_version_id,
             attemptNo=s.attempt_no,
             status=s.status,
+            answers=s.answers_json or {},
             createdAt=s.created_at,
             updatedAt=s.updated_at,
         )
