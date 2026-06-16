@@ -161,6 +161,9 @@ class ReviewQueueItem(BaseModel):
     taskTitle: str
     itemId: str
     aiDecision: str | None = None
+    # 是否已有人工（复审/终审）结论。用于前端区分终态究竟由 AI 自动流转还是人工作出，
+    # 避免把 AI 自动打回/通过的提交误标成「人工」决策。
+    humanDecided: bool = False
 
 
 class ReviewQueueResponse(BaseModel):

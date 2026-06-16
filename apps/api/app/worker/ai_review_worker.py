@@ -157,6 +157,23 @@ def _route_with_confidence(raw_decision: str, confidence, threshold: float) -> t
     return ("NEED_HUMAN_REVIEW" if low else raw_decision), low
 
 
+# 仅此模式允许 AI 决策自动流转到终态（自动通过 / 自动打回）。
+# 其余模式（AI_THEN_HUMAN / HINTS_ONLY）下 AI 结论仅作参考，一律转人工复核。
+AUTO_FLOW_MODE = "AUTO_PASS_RETURN"
+
+
+def _route_by_strategy(decision: str, mode: str) -> tuple[str, bool]:
+    """审核策略门控：把 owner 配置的 conclusionMapping.mode 真正落到流转上。
+
+    只有 AUTO_PASS_RETURN 模式才允许 AI 把提交自动判为 PASS / RETURN；其余模式下
+    AI 结论仅作人工参考，PASS / RETURN 一律降级为 NEED_HUMAN_REVIEW，绝不无人工自动流转。
+    返回 (有效决策, 是否因策略降级)。
+    """
+    if mode != AUTO_FLOW_MODE and decision in ("PASS", "RETURN"):
+        return "NEED_HUMAN_REVIEW", True
+    return decision, False
+
+
 def _render_prompt(template_str: str, context: dict) -> str:
     return Template(template_str).render(**context)
 
@@ -354,12 +371,19 @@ def _execute_review(db, job_id: str) -> None:
     )
     db.add(review_result)
 
-    # 置信度感知路由（见 _route_with_confidence）。AI_PRECHECK 记录上面已存 LLM 原始决策，
-    # 这里只调整路由用的有效决策；原始判断保留供人机一致性对账。
+    # 路由分两道闸，AI_PRECHECK 记录上面已存 LLM 原始决策，这里只调整路由用的有效决策，
+    # 原始判断保留供人机一致性对账：
+    #   1) 审核策略门控（_route_by_strategy）：非 AUTO_PASS_RETURN 模式下，AI 的 PASS/RETURN
+    #      一律降级为转人工——owner 选「AI 预审后人工复核 / 仅质检提示」时，绝不无人工自动流转。
+    #   2) 置信度感知路由（_route_with_confidence）：自动模式下，低置信度的 PASS 再降级转人工。
     raw_decision = ai_result["decision"]
     confidence = ai_result.get("confidence")
     threshold = settings.AI_REVIEW_CONFIDENCE_THRESHOLD
-    decision, low_confidence_downgrade = _route_with_confidence(raw_decision, confidence, threshold)
+    conclusion_mapping = review_config.conclusion_mapping_json or {}
+    flow_mode = conclusion_mapping.get("mode", "AI_THEN_HUMAN")
+
+    strategy_decision, strategy_downgrade = _route_by_strategy(raw_decision, flow_mode)
+    decision, low_confidence_downgrade = _route_with_confidence(strategy_decision, confidence, threshold)
 
     action = "AI_REVIEW_SUCCEEDED"
     if decision == "PASS":
@@ -384,6 +408,8 @@ def _execute_review(db, job_id: str) -> None:
             "rawDecision": raw_decision,
             "confidence": confidence,
             "confidenceThreshold": threshold,
+            "flowMode": flow_mode,
+            "strategyDowngrade": strategy_downgrade,
             "lowConfidenceDowngrade": low_confidence_downgrade,
             "totalScore": ai_result.get("totalScore"),
             "jobId": job.id,

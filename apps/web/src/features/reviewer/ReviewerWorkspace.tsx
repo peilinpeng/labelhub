@@ -56,12 +56,20 @@ function aiDecisionTone(decision: AIPrecheckDecision | null | undefined): "succe
   return "default";
 }
 
-// 仅当人工已给出终态结论时才展示「人工」徽章，便于与 AI 建议对比；
-// 尚未人工决策（待审/审核中）时返回 null，不展示。
-function humanOutcomeLabel(status: ReviewQueueItem["submission"]["status"]): string | null {
-  if (status === "ACCEPTED") return "已通过";
-  if (status === "RETURNED" || status === "REJECTED") return "已打回";
-  return null;
+// 终态结论徽章。RETURNED/REJECTED/ACCEPTED 既可能由人工作出，也可能由 AI 自动流转
+// （AUTO_PASS_RETURN 策略）。据后端 humanDecided 区分归属，避免把 AI 自动决策误标成「人工」：
+//   人工已介入 → 「人工 · 已通过/已打回」
+//   AI 自动流转 → 「AI 自动 · 已通过/已打回」
+// 尚未产生终态（待审/审核中）时返回 null，不展示。
+function outcomeBadge(
+  status: ReviewQueueItem["submission"]["status"],
+  humanDecided: boolean | undefined,
+): { actor: string; label: string } | null {
+  let label: string | null = null;
+  if (status === "ACCEPTED") label = "已通过";
+  else if (status === "RETURNED" || status === "REJECTED") label = "已打回";
+  if (label === null) return null;
+  return { actor: humanDecided ? "人工" : "AI 自动", label };
 }
 
 function formatTime(value: string): string {
@@ -473,11 +481,14 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                 ) : (
                   <Badge tone="default">AI 建议：加载中…</Badge>
                 )}
-                {humanOutcomeLabel(selected.submission.status) ? (
-                  <Badge tone={statusTone(selected.submission.status)}>
-                    人工：{humanOutcomeLabel(selected.submission.status)}
-                  </Badge>
-                ) : null}
+                {(() => {
+                  const outcome = outcomeBadge(selected.submission.status, selected.humanDecided);
+                  return outcome ? (
+                    <Badge tone={statusTone(selected.submission.status)}>
+                      {outcome.actor}：{outcome.label}
+                    </Badge>
+                  ) : null;
+                })()}
               </div>
             </section>
 

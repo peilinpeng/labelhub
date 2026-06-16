@@ -31,7 +31,9 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
   const [promptTemplate, setPromptTemplate] = useState(defaultPromptTemplate);
   const [dimensions, setDimensions] = useState(defaultDimensions);
   const [configId, setConfigId] = useState<string | null>(null);
-  const [reviewFlowMode, setReviewFlowMode] = useState("AI_THEN_HUMAN");
+  const [reviewFlowMode, setReviewFlowMode] = useState<
+    "AI_THEN_HUMAN" | "AUTO_PASS_RETURN" | "HUMAN_REVIEW_ONLY"
+  >("AI_THEN_HUMAN");
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -75,6 +77,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
         setThreshold(0.8);
         setReturnThreshold(0.45);
         setMaxRetries(3);
+        setReviewFlowMode("AI_THEN_HUMAN");
         setPromptTemplate(defaultPromptTemplate);
         setDimensions(defaultDimensions);
         const config = await getReviewConfig(selectedTaskId);
@@ -91,6 +94,8 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
         setThreshold(Number(thresholds.passScore ?? thresholds.autoPass ?? 0.8));
         setReturnThreshold(Number(thresholds.returnScore ?? thresholds.autoReturn ?? 0.45));
         setMaxRetries(config.maxRetries);
+        // 回读审核流转策略；旧配置无 mode 字段时按最安全的「AI 预审后人工复核」兜底。
+        setReviewFlowMode(config.conclusionMapping?.mode ?? "AI_THEN_HUMAN");
         setOwnerNotice(null);
       } catch (error) {
         if (!cancelled) {
@@ -139,9 +144,11 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
       passWhen: `totalScore >= ${threshold}`,
       returnWhen: `totalScore < ${returnThreshold}`,
       humanReviewOtherwise: true,
+      // 把 owner 选择的流转策略真正持久化，后端 worker 据此门控是否允许 AI 自动通过/打回。
+      mode: reviewFlowMode,
     },
     maxRetries,
-  }), [dimensions, enabled, maxRetries, model, promptTemplate, returnThreshold, threshold]);
+  }), [dimensions, enabled, maxRetries, model, promptTemplate, returnThreshold, reviewFlowMode, threshold]);
 
   // 仅「高分自动通过，低分自动打回，中间转人工」策略下才启用自动通过/打回阈值；
   // 其余策略（AI 预审后人工复核 / 仅生成质检提示）AI 不参与自动流转，不展示阈值。
@@ -255,12 +262,12 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
             </label>
             <label className="field-label">
               检查结果如何进入审核流
-              <Select value={reviewFlowMode} onChange={(event) => setReviewFlowMode(event.target.value)} disabled={!enabled}>
+              <Select value={reviewFlowMode} onChange={(event) => setReviewFlowMode(event.target.value as typeof reviewFlowMode)} disabled={!enabled}>
                 <option value="AI_THEN_HUMAN">AI 预审后进入人工复核</option>
                 <option value="AUTO_PASS_RETURN">高分自动通过，低分自动打回，中间转人工</option>
                 <option value="HUMAN_REVIEW_ONLY">只生成 AI 质检提示，由审核员决策</option>
               </Select>
-              <small className="field-hint">此处用于明确本任务的审核流程说明；后端按任务 ReviewConfig 执行预审，不写入未支持的 contracts 字段。</small>
+              <small className="field-hint">该策略会随 ReviewConfig 保存并由后端预审 worker 执行：仅「高分自动通过…」允许 AI 自动通过/打回，其余策略下 AI 结论仅作参考、一律转人工复核。</small>
             </label>
             {autoFlowEnabled ? (
               <>

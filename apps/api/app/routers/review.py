@@ -50,12 +50,23 @@ def get_review_queue(
             .filter_by(submission_id=sub.id, stage="AI_PRECHECK")
             .first()
         )
+        # 是否存在人工阶段的评审结论（复审/终审），用于前端区分终态归属（AI 自动 vs 人工）。
+        human_decided = (
+            db.query(ReviewResult.id)
+            .filter(
+                ReviewResult.submission_id == sub.id,
+                ReviewResult.stage.in_(("HUMAN_REVIEW", "FINAL_REVIEW")),
+            )
+            .first()
+            is not None
+        )
         items.append(ReviewQueueItem(
             submission=SubmissionSummary.from_orm(sub),
             taskId=sub.task_id,
             taskTitle=task.title if task else "",
             itemId=sub.item_id,
             aiDecision=ai_result.decision if ai_result else None,
+            humanDecided=human_decided,
         ))
     return ReviewQueueResponse(items=items, total=total, page=page, pageSize=pageSize)
 
