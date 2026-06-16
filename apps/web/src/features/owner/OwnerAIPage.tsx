@@ -407,10 +407,28 @@ const defaultDimensions: ReviewConfigPayload["dimensions"] = [
   { key: "format", label: "格式合规", description: "答案格式和必填项是否合规", weight: 0.2, scoreRange: [0, 1] },
 ];
 
-const defaultPromptTemplate = `你是 LabelHub 的 AI 预审 Agent。
-请基于题目内容、标注答案和当前 schema 输出结构化审核结果。
-必须使用 function_calling JSON 结构返回 decision、totalScore、dimensionScores、fieldIssues、summary、confidence。
-不要直接修改标注答案；需要人工处理时返回 NEED_HUMAN_REVIEW。`;
+// 默认模板必须用 Jinja 占位符注入【真实样本内容】，否则 worker 渲染后 LLM 收不到任何
+// 题目/答案，会对所有样本盲评出相同分数。占位符对应 worker 的 _build_prompt_context：
+// item.sourcePayload（导入的源数据）/ submission.answers（标注答案）/ dimensions（维度）。
+// 模板任务无关（不写死 model_answer / response_a 等字段名），任意导入数据均可工作。
+const defaultPromptTemplate = `你是 LabelHub 的 AI 预审 Agent。请基于下面这条样本的真实内容，对【标注答案】做质量预审。
+
+【题目 / 源数据】
+{{ item.sourcePayload }}
+
+【标注答案】
+{{ submission.answers }}
+
+请对标注答案逐维度打分（每维 0-100 的整数），维度如下：
+{% for d in dimensions %}- {{ d.key }}：{{ d.label }}
+{% endfor %}
+要求：
+1. dimensionScores 中每项的 key 必须使用上面的英文维度 key（如 relevance / accuracy），不要用中文。
+2. score 必须依据本样本的具体内容给出，不同样本应有不同分数；reason 用一句中文引用本样本的具体情况。
+3. totalScore 取各维度的加权或平均（0-100）。
+4. decision：质量明显合格→PASS；存在明显问题应退回→RETURN；把握不足→NEED_HUMAN_REVIEW。
+5. summary 用一句中文总结，需引用本样本的具体内容；confidence 为你的把握（0-1）。
+请通过 submit_ai_review_result 函数提交结构化结果。`;
 
 function normalizeDimensions(value: ReviewConfigPayload["dimensions"]): ReviewConfigPayload["dimensions"] {
   const filled = value.length > 0 ? value.map((item) => ({
