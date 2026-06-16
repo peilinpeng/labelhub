@@ -8178,6 +8178,14 @@ a {
   gap: 16px;
 }
 
+.review-ai-detail__badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .review-ai-detail__heading h2 {
   margin: 0;
   color: var(--lh-text);
@@ -8222,6 +8230,12 @@ a {
   color: var(--lh-text);
   font-size: 14px;
   font-weight: 950;
+}
+
+.review-human-compare-card__hint {
+  margin: 4px 0 10px;
+  color: var(--lh-muted);
+  font-size: 12px;
 }
 
 .review-ai-block__head span {

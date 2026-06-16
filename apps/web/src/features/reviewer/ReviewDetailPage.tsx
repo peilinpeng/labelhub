@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { RoutePath, Role } from "../../app/routes";
 import { queryAuditEvents } from "../../api/audit";
@@ -43,8 +43,13 @@ type ReviewDetailWithTrace = ReviewDetailResponse & {
   } | null;
 };
 
+function isEmptyValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length === 0;
+  return value === undefined || value === null || value === "";
+}
+
 function valueText(value: unknown): string {
-  if (Array.isArray(value)) return value.join("，");
+  if (Array.isArray(value)) return value.length > 0 ? value.join("，") : "未填写";
   if (value === undefined || value === null || value === "") return "未填写";
   return String(value);
 }
@@ -77,6 +82,43 @@ const FIELD_LABELS: Record<string, string> = {
   keywords: "关键词",
   issue_tags: "问题标签",
   news_category: "新闻分类",
+  // 源数据（题目/参考材料）通用字段
+  prompt: "题目 / 提示",
+  question: "问题",
+  reference: "参考答案",
+  model_answer: "模型回答",
+  response_a: "回答 A",
+  response_b: "回答 B",
+  model_a: "模型 A",
+  model_b: "模型 B",
+  task_type: "任务类型",
+  dimensions: "评判维度",
+  tags: "标签",
+  lang: "语言",
+  source: "来源",
+  media_url: "媒体链接",
+  media_type: "媒体类型",
+  content_markdown: "正文",
+  difficulty: "难度",
+  expected_dimensions: "预期评判维度",
+  id: "编号",
+  // 问答质量标注 提交字段
+  relevance: "相关性评分",
+  accuracy: "准确性评分",
+  compliance: "合规性评分",
+  safety: "安全性评分",
+  completeness: "完整性评分",
+  readability: "可读性评分",
+  issue_types: "问题类型",
+  detail_comment: "详细评语",
+  one_line_summary: "一句话总结",
+  // 偏好对比标注 提交字段
+  preferred: "更优回答",
+  margin: "优势幅度",
+  safety_flag: "安全标记",
+  annotator_note: "标注说明",
+  judge_dimensions: "评判维度",
+  one_line_conclusion: "一句话结论",
 };
 
 function dimensionLabel(key: string): string {
@@ -85,6 +127,25 @@ function dimensionLabel(key: string): string {
 
 function fieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? humanizeKey(key);
+}
+
+// 按当前任务真实 schema 字段动态渲染 payload，而非写死某套字段。
+// 这样问答质量 / 偏好对比等不同任务都能正确展示各自的字段。
+function PayloadFieldList({ payload, hideEmpty = false }: { payload: Record<string, unknown>; hideEmpty?: boolean }) {
+  const entries = Object.entries(payload).filter(([, value]) => !hideEmpty || !isEmptyValue(value));
+  if (entries.length === 0) {
+    return <div className="empty-state">暂无字段数据</div>;
+  }
+  return (
+    <dl>
+      {entries.map(([key, value]) => (
+        <Fragment key={key}>
+          <dt>{fieldLabel(key)}</dt>
+          <dd>{valueText(value)}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
 }
 
 export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
@@ -416,25 +477,13 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         <div className="review-human-compare">
           <Card className="review-human-compare-card">
             <h3>原始数据</h3>
-            <dl>
-              <dt>{fieldLabel("cleaned_title")}</dt>
-              <dd>{valueText(display.previousPayload.cleaned_title ?? display.previousPayload.news_title ?? sourcePayload.title ?? display.title)}</dd>
-              <dt>{fieldLabel("category")}</dt>
-              <dd>{valueText(display.previousPayload.category ?? display.previousPayload.news_category ?? sourcePayload.category)}</dd>
-              <dt>{fieldLabel("keywords")}</dt>
-              <dd>{valueText(display.previousPayload.keywords ?? display.previousPayload.issue_tags ?? sourcePayload.keywords)}</dd>
-            </dl>
+            <p className="review-human-compare-card__hint">标注员标注前拿到的源数据（题目 / 参考材料）。</p>
+            <PayloadFieldList payload={sourcePayload} hideEmpty />
           </Card>
           <Card className="review-human-compare-card">
             <h3>本轮提交</h3>
-            <dl>
-              <dt>{fieldLabel("cleaned_title")}</dt>
-              <dd>{valueText(display.payload.cleaned_title ?? display.payload.news_title ?? answers.cleaned_title ?? answers.rewriteSuggestion ?? display.title)}</dd>
-              <dt>{fieldLabel("category")}</dt>
-              <dd><mark>{valueText(display.payload.category ?? display.payload.news_category ?? answers.category)}</mark></dd>
-              <dt>{fieldLabel("keywords")}</dt>
-              <dd><mark>{valueText(display.payload.keywords ?? display.payload.issue_tags ?? answers.keywords)}</mark></dd>
-            </dl>
+            <p className="review-human-compare-card__hint">标注员本轮提交的标注内容，供你人工复核。</p>
+            <PayloadFieldList payload={answers} />
           </Card>
         </div>
 

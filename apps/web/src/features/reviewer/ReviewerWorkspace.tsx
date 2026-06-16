@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Role } from "../../app/routes";
 import { batchDecideReview, claimReview, fetchReviewQueueCount, getReviewDetail, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
-import type { ReviewDecisionRequest } from "@labelhub/contracts";
+import type { AIPrecheckDecision, ReviewDecisionRequest } from "@labelhub/contracts";
 import { Badge, Button, Card, Textarea } from "../../ui/primitives";
 import { formatBeijingClock } from "../../utils/formatTime";
 import { getQueueDisplay } from "./review-display";
@@ -20,9 +20,9 @@ type DimensionScore = {
 };
 
 type DimensionScoreState =
-  | { status: "loading"; scores: DimensionScore[] }
-  | { status: "ready"; scores: DimensionScore[] }
-  | { status: "error"; scores: DimensionScore[] };
+  | { status: "loading"; scores: DimensionScore[]; aiDecision?: null }
+  | { status: "ready"; scores: DimensionScore[]; aiDecision: AIPrecheckDecision | null }
+  | { status: "error"; scores: DimensionScore[]; aiDecision?: null };
 
 function statusLabel(status: ReviewQueueItem["submission"]["status"]): string {
   if (status === "AI_PASSED") return "建议通过";
@@ -37,6 +37,31 @@ function statusTone(status: ReviewQueueItem["submission"]["status"]): "success" 
   if (status === "NEEDS_HUMAN_REVIEW" || status === "HUMAN_REVIEWING") return "warning";
   if (status === "RETURNED" || status === "REJECTED") return "danger";
   return "default";
+}
+
+// AI 预审代理给出的「原始建议」，与人工最终决策相互独立。
+// 之前徽章误把 submission.status（含人工结论）当成「AI 建议」，会出现
+// 「四维全通过却显示 AI 建议已打回」的自相矛盾——实为人工打回，AI 其实建议通过。
+function aiDecisionLabel(decision: AIPrecheckDecision | null | undefined): string {
+  if (decision === "PASS") return "建议通过";
+  if (decision === "RETURN") return "建议打回";
+  if (decision === "NEED_HUMAN_REVIEW") return "建议转人工";
+  return "未产出";
+}
+
+function aiDecisionTone(decision: AIPrecheckDecision | null | undefined): "success" | "warning" | "danger" | "default" {
+  if (decision === "PASS") return "success";
+  if (decision === "RETURN") return "danger";
+  if (decision === "NEED_HUMAN_REVIEW") return "warning";
+  return "default";
+}
+
+// 仅当人工已给出终态结论时才展示「人工」徽章，便于与 AI 建议对比；
+// 尚未人工决策（待审/审核中）时返回 null，不展示。
+function humanOutcomeLabel(status: ReviewQueueItem["submission"]["status"]): string | null {
+  if (status === "ACCEPTED") return "已通过";
+  if (status === "RETURNED" || status === "REJECTED") return "已打回";
+  return null;
 }
 
 function formatTime(value: string): string {
@@ -142,10 +167,11 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
       try {
         const detail = await getReviewDetail(submissionId);
         const scores = normalizeDimensionScores(detail.aiResult?.aiResult?.dimensionScores);
+        const aiDecision = detail.aiResult?.decision ?? null;
         if (!cancelled) {
           setDimensionScoresBySubmissionId((current) => ({
             ...current,
-            [submissionId]: { status: "ready", scores },
+            [submissionId]: { status: "ready", scores, aiDecision },
           }));
         }
       } catch (error) {
@@ -439,7 +465,20 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                   {selectedDisplay?.labeler ?? selected.submission.labelerId}
                 </p>
               </div>
-              <Badge tone={statusTone(selected.submission.status)}>AI 建议：{statusLabel(selected.submission.status)}</Badge>
+              <div className="review-ai-detail__badges">
+                {selectedDimensionScoreState?.status === "ready" ? (
+                  <Badge tone={aiDecisionTone(selectedDimensionScoreState.aiDecision)}>
+                    AI 建议：{aiDecisionLabel(selectedDimensionScoreState.aiDecision)}
+                  </Badge>
+                ) : (
+                  <Badge tone="default">AI 建议：加载中…</Badge>
+                )}
+                {humanOutcomeLabel(selected.submission.status) ? (
+                  <Badge tone={statusTone(selected.submission.status)}>
+                    人工：{humanOutcomeLabel(selected.submission.status)}
+                  </Badge>
+                ) : null}
+              </div>
             </section>
 
             <div className="review-flow-strip">
