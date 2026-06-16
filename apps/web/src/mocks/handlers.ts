@@ -306,7 +306,7 @@ export const handlers = [
     return exportJob === undefined ? errorJson("RESOURCE_NOT_FOUND", "导出任务不存在", 404) : okJson({ exportJob });
   }),
 
-  // 绩效看板（只读聚合）。mock 返回一份代表性数据，保证页面渲染与空状态逻辑可被验证。
+  // 数据看板（只读聚合）。mock 返回一份代表性数据，保证页面渲染与空状态逻辑可被验证。
   http.get("/api/v1/analytics/dashboard", () =>
     okJson({
       scope: { taskId: null, taskTitle: null },

@@ -90,9 +90,9 @@ export default function OwnerAnalyticsPage({ role }: OwnerAnalyticsPageProps) {
     <div className="page-stack owner-analytics-page">
       <div className="page-header">
         <div>
-          <h2 className="page-title">绩效看板</h2>
+          <h2 className="page-title">数据看板</h2>
           <p className="page-subtitle">
-            汇总 AI 调用成本、标注员表现，以及 AI 预审与人工审核的一致程度，辅助你判断投入产出。
+            汇总 AI 调用、标注提交与审核结果，帮助负责人了解任务运行情况。
           </p>
         </div>
         <Link to={RoutePath.OWNER_TASKS} className="lh-button">
@@ -138,7 +138,7 @@ function AiCostSection({ data }: { data: AnalyticsDashboard }) {
   return (
     <Card className="owner-analytics-card">
       <div className="owner-analytics-card__head">
-        <h3>AI 使用成本</h3>
+        <h3>AI 调用概览</h3>
         <span>统计三处 AI 调用的次数、消耗与稳定性</span>
       </div>
 
@@ -202,8 +202,8 @@ function LabelerSection({ rows }: { rows: AnalyticsLabelerRow[] }) {
   return (
     <Card className="owner-analytics-card">
       <div className="owner-analytics-card__head">
-        <h3>标注员表现</h3>
-        <span>客观完成情况，未做综合评级或排名</span>
+        <h3>标注员数据概览</h3>
+        <span>展示提交、审核结果与 AI 维度均分等基础数据</span>
       </div>
 
       {rows.length === 0 ? (
