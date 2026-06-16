@@ -98,27 +98,16 @@ def _build_runtime_context(submission, task, item, schema_version, answers: dict
 
 
 def _get_answers(db, submission, answer_source: str) -> dict:
-    from app.models.review import ReviewResult
+    # 读取“最新人工/终审补丁”的逻辑统一收敛到 export_domain._latest_review_patches，
+    # 与 build_passport 共用单一来源，避免两处各写一遍而漂移（见 export_domain._review_summary）。
+    from app.services.export_domain import _latest_review_patches
 
     original = dict(submission.answers_json or {})
     if answer_source != "PATCHED_ANSWERS":
         return original
 
-    latest_result = (
-        db.query(ReviewResult)
-        .filter(
-            ReviewResult.submission_id == submission.id,
-            ReviewResult.stage.in_(["HUMAN_REVIEW", "FINAL_REVIEW"]),
-        )
-        .order_by(ReviewResult.created_at.desc())
-        .first()
-    )
-    if not latest_result:
-        return original
-
-    patches = (latest_result.result_json or {}).get("patches", [])
     patched = dict(original)
-    for patch in patches:
+    for patch in _latest_review_patches(db, submission.id):
         field_name = patch.get("fieldName")
         if field_name:
             patched[field_name] = patch.get("nextValue")
@@ -164,9 +153,8 @@ def _query_submissions(db, task_id: str, filters: dict | None) -> list:
     return query.all()
 
 
-def _extract_row(submission, task, item, schema_version, db, mapping: dict) -> dict:
-    answer_source = mapping.get("answerSource", "ORIGINAL_ANSWERS")
-    answers = _get_answers(db, submission, answer_source)
+def _extract_row(submission, task, item, schema_version, db, mapping: dict, answers: dict) -> dict:
+    # answers 由调用方按 mapping.answerSource 解析后传入，确保导出行与质量护照指纹同源。
     review_ctx = _get_review_context(db, submission) if mapping.get("includeReviewRecords") else {}
     context = _build_runtime_context(submission, task, item, schema_version, answers)
     if review_ctx:
@@ -289,9 +277,11 @@ def _execute_export(db, job_id: str) -> None:
             if not item:
                 continue
 
+            # 按 mapping.answerSource 解析“实际导出的答案”，行与质量护照指纹共用同一份，
+            # 保证 finalAnswerHash 必然对得上交付数据（ORIGINAL → 原始答案；PATCHED → 补丁后答案）。
+            answer_source = mapping.get("answerSource", "ORIGINAL_ANSWERS")
+            answers = _get_answers(db, sub, answer_source)
             if fmt == "JSONL":
-                answer_source = mapping.get("answerSource", "ORIGINAL_ANSWERS")
-                answers = _get_answers(db, sub, answer_source)
                 review_ctx = (
                     _get_review_context(db, sub) if mapping.get("includeReviewRecords") else {}
                 )
@@ -312,11 +302,11 @@ def _execute_export(db, job_id: str) -> None:
                     },
                 }
             else:
-                row = _extract_row(sub, task, item, schema_version, db, mapping)
+                row = _extract_row(sub, task, item, schema_version, db, mapping, answers)
 
             rows.append(row)
-            # Quality Layer：每条 submission 生成数据质量护照
-            passport = build_passport(db, sub)
+            # Quality Layer：每条 submission 生成数据质量护照（指纹对“实际导出的答案”取）
+            passport = build_passport(db, sub, exported_answers=answers)
             record_specs.append((len(rows) - 1, sub, row, passport))
             job.progress_done = i + 1
             if (i + 1) % 50 == 0:

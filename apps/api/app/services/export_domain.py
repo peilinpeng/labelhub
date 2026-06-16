@@ -186,58 +186,111 @@ def get_download_info(db: Session, export_job_id: str, actor) -> tuple:
 # Data Quality Passport（Quality Layer）
 # ---------------------------------------------------------------------------
 
-def _latest_review_patches(db: Session, submission_id: str) -> list[dict]:
+def _review_summary(db: Session, submission_id: str) -> dict:
+    """单次查询汇总本提交的审核留痕，供导出与护照共用（避免补丁读取逻辑各写一份）：
+    - patches：最新一条人工/终审（HUMAN_REVIEW / FINAL_REVIEW）的 patches；
+    - reviewEventId：该最新人工/终审结果的 id；
+    - aiReviewEventIds：全部 AI 预审（AI_PRECHECK）结果 id。
+    """
     from app.models.review import ReviewResult
-    latest = (
+
+    results = (
         db.query(ReviewResult)
-        .filter(
-            ReviewResult.submission_id == submission_id,
-            ReviewResult.stage.in_(["HUMAN_REVIEW", "FINAL_REVIEW"]),
-        )
-        .order_by(ReviewResult.created_at.desc())
-        .first()
+        .filter(ReviewResult.submission_id == submission_id)
+        .order_by(ReviewResult.created_at.asc())
+        .all()
     )
-    if not latest:
-        return []
-    return (latest.result_json or {}).get("patches", []) or []
+    latest_human_review = None
+    ai_review_event_ids: list[str] = []
+    for r in results:
+        if r.stage in ("HUMAN_REVIEW", "FINAL_REVIEW"):
+            latest_human_review = r  # 升序遍历，最后写入的即最新
+        elif r.stage == "AI_PRECHECK":
+            ai_review_event_ids.append(r.id)
+    patches = (
+        (latest_human_review.result_json or {}).get("patches", []) or []
+        if latest_human_review else []
+    )
+    return {
+        "patches": patches,
+        "reviewEventId": latest_human_review.id if latest_human_review else None,
+        "aiReviewEventIds": ai_review_event_ids,
+    }
 
 
-def build_passport(db: Session, submission) -> dict:
+def _latest_review_patches(db: Session, submission_id: str) -> list[dict]:
+    """最新一条人工/终审的 patches（导出取补丁后答案时复用，单一来源见 _review_summary）。"""
+    return _review_summary(db, submission_id)["patches"]
+
+
+def build_passport(db: Session, submission, exported_answers: dict | None = None) -> dict:
     """
     为单条 submission 构造 DataQualityPassport（镜像 contracts export.ts）。
-    finalAnswerHash 基于"应用 reviewer patches 后的最终答案"，与前端 canonical hash 一致。
+
+    finalAnswerHash 取**实际导出的那份答案**：由 worker 按 mapping.answerSource 解析后经
+    exported_answers 传入，使下游能用交付文件独立校验、指纹必然对得上。直接调用（如单测）
+    未传时，回退到"应用 reviewer patches 后的最终答案"，与前端 canonical hash 一致。
     """
-    from app.models.llm import LLMCallLog
+    from app.models.audit import AuditLog
+    from app.models.ai_assist import AiAssistAction
 
     original = dict(submission.answers_json or {})
-    patches = _latest_review_patches(db, submission.id)
-    final_answers = dict(original)
-    changed_fields: list[str] = []
-    for p in patches:
-        fn = p.get("fieldName")
-        if fn:
-            final_answers[fn] = p.get("nextValue")
-            changed_fields.append(fn)
+    summary = _review_summary(db, submission.id)
+    # 只统计真正改了字段的补丁：无 fieldName 的补丁不产生任何变更，_get_answers 应用时也会跳过，
+    # 故不计入 reviewerPatchCount，避免与导出实际效果对不上。
+    effective_patches = [p for p in summary["patches"] if p.get("fieldName")]
+    changed_fields = list(dict.fromkeys(p["fieldName"] for p in effective_patches))
+
+    if exported_answers is not None:
+        answers_for_hash = exported_answers
+    else:
+        answers_for_hash = dict(original)
+        for p in effective_patches:
+            answers_for_hash[p["fieldName"]] = p.get("nextValue")
 
     review_status = _REVIEW_STATUS_MAP.get(submission.status, "UNREVIEWED")
 
-    ai_assist_count = (
-        db.query(LLMCallLog)
-        .filter_by(assignment_id=submission.assignment_id, purpose="LLM_ASSIST")
+    # AI 辅助：按契约拆 accept / edit_accept / dismiss（来自 ai_assist_actions，是审核员对建议的
+    # 真实动作，而非裸 LLM 调用数）。aiAssistUsed 仅当建议被采纳/改采纳（真正写进了最终答案）才为真——
+    # 只 dismiss（看了但没用）不算"用了 AI 辅助"，避免高估 AI 对数据的影响。
+    assist_actions = db.query(AiAssistAction).filter_by(submission_id=submission.id).all()
+    ai_accepted = sum(1 for a in assist_actions if a.action == "accept")
+    ai_edited = sum(1 for a in assist_actions if a.action == "edit_accept")
+    ai_dismissed = sum(1 for a in assist_actions if a.action == "dismiss")
+
+    # auditEventCount 取合规账本 audit_logs（强一致、与业务同事务写入）中本提交的治理动作数，
+    # 而非 audit_events（fire-and-forget 富事件流，允许丢失）——护照是信任凭证，计数必须权威可复现。
+    # 按 entity_type='SUBMISSION' 计本提交生命周期内的审计条数（SUBMISSION_CREATED / AI_REVIEW_* / REVIEW_* …）。
+    audit_event_count = (
+        db.query(AuditLog)
+        .filter_by(entity_type="SUBMISSION", entity_id=submission.id)
         .count()
     )
+
+    # qualityLedgerRef：契约 DataQualityPassportQualityLedgerRef 的事件引用，用现有留痕能填的填，
+    # 不造数据（labelerTrustLevel / riskCodes 等需尚未落地的子系统支撑，留空而非伪造）。
+    quality_ledger_ref: dict = {}
+    if summary["reviewEventId"]:
+        quality_ledger_ref["reviewEventId"] = summary["reviewEventId"]
+    if summary["aiReviewEventIds"]:
+        quality_ledger_ref["aiReviewEventIds"] = summary["aiReviewEventIds"]
+    if assist_actions:
+        quality_ledger_ref["aiAssistEventIds"] = [a.id for a in assist_actions]
 
     return {
         "submissionId": submission.id,
         "schemaVersionId": submission.schema_version_id,
-        "finalAnswerHash": hash_canonical_json(final_answers),
+        "finalAnswerHash": hash_canonical_json(answers_for_hash),
         "answerHashAlgorithm": ANSWER_HASH_ALGORITHM,
         "reviewStatus": review_status,
-        "reviewerPatchCount": len(patches),
+        "reviewerPatchCount": len(effective_patches),
         "changedFieldNames": changed_fields,
-        "aiAssistUsed": ai_assist_count > 0,
-        "aiAssistCallCount": ai_assist_count,
-        "qualityLedgerRef": {"submissionId": submission.id, "assignmentId": submission.assignment_id},
+        "aiAssistUsed": (ai_accepted + ai_edited) > 0,
+        "aiAcceptedCount": ai_accepted,
+        "aiDismissedCount": ai_dismissed,
+        "aiEditedCount": ai_edited,
+        "auditEventCount": audit_event_count,
+        "qualityLedgerRef": quality_ledger_ref,
     }
 
 
