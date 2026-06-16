@@ -9,6 +9,8 @@ import type {
   SchemaValidationResult,
   ValidationRule,
 } from "@labelhub/contracts";
+import type { DeprecationIssue } from "./deprecation.ts";
+import { validateDeprecationRules } from "./deprecation.ts";
 import { isAllowedJsonPath } from "./json-path.ts";
 import { collectFieldNodes, collectLLMAssistNodes, collectShowItemNodes, flattenNodes } from "./traverse.ts";
 
@@ -120,8 +122,10 @@ export function validateSchemaShape(schema: unknown): SchemaValidationResult {
   errors.push(...validateShowItemPaths(typedSchema).errors);
   errors.push(...validateExpressionPaths(typedSchema).errors);
   errors.push(...validateLLMOutputBindings(typedSchema).errors);
+  const deprecationResult = validateDeprecationRules(typedSchema);
+  errors.push(...deprecationResult.errors.map(toSchemaValidationError));
 
-  return createSchemaValidationResult(errors);
+  return createSchemaValidationResult(errors, deprecationResult.warnings.map(toSchemaValidationError));
 }
 
 export function validateLLMOutputBindings(schema: LabelHubSchema): SchemaValidationResult {
@@ -377,11 +381,14 @@ function readString(value: Record<string, unknown>, key: string): string | undef
   return typeof item === "string" ? item : undefined;
 }
 
-function createSchemaValidationResult(errors: SchemaValidationError[]): SchemaValidationResult {
+function createSchemaValidationResult(
+  errors: SchemaValidationError[],
+  warnings: SchemaValidationError[] = [],
+): SchemaValidationResult {
   return {
     valid: errors.length === 0,
     errors,
-    warnings: [],
+    warnings,
   };
 }
 
@@ -393,6 +400,15 @@ function createSchemaError(
 ): SchemaValidationError {
   const error: SchemaValidationError = { code, message, path };
   return nodeId === undefined ? error : { ...error, nodeId };
+}
+
+function toSchemaValidationError(issue: DeprecationIssue): SchemaValidationError {
+  return createSchemaError(
+    "SCHEMA_INVALID",
+    `${issue.code}：${issue.message}`,
+    issue.nodeId,
+    issue.nodeId !== undefined ? `$.nodes.${issue.nodeId}.deprecation` : "$.deprecation",
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

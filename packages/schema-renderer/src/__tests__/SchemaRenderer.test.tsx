@@ -120,18 +120,147 @@ describe("SchemaRenderer", () => {
 
     renderRenderer({ onAnswersChange, onLLMAssist });
 
-    fireEvent.click(screen.getByRole("button", { name: "AI 辅助" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
 
     await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
     expect(onAnswersChange).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "确认应用建议" }));
+    fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
 
     expect(onAnswersChange).toHaveBeenCalledWith(
       expect.objectContaining({
         summary: "AI 生成的摘要",
       }),
     );
+  });
+
+  test("LLMAssist 展示 AI 输出时触发 SHOWN outcome", async () => {
+    const onAssistOutcome = vi.fn();
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 建议摘要",
+      callId: "llm_shown_test",
+    });
+
+    renderRenderer({ onAssistOutcome, onLLMAssist });
+
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
+
+    await waitFor(() =>
+      expect(onAssistOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "SHOWN",
+          callId: "llm_shown_test",
+          nodeId: expect.any(String),
+        }),
+      ),
+    );
+  });
+
+  test("LLMAssist 一键采纳后触发 ACCEPTED outcome", async () => {
+    const onAnswersChange = vi.fn();
+    const onAssistOutcome = vi.fn();
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 建议摘要",
+      suggestedPatch: {
+        summary: "AI 生成的摘要",
+      },
+      callId: "llm_accepted_test",
+    });
+
+    renderRenderer({ onAnswersChange, onAssistOutcome, onLLMAssist });
+
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
+    await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
+
+    const acceptedOutcome = onAssistOutcome.mock.calls
+      .map((call) => call[0])
+      .find((outcome) => outcome.action === "ACCEPTED");
+
+    expect(onAnswersChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        summary: "AI 生成的摘要",
+      }),
+    );
+    expect(acceptedOutcome).toEqual({
+      action: "ACCEPTED",
+      appliedPatchFieldNames: ["summary"],
+      callId: "llm_accepted_test",
+      nodeId: expect.any(String),
+    });
+    expect(Object.keys(acceptedOutcome ?? {}).includes("suggestedPatch")).toBe(false);
+  });
+
+  test("LLMAssist 反馈问题是弱操作，不应用 patch", async () => {
+    const onAnswersChange = vi.fn();
+    const onAssistOutcome = vi.fn();
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 建议摘要",
+      suggestedPatch: {
+        summary: "AI 生成的摘要",
+      },
+      callId: "llm_dismissed_test",
+    });
+
+    renderRenderer({ onAnswersChange, onAssistOutcome, onLLMAssist });
+
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
+    await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
+    const feedbackButton = screen.getByRole("button", { name: "反馈问题" }) as HTMLButtonElement;
+
+    expect(feedbackButton.disabled).toBe(true);
+    expect(screen.queryByText("AI 建议摘要")).toBeTruthy();
+    expect(onAnswersChange).not.toHaveBeenCalled();
+    expect(onAssistOutcome.mock.calls.some((call) => call[0].action === "DISMISSED")).toBe(false);
+  });
+
+  test("LLMAssist 同一 callId 不重复触发同一 outcome", async () => {
+    const onAssistOutcome = vi.fn();
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 建议摘要",
+      callId: "llm_duplicate_test",
+    });
+
+    renderRenderer({ onAssistOutcome, onLLMAssist });
+
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
+    await waitFor(() => expect(onLLMAssist).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
+    await waitFor(() => expect(onLLMAssist).toHaveBeenCalledTimes(2));
+
+    const shownOutcomes = onAssistOutcome.mock.calls
+      .map((call) => call[0])
+      .filter((outcome) => outcome.action === "SHOWN");
+
+    expect(shownOutcomes).toHaveLength(1);
+  });
+
+  test("LLMAssist outcome callback 失败不影响 patch 应用", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const onAnswersChange = vi.fn();
+    const onAssistOutcome = vi.fn(() => {
+      throw new Error("callback failed");
+    });
+    const onLLMAssist = vi.fn().mockResolvedValue({
+      output: "AI 建议摘要",
+      suggestedPatch: {
+        summary: "AI 生成的摘要",
+      },
+      callId: "llm_callback_error_test",
+    });
+
+    renderRenderer({ onAnswersChange, onAssistOutcome, onLLMAssist });
+
+    fireEvent.click(screen.getByRole("button", { name: "检查质量" }));
+    await waitFor(() => expect(screen.getByText("AI 建议摘要")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "一键采纳" }));
+
+    expect(onAnswersChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        summary: "AI 生成的摘要",
+      }),
+    );
+    warn.mockRestore();
   });
 
   test("unknown node type 会显示 fallback", () => {
@@ -150,11 +279,52 @@ describe("SchemaRenderer", () => {
   });
 });
 
+describe("container.tabs 渲染为可切换标签页", () => {
+  test("渲染 tablist + 每个子节点一个 tab，初始仅首个 panel 可见", () => {
+    renderRenderer({ schema: buildTabsSchema() });
+
+    expect(screen.getByRole("tablist")).toBeTruthy();
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["基础信息", "补充信息"]);
+    expect(screen.getByRole("tab", { name: "基础信息" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "补充信息" }).getAttribute("aria-selected")).toBe("false");
+    // 隐藏的 panel 被移出无障碍树，仅激活 panel 可见。
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    expect(screen.getByLabelText("字段 A")).toBeTruthy();
+  });
+
+  test("点击 tab 切换激活 panel", () => {
+    renderRenderer({ schema: buildTabsSchema() });
+
+    fireEvent.click(screen.getByRole("tab", { name: "补充信息" }));
+
+    expect(screen.getByRole("tab", { name: "基础信息" }).getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByRole("tab", { name: "补充信息" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByLabelText("字段 B")).toBeTruthy();
+  });
+
+  test("被隐藏的子节点不产生 tab", () => {
+    const schema = buildTabsSchema();
+    const tabsNode = schema.root.children[0] as { children: { hidden?: boolean }[] };
+    const extraTab = tabsNode.children[1];
+    if (extraTab === undefined) {
+      throw new Error("tabs schema 必须包含两个子节点");
+    }
+    extraTab.hidden = true;
+
+    renderRenderer({ schema });
+
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["基础信息"]);
+  });
+});
+
 interface RenderOptions {
   schema?: LabelHubSchema;
   mode?: "PREVIEW" | "LABELING" | "REVIEW_READONLY" | "REVIEW_DIFF";
   onAnswersChange?: (answers: Record<string, unknown>) => void;
   onLLMAssist?: Parameters<typeof SchemaRenderer>[0]["onLLMAssist"];
+  onAssistOutcome?: Parameters<typeof SchemaRenderer>[0]["onAssistOutcome"];
 }
 
 function renderRenderer(options: RenderOptions = {}) {
@@ -169,6 +339,12 @@ function renderRenderer(options: RenderOptions = {}) {
       : {
           onLLMAssist: options.onLLMAssist,
         };
+  const assistOutcomeProps =
+    options.onAssistOutcome === undefined
+      ? {}
+      : {
+          onAssistOutcome: options.onAssistOutcome,
+        };
 
   return render(
     <SchemaRenderer
@@ -177,6 +353,7 @@ function renderRenderer(options: RenderOptions = {}) {
       mode={options.mode ?? "LABELING"}
       schema={schema}
       onAnswersChange={options.onAnswersChange ?? (() => undefined)}
+      {...assistOutcomeProps}
       {...llmProps}
     />,
   );
@@ -184,4 +361,38 @@ function renderRenderer(options: RenderOptions = {}) {
 
 function cloneSchema(): LabelHubSchema {
   return JSON.parse(JSON.stringify(createNewsQualitySchema())) as LabelHubSchema;
+}
+
+function buildTabsSchema(): LabelHubSchema {
+  const schema = cloneSchema();
+  schema.root.children = [
+    {
+      id: "tabs_main",
+      kind: "CONTAINER",
+      type: "container.tabs",
+      title: "分组标注",
+      layout: { tabStyle: "LINE" },
+      children: [
+        {
+          id: "tab_basic",
+          kind: "CONTAINER",
+          type: "container.group",
+          title: "基础信息",
+          children: [
+            { id: "f_a", kind: "FIELD", type: "input.text", name: "fieldA", title: "字段 A" },
+          ],
+        },
+        {
+          id: "tab_extra",
+          kind: "CONTAINER",
+          type: "container.group",
+          title: "补充信息",
+          children: [
+            { id: "f_b", kind: "FIELD", type: "input.text", name: "fieldB", title: "字段 B" },
+          ],
+        },
+      ],
+    },
+  ] as unknown as SchemaNode[];
+  return schema;
 }

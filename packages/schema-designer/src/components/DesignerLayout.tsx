@@ -10,13 +10,13 @@ export interface DesignerLayoutProps {
 
 export function DesignerLayout({ materials, canvas, properties, validation, preview }: DesignerLayoutProps) {
   return (
-    <div style={{ display: "grid", gap: 12, gridTemplateColumns: "220px minmax(320px, 1fr) 320px" }}>
-      <aside>{materials}</aside>
-      <main>
+    <div className="schema-designer-layout">
+      <aside className="schema-designer-layout__materials">{materials}</aside>
+      <main className="schema-designer-layout__canvas">
         {canvas}
         {validation}
       </main>
-      <aside>
+      <aside className="schema-designer-layout__inspector">
         {properties}
         {preview}
       </aside>

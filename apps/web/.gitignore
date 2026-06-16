@@ -1,0 +1,8 @@
+# 构建产物
+dist/
+
+# 测试产物
+coverage/
+test-results/
+playwright-report/
+playwright/.cache/

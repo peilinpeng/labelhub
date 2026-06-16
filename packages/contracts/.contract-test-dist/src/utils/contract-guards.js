@@ -10,9 +10,12 @@ exports.evaluateExpression = evaluateExpression;
 exports.normalizeAnswers = normalizeAnswers;
 exports.validateRequiredFields = validateRequiredFields;
 exports.transitionTaskStatus = transitionTaskStatus;
+exports.taskTransitionAuditAction = taskTransitionAuditAction;
 exports.transitionSubmissionStatus = transitionSubmissionStatus;
 exports.validateReviewCommand = validateReviewCommand;
 exports.retryExhaustedTargetStatus = retryExhaustedTargetStatus;
+exports.aiReviewJobStartAuditAction = aiReviewJobStartAuditAction;
+exports.isWorkflowCommand = isWorkflowCommand;
 exports.canEnterExportPool = canEnterExportPool;
 exports.validateAIReviewResultShape = validateAIReviewResultShape;
 exports.aiReviewHasPatches = aiReviewHasPatches;
@@ -27,6 +30,7 @@ exports.reviewRejectDatasetItemStatus = reviewRejectDatasetItemStatus;
 exports.isCreateUploadUrlResult = isCreateUploadUrlResult;
 exports.canMarkUploadStarted = canMarkUploadStarted;
 exports.canConfirmUpload = canConfirmUpload;
+exports.canFailUpload = canFailUpload;
 exports.fileUploadTransitionAuditAction = fileUploadTransitionAuditAction;
 exports.canUseUploadFileRef = canUseUploadFileRef;
 exports.canUseDatasetImportFile = canUseDatasetImportFile;
@@ -63,6 +67,53 @@ const answerFieldTypes = new Set([
     "upload.file",
     "upload.image",
     "data.json",
+]);
+const workflowCommands = new Set([
+    "createTask",
+    "publishTask",
+    "pauseTask",
+    "resumeTask",
+    "endTask",
+    "archiveTask",
+    "importItem",
+    "claimItem",
+    "releaseItem",
+    "completeItem",
+    "disableItem",
+    "restoreItem",
+    "claimAssignment",
+    "saveDraft",
+    "submitAssignment",
+    "expireAssignment",
+    "returnAssignment",
+    "acceptAssignment",
+    "cancelAssignment",
+    "enqueueAIReview",
+    "aiReviewPass",
+    "aiReviewReturn",
+    "aiReviewNeedHuman",
+    "aiReviewFailedToHuman",
+    "startAIReviewJob",
+    "markAIReviewSucceeded",
+    "markAIReviewFailed",
+    "retryAIReviewJob",
+    "markAIReviewFailedToHuman",
+    "claimReview",
+    "humanReviewPass",
+    "humanReviewReturn",
+    "humanReviewReject",
+    "finalReviewPass",
+    "finalReviewReturn",
+    "finalReviewReject",
+    "createExportJob",
+    "startExportJob",
+    "markExportSucceeded",
+    "markExportFailed",
+    "cancelExportJob",
+    "createUploadUrl",
+    "markUploadStarted",
+    "confirmUpload",
+    "failUpload",
 ]);
 function validateSchemaInvariants(schema) {
     const violations = [];
@@ -241,9 +292,26 @@ function transitionTaskStatus(status, command) {
         "PAUSED:resumeTask": "PUBLISHED",
         "PUBLISHED:endTask": "ENDED",
         "PAUSED:endTask": "ENDED",
+        "ENDED:archiveTask": "ARCHIVED",
     };
     const next = transitions[`${status}:${command}`];
     return next === undefined ? { ok: false, code: "INVALID_STATE_TRANSITION" } : { ok: true, status: next };
+}
+function taskTransitionAuditAction(command) {
+    switch (command) {
+        case "createTask":
+            return "TASK_CREATED";
+        case "publishTask":
+            return "TASK_PUBLISHED";
+        case "pauseTask":
+            return "TASK_PAUSED";
+        case "resumeTask":
+            return "TASK_RESUMED";
+        case "endTask":
+            return "TASK_ENDED";
+        case "archiveTask":
+            return "TASK_ARCHIVED";
+    }
 }
 function transitionSubmissionStatus(status, command) {
     const transitions = {
@@ -271,6 +339,12 @@ function validateReviewCommand(command) {
 }
 function retryExhaustedTargetStatus(retryCount, maxRetries) {
     return retryCount >= maxRetries ? "NEEDS_HUMAN_REVIEW" : undefined;
+}
+function aiReviewJobStartAuditAction() {
+    return "AI_REVIEW_STARTED";
+}
+function isWorkflowCommand(command) {
+    return typeof command === "string" && workflowCommands.has(command);
 }
 function canEnterExportPool(submission) {
     return submission.status === "ACCEPTED";
@@ -323,6 +397,9 @@ function canMarkUploadStarted(status) {
 function canConfirmUpload(status) {
     return status === "PENDING" || status === "UPLOADING";
 }
+function canFailUpload(status) {
+    return status === "PENDING" || status === "UPLOADING";
+}
 function fileUploadTransitionAuditAction(command) {
     switch (command) {
         case "createUploadUrl":
@@ -331,6 +408,8 @@ function fileUploadTransitionAuditAction(command) {
             return "FILE_UPLOAD_STARTED";
         case "confirmUpload":
             return "FILE_CONFIRMED";
+        case "failUpload":
+            return "FILE_UPLOAD_FAILED";
     }
 }
 function canUseUploadFileRef(fileRef, file, currentAssignmentId, currentUserId) {

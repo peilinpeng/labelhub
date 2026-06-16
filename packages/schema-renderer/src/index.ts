@@ -1,4 +1,7 @@
+export * from "./ComponentRegistry";
+export * from "./FormilyRuntimeRenderer";
 export * from "./SchemaRenderer";
+export * from "./adapters";
 export * from "./render-node";
 export * from "./types";
 export * from "./renderers/ContainerRenderer";
@@ -11,6 +14,7 @@ export * from "./components/CheckboxInput";
 export * from "./components/FileInput";
 export * from "./components/JsonEditorInput";
 export * from "./components/RadioInput";
+export * from "./components/RichTextInput";
 export * from "./components/SelectInput";
 export * from "./components/TagsInput";
 export * from "./components/TextInput";

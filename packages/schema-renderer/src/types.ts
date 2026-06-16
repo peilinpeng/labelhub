@@ -24,12 +24,15 @@ export interface SchemaRendererProps {
     context: LabelHubRuntimeContext,
     answers: AnswerPayload,
   ): LLMRuntimeResponse | Promise<LLMRuntimeResponse>;
+  onAssistOutcome?(outcome: LLMAssistOutcome): void;
   readonly?: boolean;
   errors?: ValidationError[];
   patchedAnswers?: AnswerPayload;
   patches?: ReviewPatch[];
   onUnsupportedNode?(node: unknown): void;
   className?: string;
+  /** 渲染引擎選擇；默認 "legacy" 保持現有行為，"formily-v2" 走 FormilyRuntimeRenderer */
+  engine?: "legacy" | "formily-v2";
 }
 
 export interface RenderNodeContext {
@@ -42,6 +45,7 @@ export interface RenderNodeContext {
   errorsByField: Map<string, ValidationError[]>;
   onFieldChange(field: FieldNode, value: unknown): void;
   onLLMAssist: SchemaRendererProps["onLLMAssist"];
+  onAssistOutcome: SchemaRendererProps["onAssistOutcome"];
   onApplySuggestedPatch(patch: AnswerPayload): void;
   onUnsupportedNode: ((node: unknown) => void) | undefined;
 }
@@ -49,4 +53,16 @@ export interface RenderNodeContext {
 export interface NodeRendererProps {
   node: SchemaNode;
   renderContext: RenderNodeContext;
+}
+
+export type LLMAssistOutcomeAction =
+  | "SHOWN"
+  | "ACCEPTED"
+  | "DISMISSED";
+
+export interface LLMAssistOutcome {
+  callId: string;
+  nodeId: string;
+  action: LLMAssistOutcomeAction;
+  appliedPatchFieldNames?: string[];
 }

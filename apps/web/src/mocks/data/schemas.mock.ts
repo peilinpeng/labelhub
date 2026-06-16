@@ -66,6 +66,28 @@ export const newsQualitySchemaDraft: LabelHubSchema = {
           { label: "5", value: "5" },
         ],
         validations: [{ type: "required", message: "请选择质量评分" }],
+        linkageRules: [
+          {
+            id: "R-low-quality-requires-note",
+            when: {
+              op: "in",
+              left: { kind: "path", path: "$.answers.qualityScore" },
+              right: [
+                { kind: "literal", value: "1" },
+                { kind: "literal", value: "2" },
+              ],
+            },
+            effects: [
+              { action: "setVisible", target: "factCheckNote", value: true },
+              { action: "setRequired", target: "factCheckNote", value: true },
+            ],
+            otherwise: [
+              { action: "setVisible", target: "factCheckNote", value: false },
+              { action: "setRequired", target: "factCheckNote", value: false },
+              { action: "clearValue", target: "factCheckNote" },
+            ],
+          },
+        ],
       },
       {
         id: "issue_tags",

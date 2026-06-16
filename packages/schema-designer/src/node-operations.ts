@@ -53,6 +53,53 @@ export function moveNode(schema: LabelHubSchema, nodeId: string, direction: Move
   };
 }
 
+/**
+ * 拖拽重排：把 draggedId 节点移动到 targetId 节点之前（同一父容器内）。
+ * 跨容器或定位失败时原样返回，保证安全。
+ */
+export function reorderNode(schema: LabelHubSchema, draggedId: string, targetId: string): LabelHubSchema {
+  if (draggedId === targetId || draggedId === schema.root.id || targetId === schema.root.id) {
+    return schema;
+  }
+  const dragged = locateNode(schema.root, draggedId);
+  const target = locateNode(schema.root, targetId);
+  if (dragged === undefined || target === undefined) {
+    return schema;
+  }
+  // MVP：仅支持同一父容器内重排
+  if (dragged.parentId !== target.parentId) {
+    return schema;
+  }
+  const without = removeNode(schema, draggedId);
+  const targetAfter = locateNode(without.root, targetId);
+  if (targetAfter === undefined) {
+    return schema;
+  }
+  return insertNode(without, targetAfter.parentId, dragged.node, targetAfter.index);
+}
+
+interface NodeLocation {
+  node: SchemaNode;
+  parentId: string;
+  index: number;
+}
+
+function locateNode(container: ContainerNode, nodeId: string): NodeLocation | undefined {
+  const index = container.children.findIndex((child) => child.id === nodeId);
+  if (index >= 0) {
+    return { node: container.children[index] as SchemaNode, parentId: container.id, index };
+  }
+  for (const child of container.children) {
+    if (child.kind === "CONTAINER") {
+      const found = locateNode(child, nodeId);
+      if (found !== undefined) {
+        return found;
+      }
+    }
+  }
+  return undefined;
+}
+
 export function updateNode(schema: LabelHubSchema, nodeId: string, patch: Partial<SchemaNode>): LabelHubSchema {
   return {
     ...schema,

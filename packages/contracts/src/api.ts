@@ -1,6 +1,6 @@
-import type { AuditLog, AuditLogSummary } from "./audit";
+import type { AppendAuditEventRequest, AuditEventQuery, AuditEventRecord, AuditLog, AuditLogSummary } from "./audit";
 import type { ApiError } from "./errors";
-import type { ExportJob, ExportMapping } from "./export";
+import type { ExportArtifactSummary, ExportJob, ExportMapping, ExportRecord } from "./export";
 import type { FileObject } from "./file";
 import type { ID, ISODateTime, JsonPath } from "./global";
 import type {
@@ -204,6 +204,29 @@ export interface DownloadExportResponse {
   downloadUrl: string;
   expiresAt: ISODateTime;
 }
+
+export interface GetExportArtifactRecordsRequest {
+  exportId: string;
+}
+
+export interface GetExportArtifactRecordsResponse {
+  exportId: string;
+  records: ExportRecord[];
+  artifactSummary?: ExportArtifactSummary;
+}
+
+export type AppendAuditEventResponse = {
+  event: AuditEventRecord;
+};
+
+export type QueryAuditEventsRequest = AuditEventQuery;
+
+export type QueryAuditEventsResponse = {
+  events: AuditEventRecord[];
+  nextCursor?: string;
+};
+
+export type { AppendAuditEventRequest };
 
 export type {
   ConfirmUploadRequest,

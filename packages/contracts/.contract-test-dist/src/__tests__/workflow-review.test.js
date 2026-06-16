@@ -52,11 +52,45 @@ const contract_guards_1 = require("../utils/contract-guards");
     });
     (0, node_test_1.test)("新增 workflow AuditAction 可以被类型引用", () => {
         const actions = [
+            "AI_REVIEW_STARTED",
             "FINAL_REVIEW_REQUESTED",
             "FILE_UPLOAD_URL_CREATED",
             "FILE_UPLOAD_STARTED",
+            "FILE_UPLOAD_FAILED",
+            "TASK_ARCHIVED",
         ];
+        (0, strict_1.equal)(actions.includes("AI_REVIEW_STARTED"), true);
         (0, strict_1.equal)(actions.includes("FINAL_REVIEW_REQUESTED"), true);
+        (0, strict_1.equal)(actions.includes("FILE_UPLOAD_FAILED"), true);
+    });
+    (0, node_test_1.test)("archiveTask / TASK_ARCHIVED 闭环可被 workflow-core 引用", () => {
+        const result = (0, contract_guards_1.transitionTaskStatus)("ENDED", "archiveTask");
+        (0, strict_1.equal)(result.ok, true);
+        if (result.ok) {
+            (0, strict_1.equal)(result.status, "ARCHIVED");
+        }
+        (0, strict_1.equal)((0, contract_guards_1.taskTransitionAuditAction)("archiveTask"), "TASK_ARCHIVED");
+        (0, strict_1.equal)((0, contract_guards_1.transitionTaskStatus)("PUBLISHED", "archiveTask").ok, false);
+    });
+    (0, node_test_1.test)("新增 command 类型可以被 workflow-core 引用", () => {
+        const commands = [
+            "archiveTask",
+            "importItem",
+            "releaseItem",
+            "completeItem",
+            "disableItem",
+            "restoreItem",
+            "claimAssignment",
+            "returnAssignment",
+            "acceptAssignment",
+            "cancelAssignment",
+            "startAIReviewJob",
+        ];
+        (0, strict_1.equal)(commands.every((command) => (0, contract_guards_1.isWorkflowCommand)(command)), true);
+        (0, strict_1.equal)((0, contract_guards_1.isWorkflowCommand)("claimItem"), true);
+        (0, strict_1.equal)((0, contract_guards_1.isWorkflowCommand)("claimAssignment"), true);
+        (0, strict_1.equal)((0, contract_guards_1.isWorkflowCommand)("randomString"), false);
+        (0, strict_1.equal)((0, contract_guards_1.aiReviewJobStartAuditAction)(), "AI_REVIEW_STARTED");
     });
     (0, node_test_1.test)("HUMAN_REVIEW PASS 进入终审不使用 REVIEW_ACCEPTED", () => {
         const action = (0, contract_guards_1.reviewPassAuditActionForPolicy)({ type: "DOUBLE_REVIEW", requireFinalReview: true });

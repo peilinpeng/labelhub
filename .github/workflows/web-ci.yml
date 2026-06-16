@@ -1,0 +1,46 @@
+name: Web CI
+
+# 前端 CI：typecheck + 组件/单元测试（Vitest + MSW，无需后端）+ 生产构建。
+# 与 api-ci.yml 对称，补齐「前端无 CI」缺口。e2e 见 web-e2e.yml（需全栈，单独触发）。
+
+on:
+  push:
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - ".github/workflows/web-ci.yml"
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - ".github/workflows/web-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install workspace package dependencies
+        run: npm install
+        working-directory: ${{ github.workspace }}
+
+      - name: Install web dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit / component tests (Vitest + MSW)
+        run: npm run test:run
+
+      - name: Production build (smoke)
+        run: npm run build
