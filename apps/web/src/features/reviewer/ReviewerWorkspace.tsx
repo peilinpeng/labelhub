@@ -72,6 +72,20 @@ function outcomeBadge(
   return { actor: humanDecided ? "人工" : "AI 自动", label };
 }
 
+// 侧边栏队列徽章。此前误用 statusLabel(submission.status)：NEEDS_HUMAN_REVIEW/
+// HUMAN_REVIEWING 被一律标成「建议打回」，但该状态仅表示「已转人工」，不代表 AI 结论
+// （advisory 模式下高分提交也进此状态）——导致整列恒显「建议打回」，与详情页头部自相矛盾。
+// 现按详情页头部同款逻辑取真实 aiDecision / flowMode：
+//   终态 → 已通过/已打回；HUMAN_REVIEW_ONLY → 中性质检提示；否则展示 AI 原始建议。
+function queueBadge(item: ReviewQueueItem): { label: string; tone: "success" | "warning" | "danger" | "default" } {
+  const status = item.submission.status;
+  if (status === "ACCEPTED") return { label: "已通过", tone: "success" };
+  if (status === "RETURNED" || status === "REJECTED") return { label: "已打回", tone: "danger" };
+  if (item.flowMode === "HUMAN_REVIEW_ONLY") return { label: "质检提示", tone: "default" };
+  const decision = item.aiDecision as AIPrecheckDecision | null;
+  return { label: aiDecisionLabel(decision), tone: aiDecisionTone(decision) };
+}
+
 function formatTime(value: string): string {
   return formatBeijingClock(value);
 }
@@ -449,7 +463,10 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                     </span>
                     <span className="review-ai-item__sub">标注员 {item.submission.labelerId}</span>
                     <span className="review-ai-item__badges">
-                      <Badge tone={statusTone(item.submission.status)}>{statusLabel(item.submission.status)}</Badge>
+                      {(() => {
+                        const badge = queueBadge(item);
+                        return <Badge tone={badge.tone}>{badge.label}</Badge>;
+                      })()}
                       {item.submission.status === "FINAL_REVIEWING" ? <Badge tone="primary">终审</Badge> : <Badge tone="default">复审</Badge>}
                     </span>
                   </button>
@@ -536,16 +553,46 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
             </div>
 
             <Card className="review-ai-actionbar">
-              <div className="review-ai-actionbar__status">
-                <strong>{selectedDisplay?.recommendation ?? statusLabel(selected.submission.status)}</strong>
-                <span>{humanizeAiReason(selectedDisplay?.issue ?? "该提交需要人工确认字段完整性和审核结论。")}</span>
-              </div>
-              <Link
-                className="lh-button lh-button--primary review-ai-actionbar__btn"
-                to={`/reviewer/items/${selected.submission.id}`}
-              >
-                进入人工审核
-              </Link>
+              {(() => {
+                // 已终态（已通过/已打回）的提交：动作栏展示审核结论与归属，而非「待人工复核 + 进入人工审核」。
+                // 此前无论状态恒显待审核提示与再审按钮，导致刚打回的提交主面板仍像待办、结论只在右上角小徽章里——
+                // 用户会误以为「已打回没有生效/没显示」。终态下只保留只读的「查看审核详情」入口。
+                const outcome = outcomeBadge(selected.submission.status, selected.humanDecided);
+                if (outcome) {
+                  return (
+                    <>
+                      <div className="review-ai-actionbar__status">
+                        <strong>{outcome.actor} · {outcome.label}</strong>
+                        <span>
+                          {selected.submission.status === "ACCEPTED"
+                            ? "该提交已完成审核并通过。"
+                            : "该提交已被打回，标注员可据反馈修改后重新提交。"}
+                        </span>
+                      </div>
+                      <Link
+                        className="lh-button review-ai-actionbar__btn"
+                        to={`/reviewer/items/${selected.submission.id}`}
+                      >
+                        查看审核详情
+                      </Link>
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <div className="review-ai-actionbar__status">
+                      <strong>{selectedDisplay?.recommendation ?? statusLabel(selected.submission.status)}</strong>
+                      <span>{humanizeAiReason(selectedDisplay?.issue ?? "该提交需要人工确认字段完整性和审核结论。")}</span>
+                    </div>
+                    <Link
+                      className="lh-button lh-button--primary review-ai-actionbar__btn"
+                      to={`/reviewer/items/${selected.submission.id}`}
+                    >
+                      进入人工审核
+                    </Link>
+                  </>
+                );
+              })()}
             </Card>
 
           </main>
