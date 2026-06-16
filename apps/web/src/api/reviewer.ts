@@ -33,6 +33,8 @@ export interface ReviewQueueItem {
   aiDecision: string | null;
   // 该提交的终态是否由人工（复审/终审）作出；false 表示 AI 自动流转或尚未人工介入。
   humanDecided?: boolean;
+  // 任务审核流转策略；HUMAN_REVIEW_ONLY 模式下 AI 只产质检提示、不给通过/打回结论。
+  flowMode?: "AI_THEN_HUMAN" | "AUTO_PASS_RETURN" | "HUMAN_REVIEW_ONLY" | null;
 }
 
 type PageList<T> = T[] | { items?: T[]; submissions?: T[] };

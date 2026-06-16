@@ -43,8 +43,10 @@ def get_review_queue(
     items = []
     for sub in submissions:
         from app.models.task import Task
-        from app.models.review import ReviewResult
+        from app.models.review import ReviewResult, ReviewConfig
         task = db.query(Task).filter_by(id=sub.task_id).first()
+        review_config = db.query(ReviewConfig).filter_by(task_id=sub.task_id).first()
+        flow_mode = (review_config.conclusion_mapping_json or {}).get("mode") if review_config else None
         ai_result = (
             db.query(ReviewResult)
             .filter_by(submission_id=sub.id, stage="AI_PRECHECK")
@@ -67,6 +69,7 @@ def get_review_queue(
             itemId=sub.item_id,
             aiDecision=ai_result.decision if ai_result else None,
             humanDecided=human_decided,
+            flowMode=flow_mode,
         ))
     return ReviewQueueResponse(items=items, total=total, page=page, pageSize=pageSize)
 

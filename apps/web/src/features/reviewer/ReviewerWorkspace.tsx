@@ -474,7 +474,11 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
                 </p>
               </div>
               <div className="review-ai-detail__badges">
-                {selectedDimensionScoreState?.status === "ready" ? (
+                {selected.flowMode === "HUMAN_REVIEW_ONLY" ? (
+                  // 仅质检提示模式：AI 不给通过/打回结论，只展示「AI 质检提示」中性标签，
+                  // 通过/打回完全交由审核员决定。维度评分与问题提示仍在下方面板展示。
+                  <Badge tone="default">AI 质检提示 · 由审核员决策</Badge>
+                ) : selectedDimensionScoreState?.status === "ready" ? (
                   <Badge tone={aiDecisionTone(selectedDimensionScoreState.aiDecision)}>
                     AI 建议：{aiDecisionLabel(selectedDimensionScoreState.aiDecision)}
                   </Badge>

@@ -158,20 +158,57 @@ def _route_with_confidence(raw_decision: str, confidence, threshold: float) -> t
 
 
 # 仅此模式允许 AI 决策自动流转到终态（自动通过 / 自动打回）。
-# 其余模式（AI_THEN_HUMAN / HINTS_ONLY）下 AI 结论仅作参考，一律转人工复核。
+# 其余模式（AI_THEN_HUMAN / HUMAN_REVIEW_ONLY）下 AI 结论仅作参考，一律转人工复核。
 AUTO_FLOW_MODE = "AUTO_PASS_RETURN"
 
 
-def _route_by_strategy(decision: str, mode: str) -> tuple[str, bool]:
+def _normalize_fraction(value) -> float | None:
+    """把分数 / 阈值统一归一化到 0..1。totalScore 契约为 0-100，阈值配置为 0-1，
+    这里按「>1 视为百分制、除以 100」抹平两种量纲，避免硬比较时鸡同鸭讲。"""
+    if not isinstance(value, (int, float)):
+        return None
+    v = float(value)
+    return v / 100.0 if v > 1 else v
+
+
+def _decide_by_threshold(total_score, thresholds: dict) -> str:
+    """AUTO 模式的硬阈值闸门：按 totalScore 与 passScore / returnScore 的数值比较得出决策，
+    不再单纯信任 LLM 自报的 decision——阈值才真正「说了算」。
+
+    score >= passScore → PASS；score < returnScore → RETURN；落在中间或缺分 → 转人工。
+    """
+    score = _normalize_fraction(total_score)
+    if score is None:
+        return "NEED_HUMAN_REVIEW"
+    # 阈值键名存在两套约定：前端存 passScore/returnScore，seed_competition 存 autoPass/autoReturn。
+    # 两者都兼容，避免老配置（autoPass/autoReturn）下闸门取不到阈值而恒转人工。
+    pass_score = _normalize_fraction(thresholds.get("passScore", thresholds.get("autoPass")))
+    return_score = _normalize_fraction(thresholds.get("returnScore", thresholds.get("autoReturn")))
+    if pass_score is not None and score >= pass_score:
+        return "PASS"
+    if return_score is not None and score < return_score:
+        return "RETURN"
+    return "NEED_HUMAN_REVIEW"
+
+
+def _route_by_strategy(
+    raw_decision: str, mode: str, total_score=None, thresholds: dict | None = None
+) -> tuple[str, bool]:
     """审核策略门控：把 owner 配置的 conclusionMapping.mode 真正落到流转上。
 
-    只有 AUTO_PASS_RETURN 模式才允许 AI 把提交自动判为 PASS / RETURN；其余模式下
-    AI 结论仅作人工参考，PASS / RETURN 一律降级为 NEED_HUMAN_REVIEW，绝不无人工自动流转。
-    返回 (有效决策, 是否因策略降级)。
+    - AUTO_PASS_RETURN：用 totalScore 与阈值硬比较（_decide_by_threshold）决定 PASS/RETURN/转人工，
+      自动通过线由数值闸门把关，而非只信 LLM 的 decision。
+    - 其余模式（AI_THEN_HUMAN / HUMAN_REVIEW_ONLY）：AI 结论仅作人工参考，PASS/RETURN 一律
+      降级为 NEED_HUMAN_REVIEW，绝不无人工自动流转。
+
+    返回 (有效决策, 是否相对 LLM 原始判断发生改写)。
     """
-    if mode != AUTO_FLOW_MODE and decision in ("PASS", "RETURN"):
+    if mode == AUTO_FLOW_MODE:
+        decided = _decide_by_threshold(total_score, thresholds or {})
+        return decided, decided != raw_decision
+    if raw_decision in ("PASS", "RETURN"):
         return "NEED_HUMAN_REVIEW", True
-    return decision, False
+    return raw_decision, False
 
 
 def _render_prompt(template_str: str, context: dict) -> str:
@@ -373,16 +410,19 @@ def _execute_review(db, job_id: str) -> None:
 
     # 路由分两道闸，AI_PRECHECK 记录上面已存 LLM 原始决策，这里只调整路由用的有效决策，
     # 原始判断保留供人机一致性对账：
-    #   1) 审核策略门控（_route_by_strategy）：非 AUTO_PASS_RETURN 模式下，AI 的 PASS/RETURN
-    #      一律降级为转人工——owner 选「AI 预审后人工复核 / 仅质检提示」时，绝不无人工自动流转。
+    #   1) 审核策略门控（_route_by_strategy）：AUTO_PASS_RETURN 模式用 totalScore 硬阈值决定
+    #      PASS/RETURN；其余模式（AI 预审后人工复核 / 仅质检提示）一律降级转人工，绝不无人工自动流转。
     #   2) 置信度感知路由（_route_with_confidence）：自动模式下，低置信度的 PASS 再降级转人工。
     raw_decision = ai_result["decision"]
     confidence = ai_result.get("confidence")
     threshold = settings.AI_REVIEW_CONFIDENCE_THRESHOLD
     conclusion_mapping = review_config.conclusion_mapping_json or {}
     flow_mode = conclusion_mapping.get("mode", "AI_THEN_HUMAN")
+    thresholds_cfg = review_config.thresholds_json or {}
 
-    strategy_decision, strategy_downgrade = _route_by_strategy(raw_decision, flow_mode)
+    strategy_decision, strategy_downgrade = _route_by_strategy(
+        raw_decision, flow_mode, ai_result.get("totalScore"), thresholds_cfg
+    )
     decision, low_confidence_downgrade = _route_with_confidence(strategy_decision, confidence, threshold)
 
     action = "AI_REVIEW_SUCCEEDED"

@@ -164,6 +164,9 @@ class ReviewQueueItem(BaseModel):
     # 是否已有人工（复审/终审）结论。用于前端区分终态究竟由 AI 自动流转还是人工作出，
     # 避免把 AI 自动打回/通过的提交误标成「人工」决策。
     humanDecided: bool = False
+    # 该任务的审核流转策略（conclusionMapping.mode）。HUMAN_REVIEW_ONLY 模式下 AI 只产质检
+    # 提示、不给通过/打回结论，前端据此隐藏「AI 建议」结论徽章。
+    flowMode: str | None = None
 
 
 class ReviewQueueResponse(BaseModel):
