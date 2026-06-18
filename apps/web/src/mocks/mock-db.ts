@@ -95,12 +95,22 @@ export function listMarketplaceTasks(): Task[] {
 }
 
 export function getTask(taskId: string): Task | undefined {
-  return mockDb.tasks.find((task) => task.id === taskId);
+  return mockDb.tasks.find((task) => task.id === taskId) ?? createRestoredDraftTask(taskId);
+}
+
+export function getSchemaDraft(taskId: string): LabelHubSchema | undefined {
+  const draft = mockDb.schemaDrafts.find((item) => item.meta.taskId === taskId);
+  if (draft !== undefined) {
+    return draft;
+  }
+
+  const task = getTask(taskId);
+  return task === undefined ? undefined : createSchemaDraftForTask(task);
 }
 
 export function createTask(input: Pick<Task, "title" | "description"> & Partial<Task>): Task {
   const task: Task = {
-    id: nextId("task"),
+    id: input.id ?? nextId("task"),
     title: input.title,
     description: input.description,
     tags: input.tags ?? [],
@@ -117,7 +127,51 @@ export function createTask(input: Pick<Task, "title" | "description"> & Partial<
   if (input.deadlineAt !== undefined) task.deadlineAt = input.deadlineAt;
   if (input.activeSchemaVersionId !== undefined) task.activeSchemaVersionId = input.activeSchemaVersionId;
   mockDb.tasks.push(task);
+  createSchemaDraftForTask(task);
   return task;
+}
+
+function createRestoredDraftTask(taskId: string): Task | undefined {
+  if (!/^task_\d+$/.test(taskId)) {
+    return undefined;
+  }
+
+  return createTask({
+    id: taskId as Task["id"],
+    title: "新建任务草稿",
+    description: "这是 Mock 环境根据动态路由恢复的任务草稿。",
+  });
+}
+
+function createSchemaDraftForTask(task: Task): LabelHubSchema {
+  const existing = mockDb.schemaDrafts.find((item) => item.meta.taskId === task.id);
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const source = clone(newsQualitySchemaDraft);
+  const createdAt = now();
+  const draft: LabelHubSchema = {
+    ...source,
+    schemaId: createSchemaId(task.id),
+    schemaDraftRevision: 1,
+    status: "DRAFT",
+    meta: {
+      ...source.meta,
+      name: `${task.title}模板`,
+      description: task.description,
+      taskId: task.id as LabelHubSchema["meta"]["taskId"],
+      authorId: task.ownerId,
+      createdAt,
+      updatedAt: createdAt,
+    },
+  };
+  mockDb.schemaDrafts.push(draft);
+  return draft;
+}
+
+function createSchemaId(taskId: string): LabelHubSchema["schemaId"] {
+  return `schema_${taskId.replace(/^task_/, "")}` as LabelHubSchema["schemaId"];
 }
 
 export function saveSchemaDraft(taskId: string, schema: LabelHubSchema): SaveSchemaDraftResponse {
@@ -260,6 +314,18 @@ export function importDataset(taskId: string, fileId: string): ImportDatasetResp
 export function claimTask(taskId: string): ClaimTaskResponse | undefined {
   const task = getTask(taskId);
   if (task === undefined || task.status !== "PUBLISHED" || task.activeSchemaVersionId === undefined) return undefined;
+  const existingAssignment = mockDb.assignments.find(
+    (candidate) =>
+      candidate.taskId === taskId &&
+      candidate.labelerId === "usr_labeler" &&
+      ["CLAIMED", "DRAFTING", "RETURNED"].includes(candidate.status),
+  );
+  if (existingAssignment !== undefined) {
+    return {
+      context: buildAssignmentContext(existingAssignment),
+      auditLog: audit("ASSIGNMENT_CLAIMED"),
+    };
+  }
   const item = mockDb.datasetItems.find((candidate) => candidate.taskId === taskId && candidate.status === "AVAILABLE");
   const schemaVersion = mockDb.schemaVersions.find((candidate) => candidate.id === task.activeSchemaVersionId);
   if (item === undefined || schemaVersion === undefined) return undefined;

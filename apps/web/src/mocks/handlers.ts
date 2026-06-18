@@ -32,6 +32,7 @@ import {
   generateSchema,
   getAssignmentContext,
   getReviewDetail,
+  getSchemaDraft,
   getTask,
   importDataset,
   listMarketplaceTasks,
@@ -61,6 +62,8 @@ import {
 const idempotencyRecords = new Map<string, IdempotencyRecord>();
 
 export const handlers = [
+  http.get("/api/v1/tasks", () => okJson(mockDb.tasks)),
+
   http.post("/api/v1/tasks", async ({ request }) => {
     const body = await readJson<Pick<Parameters<typeof createTask>[0], "title" | "description"> & Partial<Parameters<typeof createTask>[0]>>(request);
     return withIdempotency(request, body, () => {
@@ -76,13 +79,18 @@ export const handlers = [
     return task === undefined ? errorJson("RESOURCE_NOT_FOUND", "任务不存在", 404) : okJson(task);
   }),
 
-  http.put("/api/v1/tasks/:taskId/schema/draft", async ({ request, params }) => {
+  http.get("/api/v1/tasks/:taskId/schema/draft", ({ params }) => {
     const taskId = getParam(params as MockParams, "taskId");
-    const body = await readJson<SaveSchemaDraftRequest>(request);
-    return withIdempotency(request, body, () => {
-      const response = saveSchemaDraft(taskId, body.schema);
-      return { body: response };
-    });
+    const draft = getSchemaDraft(taskId);
+    return draft === undefined ? errorJson("RESOURCE_NOT_FOUND", "schema draft 不存在", 404) : okJson(draft);
+  }),
+
+  http.put("/api/v1/tasks/:taskId/schema/draft", async ({ request, params }) => {
+    return handleSaveSchemaDraftRequest(request, params as MockParams);
+  }),
+
+  http.put("*/api/v1/tasks/:taskId/schema/draft", async ({ request, params }) => {
+    return handleSaveSchemaDraftRequest(request, params as MockParams);
   }),
 
   http.post("/api/v1/schema/validate", async ({ request }) => {
@@ -290,6 +298,10 @@ export const handlers = [
       return { body: response };
     });
   }),
+
+  http.get(/\/(owner|labeler|reviewer)(\/.*)?$/, async ({ request }) => {
+    return handleAppRouteRequest(request);
+  }),
 ];
 
 interface MockHandlerResult {
@@ -301,7 +313,7 @@ function withIdempotency(request: Request, body: unknown, create: () => MockHand
   const scope = idempotencyScope(request);
   if (scope === undefined) {
     const result = create();
-    return HttpResponse.json(result.body, { status: result.status ?? 200 });
+    return HttpResponse.json(result.body as never, { status: result.status ?? 200 });
   }
   const hash = requestHash(body);
   const existing = idempotencyRecords.get(scope);
@@ -309,7 +321,7 @@ function withIdempotency(request: Request, body: unknown, create: () => MockHand
     if (existing.requestHash !== hash) {
       return errorJson("IDEMPOTENCY_CONFLICT", "相同 Idempotency-Key 对应的 request body 不一致", 409);
     }
-    return HttpResponse.json(existing.response, { status: existing.status });
+    return HttpResponse.json(existing.response as never, { status: existing.status });
   }
   const result = create();
   const status = result.status ?? 200;
@@ -318,7 +330,7 @@ function withIdempotency(request: Request, body: unknown, create: () => MockHand
     response: result.body,
     status,
   });
-  return HttpResponse.json(result.body, { status });
+  return HttpResponse.json(result.body as never, { status });
 }
 
 function validationError(message: string): { code: "VALIDATION_FAILED"; message: string; traceId: string } {
@@ -336,4 +348,30 @@ function apiErrorBody(code: Parameters<typeof errorJson>[0], message: string, de
     details,
     traceId: `trace_${Date.now()}`,
   };
+}
+
+async function handleSaveSchemaDraftRequest(request: Request, params: MockParams): Promise<Response> {
+  const taskId = getParam(params, "taskId");
+  const body = await readJson<SaveSchemaDraftRequest>(request);
+  return withIdempotency(request, body, () => {
+    const response = saveSchemaDraft(taskId, body.schema);
+    return { body: response };
+  });
+}
+
+async function handleAppRouteRequest(request: Request): Promise<Response | undefined> {
+  const accept = request.headers.get("accept") ?? "";
+  if (!accept.includes("text/html")) {
+    return undefined;
+  }
+
+  const url = new URL(request.url);
+  const response = await fetch(`${url.origin}/`);
+  const html = await response.text();
+  return new HttpResponse(html, {
+    status: response.status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+    },
+  });
 }
