@@ -23,6 +23,17 @@ const ROLE_CREDENTIALS: Record<string, { email: string; password: string }> = {
   REVIEWER: { email: "reviewer@labelhub.test", password: "Seed@1234" },
 };
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
+function apiUrl(path: string): string {
+  if (!API_BASE_URL || /^https?:\/\//.test(path)) return path;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  if (API_BASE_URL.endsWith("/api/v1") && normalizedPath.startsWith("/api/v1/")) {
+    return API_BASE_URL + normalizedPath.slice("/api/v1".length);
+  }
+  return API_BASE_URL + normalizedPath;
+}
+
 export async function loginForRole(role: string): Promise<void> {
   const creds = ROLE_CREDENTIALS[role];
   if (!creds) return;
@@ -30,7 +41,7 @@ export async function loginForRole(role: string): Promise<void> {
 }
 
 export async function loginWithCredentials(role: string, email: string, password: string): Promise<void> {
-  const res = await fetch("/api/v1/auth/login", {
+  const res = await fetch(apiUrl("/api/v1/auth/login"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -71,12 +82,12 @@ function getAuthHeader(): Record<string, string> {
 }
 
 export async function apiGet<T>(url: string): Promise<T> {
-  const response = await fetch(url, { headers: { ...getAuthHeader() } });
+  const response = await fetch(apiUrl(url), { headers: { ...getAuthHeader() } });
   return handleResponse<T>(response);
 }
 
 export async function apiPost<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -89,7 +100,7 @@ export async function apiPost<T>(url: string, body: unknown): Promise<T> {
 }
 
 export async function apiPut<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -102,7 +113,7 @@ export async function apiPut<T>(url: string, body: unknown): Promise<T> {
 }
 
 export async function apiPatch<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -115,7 +126,7 @@ export async function apiPatch<T>(url: string, body: unknown): Promise<T> {
 }
 
 export async function apiDelete<T = void>(url: string): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     method: "DELETE",
     headers: {
       "Idempotency-Key": crypto.randomUUID(),
@@ -127,7 +138,7 @@ export async function apiDelete<T = void>(url: string): Promise<T> {
 
 /** 上传二进制文件内容（数据集导入用）。不发 Idempotency-Key，避免中间件按写操作缓存。 */
 export async function apiUploadBinary(url: string, file: Blob, contentType: string): Promise<void> {
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     method: "POST",
     headers: { "Content-Type": contentType, ...getAuthHeader() },
     body: file,
@@ -143,7 +154,7 @@ export async function apiUploadBinary(url: string, file: Blob, contentType: stri
  * 返回 blob 与从 Content-Disposition 解析出的文件名（可能为 null）。
  */
 export async function apiGetBlob(url: string): Promise<{ blob: Blob; filename: string | null }> {
-  const response = await fetch(url, { headers: { ...getAuthHeader() } });
+  const response = await fetch(apiUrl(url), { headers: { ...getAuthHeader() } });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     let message: string | undefined;
