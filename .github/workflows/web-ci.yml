@@ -1,46 +1,87 @@
-name: Web CI
+name: Shared packages and Web CI
 
-# 前端 CI：typecheck + 组件/单元测试（Vitest + MSW，无需后端）+ 生产构建。
-# 与 api-ci.yml 对称，补齐「前端无 CI」缺口。e2e 见 web-e2e.yml（需全栈，单独触发）。
+# 共享包与前端 CI：
+# - shared-packages 守住 packages/* 的严格类型检查与单元测试；
+# - web 守住 apps/web 的类型检查、组件测试与生产构建。
+# 真后端 E2E 见 web-e2e.yml。
 
 on:
   push:
     paths:
       - "apps/web/**"
       - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".nvmrc"
       - ".github/workflows/web-ci.yml"
   pull_request:
     paths:
       - "apps/web/**"
       - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".nvmrc"
       - ".github/workflows/web-ci.yml"
 
+concurrency:
+  group: shared-web-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  shared-packages:
+    name: Shared packages
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20.20.2
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.20.2"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install shared package dependencies
+        run: npm ci
+
+      - name: Typecheck shared packages
+        run: npm run typecheck
+
+      - name: Test shared packages
+        run: npm test
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 20.20.2
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "20.20.2"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/web/package-lock.json
 
-      - name: Install workspace package dependencies
-        run: npm install
+      - name: Install shared package dependencies
+        run: npm ci
         working-directory: ${{ github.workspace }}
 
       - name: Install web dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Typecheck
+      - name: Typecheck Web
         run: npm run typecheck
 
-      - name: Unit / component tests (Vitest + MSW)
+      - name: Test Web (Vitest + MSW)
         run: npm run test:run
 
-      - name: Production build (smoke)
+      - name: Build Web
         run: npm run build

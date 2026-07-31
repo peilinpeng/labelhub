@@ -215,14 +215,13 @@ submission/
 # 0) 准备环境变量
 cp .env.example .env          # 按需填 DOUBAO_API_KEY / DOUBAO_MODEL 等
 
-# 1) 构建并启动全部服务（web / api / worker / mysql / redis）
-docker compose up -d --build
+# 1) 构建并启动全部服务，等待 API 与 Web 健康检查通过
+docker compose up -d --build --wait
 
-# 2) 数据库迁移
-docker compose exec -w /workspace/apps/api api alembic upgrade head
+# 2) 执行 Alembic 迁移并写入可重复的基础演示 / E2E 数据
+docker compose --profile tools run --rm seed
 
-# 3) 灌入演示数据
-docker compose exec -w /workspace/apps/api api python scripts/seed_demo.py
+# 3) 可选：补充竞赛演示数据
 docker compose exec -w /workspace/apps/api api python scripts/seed_competition.py
 ```
 
@@ -234,15 +233,20 @@ Compose 包含以下服务：`web`、`api`、`worker`、`mysql`、`redis`。
 
 ### 方式二：前端 + 共享库本地开发
 
+本项目统一使用 Node `20.20.2` 与 npm `10.8.2`。安装了 nvm 时，可先执行 `nvm use` 读取根目录 `.nvmrc`。
+
 ```bash
+# 切换到项目约定的 Node 版本
+nvm use
+
 # 共享库（packages/*）依赖与检查
-npm install
+npm ci
 npm run typecheck
 npm run test
 
 # 前端应用（apps/web 为独立 npm 项目）
 cd apps/web
-npm install
+npm ci
 npm run dev          # Vite 开发服务器
 ```
 
@@ -271,7 +275,15 @@ npm run test:schema-renderer
 # 前端应用
 cd apps/web
 npm run typecheck
+npm run test:run
 npm run build
+cd ../..
+
+# 真实后端 E2E（首次执行需安装 Chromium）
+npm --prefix apps/web exec playwright install chromium
+docker compose up -d --build --wait
+docker compose --profile tools run --rm seed
+npm --prefix apps/web run e2e
 
 # 后端（在 Docker 环境内）
 docker compose exec -w /workspace/apps/api api pytest -m "not integration" -q

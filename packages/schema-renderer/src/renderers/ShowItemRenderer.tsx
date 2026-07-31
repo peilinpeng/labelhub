@@ -57,7 +57,7 @@ function isMediaShow(node: ShowItemNode): boolean {
 // 取 JSONPath 末段作为字段名展示，如 $.item.sourcePayload.prompt → prompt。
 function jsonPathLeaf(path: string): string {
   const segments = path.split(".").filter((s) => s !== "");
-  return segments.length > 0 ? segments[segments.length - 1] : path;
+  return segments.at(-1) ?? path;
 }
 
 // ---------------------------------------------------------------------------

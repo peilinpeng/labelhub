@@ -160,6 +160,33 @@ export const handlers = [
     return task === undefined ? errorJson("RESOURCE_NOT_FOUND", "任务不存在", 404) : okJson(task);
   }),
 
+  http.get("/api/v1/tasks/:taskId/stats", ({ params }) => {
+    const taskId = getParam(params as MockParams, "taskId");
+    const task = getTask(taskId);
+    if (task === undefined) {
+      return errorJson("RESOURCE_NOT_FOUND", "任务不存在", 404);
+    }
+    const quotaTotal = task.quota?.total ?? null;
+    const accepted = 2;
+    return okJson({
+      taskId,
+      datasetTotal: 12,
+      datasetAvailable: 8,
+      inProgress: 1,
+      inReview: 1,
+      accepted,
+      returned: 0,
+      rejected: 0,
+      submittedTotal: 3,
+      quotaTotal,
+      quotaRemaining: quotaTotal === null ? null : Math.max(quotaTotal - accepted, 0),
+      progressPercent:
+        quotaTotal === null || quotaTotal === 0
+          ? 0
+          : Math.min(Math.round((accepted / quotaTotal) * 100), 100),
+    });
+  }),
+
   http.get("/api/v1/tasks/:taskId/schema/draft", ({ params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const draft = getSchemaDraft(taskId);

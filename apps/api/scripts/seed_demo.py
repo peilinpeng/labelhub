@@ -54,7 +54,7 @@ REVIEW_ASN_ID = "asn_demo_review_01"
 REVIEW_SUB_ID = "sub_demo_review_01"
 REVIEW_RR_ID = "rr_demo_review_ai_01"
 
-_DEMO_USERS = [
+DEMO_USERS = [
     {"id": "usr_demo_owner",    "role": "OWNER",    "email": "owner@labelhub.com",    "display_name": "演示 Owner"},
     {"id": "usr_demo_labeler",  "role": "LABELER",  "email": "labeler@labelhub.com",  "display_name": "演示 Labeler"},
     {"id": "usr_demo_reviewer", "role": "REVIEWER", "email": "reviewer@labelhub.com", "display_name": "演示 Reviewer"},
@@ -171,7 +171,7 @@ def _wipe_demo(db) -> None:
 
 def _upsert_users(db) -> dict:
     result = {}
-    for spec in _DEMO_USERS:
+    for spec in DEMO_USERS:
         user = db.query(User).filter_by(email=spec["email"]).first()
         if user is None:
             user = User(
@@ -180,7 +180,13 @@ def _upsert_users(db) -> dict:
                 display_name=spec["display_name"], role=spec["role"], status="ACTIVE",
             )
             db.add(user)
-        result[spec["role"]] = spec["id"]
+        else:
+            # E2E seed 必须能从被手工修改过的演示账号恢复到确定状态。
+            user.hashed_password = _pwd.hash(_PASSWORD)
+            user.display_name = spec["display_name"]
+            user.role = spec["role"]
+            user.status = "ACTIVE"
+        result[spec["role"]] = user.id
     db.commit()
     return result
 
@@ -194,7 +200,7 @@ def main() -> None:
 
         users = _upsert_users(db)
         print(f"\n✅ 演示账号就绪（密码均为 {_PASSWORD}）：")
-        for spec in _DEMO_USERS:
+        for spec in DEMO_USERS:
             print(f"   [{spec['role']:<8}] {spec['email']}")
 
         _wipe_demo(db)

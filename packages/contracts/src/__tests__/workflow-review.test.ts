@@ -1,5 +1,5 @@
 import { describe, test } from "node:test";
-import { equal } from "node:assert/strict";
+import { equal, notEqual } from "node:assert/strict";
 import type { AIReviewResultRecord, AuditAction, LLMCallLog, Submission, WorkflowCommand } from "../index";
 import {
   aiReviewJobStartAuditAction,
@@ -127,7 +127,7 @@ describe("工作流状态迁移", () => {
     const action = reviewPassAuditActionForPolicy({ type: "DOUBLE_REVIEW", requireFinalReview: true });
 
     equal(action, "FINAL_REVIEW_REQUESTED");
-    equal(action === "REVIEW_ACCEPTED", false);
+    notEqual(action, "REVIEW_ACCEPTED");
   });
 
   test("REJECT 后 DatasetItem 回到 AVAILABLE", () => {

@@ -16,7 +16,20 @@ services:
       - .:/workspace
       - web_node_modules:/workspace/apps/web/node_modules
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:5180/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
 
   api:
     build:
@@ -42,6 +55,18 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:3000/api/v1/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
 
   worker:
     build:
@@ -79,16 +104,17 @@ services:
     container_name: labelhub-seed
     profiles:
       - tools
+    working_dir: /workspace/apps/api
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
       DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-    command: >
-      sh -lc "if [ -f package.json ] || [ -f apps/api/package.json ]; then
-        echo 'TODO: 接入真实 ORM 后执行 scripts/seed-demo-data.ts 写入数据库。';
-      else
-        echo '当前仓库尚无可执行 TypeScript runtime，seed demo data 脚本已生成在 scripts/seed-demo-data.ts。';
-      fi"
+      DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
+      DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      DOUBAO_MODEL: ${DOUBAO_MODEL:-}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
+      FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
+      LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
+    command: ["sh", "-lc", "alembic upgrade head && python scripts/seed_e2e.py"]
     volumes:
       - .:/workspace
     depends_on:

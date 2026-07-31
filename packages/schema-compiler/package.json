@@ -7,7 +7,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --conditions=types --test src/__tests__/*.test.ts"
+    "test": "tsx --test src/__tests__/*.test.ts"
   },
   "exports": {
     ".": {
@@ -20,6 +20,7 @@
     "@labelhub/schema-core": "file:../schema-core"
   },
   "devDependencies": {
+    "@types/node": "20.19.41",
     "typescript": "^5.0.0"
   }
 }

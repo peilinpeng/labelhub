@@ -1,8 +1,9 @@
 # LabelHub 当前优化计划
 
-> 文档状态：待执行
+> 文档状态：执行中（M1“可信门禁”已完成）
 > 制定日期：2026-07-31
 > 评估基线：`integration/joint-test @ d4d45fc5e3a47dd271ea44012024879102d0d41c`
+> 当前实施分支：`feature/optimization-iteration`
 > 适用范围：前端、共享 Schema 包、后端 API、异步 Worker、CI/CD、Docker 与项目文档
 > 计划周期：约 15 个工作日，可按团队人数并行压缩
 
@@ -34,6 +35,8 @@ LabelHub 当前已经具备完整的 Owner、Labeler、Reviewer 三角色链路�
 | Web 覆盖率 | 行覆盖率 14.89% | 关键页面覆盖不足 |
 | 本机 Node 25 Web 测试 | 10 failed | Node 版本未锁定导致环境漂移 |
 
+> 上表是优化实施前的实测基线，用于保留问题背景；M1 的最新验收结果见下节。
+
 ### 2.1 已确认的主要问题
 
 - 根级 `npm run typecheck` 当前失败，但现有 Web CI 没有检查共享包，因此错误未被门禁拦截。
@@ -46,6 +49,33 @@ LabelHub 当前已经具备完整的 Owner、Labeler、Reviewer 三角色链路�
 - 文件上传把整个请求体读入内存，缺少实际大小、类型和内容校验。
 - Node、Python 依赖与生产镜像的可复现性不足。
 - README、部署文档和旧优化计划包含明显过期信息。
+
+### 2.2 M1 实施结果（2026-07-31）
+
+OPT-01～OPT-04 已完成，最新本地验收结果如下：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 共享包严格类型检查 | 通过 |
+| 共享包测试 | 375 passed |
+| Web 类型检查 | 通过 |
+| Web 组件测试 | 10 passed，已消除未处理的任务统计 MSW 请求 |
+| Web 生产构建 | 通过 |
+| API 常规测试 | 228 passed，1 deselected |
+| Compose 健康检查 | API、Web、MySQL、Redis 全部 healthy |
+| 空数据库迁移 | 7 个 Alembic revision 从零执行成功 |
+| 独立 E2E seed | 可重复执行并完成账号、任务、可领取数据、待审核数据自检 |
+| 真实后端 E2E | Owner、Labeler、Reviewer 共 4 passed |
+
+关键落地项：
+
+- 修复 `ShowItemRenderer` 严格数组索引类型错误，没有降低 TypeScript 严格度。
+- CI 拆分共享包与 Web 门禁，统一使用 Node 20.20.2、npm 缓存和 `npm ci`。
+- 增加 `.nvmrc`、`engines`、`packageManager`，并固定 Node 20 不兼容的 MSW 依赖。
+- 共享包测试统一通过 `tsx` 在 Node 20 执行 TypeScript 测试。
+- API 与 Web 增加健康检查；E2E 工作流在 PR 中显式迁移、seed、验活、测试和收集失败日志。
+- E2E 不再在登录失败时偷偷修复数据库，环境准备与测试断言职责已分离。
+- 新增 `apps/api/scripts/seed_e2e.py`，复用确定性演示数据并对关键前置条件做失败即退出的自检。
 
 ## 3. 优化目标
 
@@ -116,6 +146,7 @@ LabelHub 当前已经具备完整的 Owner、Labeler、Reviewer 三角色链路�
 ### OPT-01 修复当前类型检查
 
 **优先级：P0**
+**状态：已完成（2026-07-31）**
 
 工作内容：
 
@@ -135,6 +166,7 @@ npm --prefix apps/web run typecheck
 ### OPT-02 重构 CI 门禁
 
 **优先级：P0**
+**状态：已完成（2026-07-31）**
 
 工作内容：
 
@@ -153,6 +185,7 @@ npm --prefix apps/web run typecheck
 ### OPT-03 固定开发与测试环境
 
 **优先级：P0**
+**状态：已完成（2026-07-31）**
 
 工作内容：
 
@@ -171,6 +204,7 @@ npm --prefix apps/web run typecheck
 ### OPT-04 建立从零可复现的 E2E
 
 **优先级：P0**
+**状态：已完成（2026-07-31）**
 
 工作内容：
 
@@ -525,8 +559,7 @@ npm --prefix apps/web run build
 
 # Docker 全栈
 docker compose up -d --build --wait
-docker compose exec -T -w /workspace/apps/api api alembic upgrade head
-# 执行独立 E2E seed
+docker compose --profile tools run --rm seed
 npm --prefix apps/web run e2e
 
 # API
@@ -565,10 +598,10 @@ git diff --check
 
 | ID | 工作包 | 优先级 | 状态 | 负责人 | 预计工作量 | 依赖 |
 | --- | --- | --- | --- | --- | ---: | --- |
-| OPT-01 | 修复当前类型检查 | P0 | 待开始 | 前端 / Schema | 0.5 天 | 无 |
-| OPT-02 | 重构 CI 门禁 | P0 | 待开始 | DevOps / 合并负责人 | 1 天 | OPT-01 |
-| OPT-03 | 固定开发与测试环境 | P0 | 待开始 | 前端 / DevOps | 0.5 天 | OPT-02 |
-| OPT-04 | 从零可复现 E2E | P0 | 待开始 | QA / DevOps | 1 天 | OPT-02 |
+| OPT-01 | 修复当前类型检查 | P0 | 已完成 | 前端 / Schema | 0.5 天 | 无 |
+| OPT-02 | 重构 CI 门禁 | P0 | 已完成 | DevOps / 合并负责人 | 1 天 | OPT-01 |
+| OPT-03 | 固定开发与测试环境 | P0 | 已完成 | 前端 / DevOps | 0.5 天 | OPT-02 |
+| OPT-04 | 从零可复现 E2E | P0 | 已完成 | QA / DevOps | 1 天 | OPT-02 |
 | OPT-05 | 修正幂等中间件 | P1 | 待开始 | 后端 | 1.5 天 | OPT-04 |
 | OPT-06 | 加固文件上传 | P1 | 待开始 | 后端 | 1.5 天 | OPT-04 |
 | OPT-07 | 生产环境安全配置 | P1 | 待开始 | 后端 / DevOps | 1 天 | OPT-03 |
@@ -584,11 +617,11 @@ git diff --check
 
 ## 13. 推荐启动顺序
 
-第一批只启动以下四项：
+第一批以下四项已完成：
 
 1. OPT-01 修复类型检查。
 2. OPT-02 补齐共享包 CI 门禁。
 3. OPT-03 固定 Node 与依赖安装方式。
 4. OPT-04 建立空数据库可重复 E2E。
 
-完成 M1“可信门禁”后，再并行启动后端可靠性、性能和前端重构任务。这样可以确保后续每一次优化都处于可验证、可回滚、可持续交付的状态。
+下一批建议按依赖顺序启动 OPT-05、OPT-06、OPT-07；完成可靠性与安全基线后，再进入 OPT-08～OPT-10 的性能优化。后续每一次优化都应继续复用本轮建立的 Node 20、CI 与空库 E2E 门禁。
