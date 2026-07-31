@@ -55,7 +55,7 @@ describe("文件契约", () => {
 
     equal(isCreateUploadUrlResult(pendingFile), true);
     equal(canMarkUploadStarted("PENDING"), true);
-    equal(canConfirmUpload("PENDING"), true);
+    equal(canConfirmUpload("PENDING"), false);
     equal(canConfirmUpload("UPLOADING"), true);
     equal(isCreateUploadUrlResult(readyFile), false);
     equal(fileUploadTransitionAuditAction("createUploadUrl"), "FILE_UPLOAD_URL_CREATED");

@@ -1,5 +1,7 @@
 """集成测试：认证与 RBAC（TC-SEC-01 越权隔离）。"""
 
+from app.config import settings
+
 
 def test_login_success(client, users):
     resp = client.post("/api/v1/auth/login", json={
@@ -23,6 +25,63 @@ def test_login_unknown_email_401(client, users):
         "email": "ghost@test.local", "password": "password123",
     })
     assert resp.status_code == 401
+
+
+def test_login_rate_limit_returns_429_and_retry_after(client, users):
+    body = {"email": users["OWNER"].email, "password": "wrong"}
+    responses = [
+        client.post("/api/v1/auth/login", json=body)
+        for _ in range(5)
+    ]
+    assert [response.status_code for response in responses[:4]] == [401] * 4
+    assert responses[-1].status_code == 429
+    assert int(responses[-1].headers["Retry-After"]) >= 1
+    assert responses[-1].json()["code"] == "PERMISSION_DENIED"
+
+
+def test_successful_login_resets_failure_counter(client, users):
+    email = users["OWNER"].email
+    for _ in range(4):
+        assert client.post(
+            "/api/v1/auth/login",
+            json={"email": email, "password": "wrong"},
+        ).status_code == 401
+
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "password123"},
+    ).status_code == 200
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "wrong"},
+    ).status_code == 401
+
+
+def test_security_headers_are_present(client):
+    response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+
+
+def test_untrusted_host_is_rejected_with_security_headers(client):
+    response = client.get(
+        "/api/v1/health",
+        headers={"Host": "attacker.example"},
+    )
+    assert response.status_code == 400
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+
+
+def test_hsts_can_be_enabled_explicitly(client, monkeypatch):
+    monkeypatch.setattr(settings, "ENABLE_HSTS", True)
+    response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.headers["Strict-Transport-Security"].startswith(
+        "max-age=31536000"
+    )
 
 
 def test_no_token_401(client):

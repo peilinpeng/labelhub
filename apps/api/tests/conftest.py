@@ -14,6 +14,10 @@ import os
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("JWT_SECRET", "test_jwt_secret")
+os.environ["APP_ENV"] = "test"
+os.environ["DEMO_MODE"] = "false"
+os.environ["LOGIN_RATE_LIMIT_BACKEND"] = "memory"
+os.environ["TRUSTED_HOSTS"] = "testserver,localhost,127.0.0.1"
 os.environ.setdefault("DOUBAO_API_KEY", "test-key")
 os.environ.setdefault("DOUBAO_BASE_URL", "http://localhost:9/v1")
 os.environ.setdefault("DOUBAO_MODEL", "test-model")
@@ -59,11 +63,15 @@ from main import app as fastapi_app  # noqa: E402
 from app.database import get_db  # noqa: E402
 from app.routers.auth import create_access_token, _pwd_context  # noqa: E402
 from app.models.user import User  # noqa: E402
+from app.config import settings  # noqa: E402
+from app.security import login_rate_limiter  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _fresh_db():
+def _fresh_db(tmp_path):
     """每个用例前重建全部表，保证隔离。"""
+    settings.LOCAL_STORAGE_DIR = str(tmp_path / "files")
+    login_rate_limiter.reset_all_for_tests()
     Base.metadata.drop_all(bind=_test_engine)
     Base.metadata.create_all(bind=_test_engine)
     yield

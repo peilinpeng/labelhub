@@ -395,7 +395,7 @@ function canMarkUploadStarted(status) {
     return status === "PENDING";
 }
 function canConfirmUpload(status) {
-    return status === "PENDING" || status === "UPLOADING";
+    return status === "UPLOADING";
 }
 function canFailUpload(status) {
     return status === "PENDING" || status === "UPLOADING";

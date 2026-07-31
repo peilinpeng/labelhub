@@ -5,6 +5,7 @@ WORKDIR /workspace
 ENV NODE_ENV=development
 ENV VITE_API_BASE_URL=http://localhost:3000/api/v1
 ENV VITE_ENABLE_MSW=true
+ENV VITE_DEMO_MODE=true
 
 EXPOSE 5180
 

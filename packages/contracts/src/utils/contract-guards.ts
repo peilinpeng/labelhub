@@ -455,7 +455,7 @@ export function canMarkUploadStarted(status: FileStatus): boolean {
 }
 
 export function canConfirmUpload(status: FileStatus): boolean {
-  return status === "PENDING" || status === "UPLOADING";
+  return status === "UPLOADING";
 }
 
 export function canFailUpload(status: FileStatus): boolean {

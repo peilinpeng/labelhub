@@ -2,15 +2,17 @@
 # 本表无独立 id 字段，scope_key 即为主键。
 # scope_key 格式：actorId:method:path:idempotency-key（由应用层拼接）。
 # 记录默认保留 24 小时（expires_at = created_at + 24h），由应用层在写入时计算并显式传入。
-# 过期记录由定时任务（Celery Beat）清理，数据库不自动删除。
-# 无 updated_at：幂等记录创建后不修改。
-from sqlalchemy import Column, String, DateTime, JSON, func
+# 过期记录由 Celery Beat 清理；同作用域重用时中间件也会主动删除过期记录。
+from sqlalchemy import Column, String, DateTime, JSON, Index, func
 
 from app.database import Base
 
 
 class IdempotencyRecord(Base):
     __tablename__ = "idempotency_records"
+    __table_args__ = (
+        Index("ix_idempotency_records_expires_at", "expires_at"),
+    )
 
     # 幂等作用域键：actorId:method:path:idempotency-key
     # 契约 §3 幂等作用域为 actorId + method + path + Idempotency-Key

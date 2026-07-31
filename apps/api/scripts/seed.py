@@ -20,6 +20,7 @@ load_dotenv()
 
 from app.config import settings
 from app.database import SessionLocal
+from app.security import require_demo_mode
 from app.models.user import User
 
 # ---------------------------------------------------------------------------
@@ -70,6 +71,7 @@ def _create_token(user_id: str, role: str, display_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    require_demo_mode("seed")
     db = SessionLocal()
     try:
         print("=" * 60)

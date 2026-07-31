@@ -4,7 +4,7 @@
 # status 合法值（契约 §22 FileStatus）：PENDING / UPLOADING / READY / FAILED / DELETED
 # owner_type 合法值（契约 §22）：USER / ASSIGNMENT / EXPORT_JOB
 # purpose 合法值（契约 §22）：DATASET_IMPORT / ANSWER_ATTACHMENT / EXPORT_RESULT
-from sqlalchemy import Column, String, BigInteger, DateTime, ForeignKey, func
+from sqlalchemy import Column, String, BigInteger, DateTime, Text, ForeignKey, func
 
 from app.database import Base
 
@@ -29,6 +29,15 @@ class FileObject(Base):
 
     # 契约 FileObject.size（字节数），使用 BigInteger 支持超过 2GB 的大文件
     size = Column(BigInteger, nullable=False)
+
+    # 实际流式接收的字节数；READY 前必须与声明 size 完全一致。
+    uploaded_size = Column(BigInteger, nullable=True)
+
+    # 流式写入过程中计算的 SHA-256，供 confirm 与未来对象存储校验复用。
+    checksum_sha256 = Column(String(64), nullable=True)
+
+    # FAILED 状态的可诊断原因；不保存文件内容或敏感请求数据。
+    failure_reason = Column(Text, nullable=True)
 
     # 契约 FileObject.storageKey，对象存储路径可能较长，使用 String(500)
     storage_key = Column(String(500), nullable=False)

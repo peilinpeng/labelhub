@@ -22,7 +22,7 @@
 | **4.4 AI 预审 Agent**（核心难点）：可配置 Prompt + 评分维度、异步入队、Function Calling 结构化输出、失败重试 + 幂等、结果可见可追溯 | ✅ 维度/阈值/权重可配置；Celery 异步队列；`FUNCTION_CALLING` 结构化输出（非裸文本解析）；`retry_count` 重试 + 幂等键；AI 评语与原始 Prompt 可在审核台查看 | `apps/api/app/services/review_domain.py`、`worker/ai_review_worker.py`；`/owner/ai-config` |
 | **4.5 多角色审核流转**：`PASS/RETURN/REVISE` 状态机、迁移可追溯（审计）、批量操作、打回附理由 + 上一轮意见可见、第 1/2 轮 diff | ✅ 结构化决策流；批量审核 `BatchReviewRequest`；`RETURN` 必填理由、Labeler 可见上轮意见；`REVIEW_DIFF_GENERATED` 字段级 diff 审计 | `apps/api/app/routers/review.py`、`services/review_domain.py`；`/reviewer/items` |
 | **4.6 多格式导出**：JSON / JSONL / CSV / Excel、异步导出 + 下载历史、字段映射可配置 | ✅ 四格式真实生成；Celery 异步导出；字段映射（选字段 / 重命名 / 是否含审核记录） | `apps/api/app/worker/export_worker.py`、`services/export_domain.py`；`/owner/tasks/:id/export` |
-| **工程质量（25%）**：TypeScript 全栈类型、单测/集成测试、README + 部署文档 | ✅ `@labelhub/contracts` 单一类型来源（无大量 any）；**后端 pytest 170 passed、端到端 e2e 21/21、共享库/前端 126 个测试文件全绿**；`docs/deployment.md` 部署文档 | `npm run test`、`pytest -m "not integration"`、`scripts/e2e_test.sh` |
+| **工程质量（25%）**：TypeScript 全栈类型、单测/集成测试、README + 部署文档 | ✅ `@labelhub/contracts` 单一类型来源（无大量 any）；**API 常规测试 257 passed、MySQL 集成测试 2 passed、共享库 375 passed、Web 组件测试 12 passed、真实后端 E2E 4 passed**；`docs/deployment.md` 部署文档 | `npm run test`、`pytest -m "not integration"`、`npm --prefix apps/web run e2e` |
 | **产品体验（15%）**：视觉统一、错误友好、操作可逆、1280×800 & 1920×1080 | ✅ 草稿自动保存 + 可逆操作；人话错误提示（不暴露工程词）；响应式（70+ 媒体查询，移动端适配为加分项） | — |
 
 > 答辩**提交物清单**（源码 Monorepo / 演示视频 / 架构图 / AI Coding 过程记录 / Demo 截图 / 可访问演示环境说明 / API 文档）见 [`submission/README.md`](./submission/README.md)。
@@ -225,11 +225,13 @@ docker compose --profile tools run --rm seed
 docker compose exec -w /workspace/apps/api api python scripts/seed_competition.py
 ```
 
-Compose 包含以下服务：`web`、`api`、`worker`、`mysql`、`redis`。
+Compose 包含以下服务：`web`、`api`、`worker`、`scheduler`、`mysql`、`redis`。`scheduler` 负责定时清理过期幂等记录。
 
 前端访问 `http://localhost:5173/`。web 默认走真实后端（`VITE_ENABLE_MSW=false`，Vite `/api` 代理至 `api:3000`）。
 
 > **环境变量**：复制 `.env.example` 为 `.env` 并填写本地配置。**不要提交真实 API key、token 或 secret。**
+
+生产部署必须显式设置 `APP_ENV=production`、`DEMO_MODE=false`、至少 32 字符的随机 `JWT_SECRET`、非默认数据库密码、`LOGIN_RATE_LIMIT_BACKEND=redis` 和实际 `TRUSTED_HOSTS`。任一安全条件不满足时 API 会在启动阶段失败。正式前端构建需设置 `VITE_DEMO_MODE=false`，登录页不会显示或预填演示账号。
 
 ### 方式二：前端 + 共享库本地开发
 
@@ -287,6 +289,7 @@ npm --prefix apps/web run e2e
 
 # 后端（在 Docker 环境内）
 docker compose exec -w /workspace/apps/api api pytest -m "not integration" -q
+docker compose exec -w /workspace/apps/api api pytest -m integration -q
 bash apps/api/scripts/e2e_test.sh
 
 # 交付前检查 whitespace / conflict markers
@@ -410,6 +413,9 @@ Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追�
 - 不要提交 API keys、tokens 或 secrets。
 - 不要暴露私有 LLM provider credentials。
 - 使用本地 `.env` 文件管理密钥（参考 `.env.example`）。
+- 演示 seed 只允许在 `DEMO_MODE=true` 的非生产环境运行；生产环境禁止启用。
+- 文件上传会校验配置上限、实际大小、扩展名、MIME、内容签名与 SHA-256；可通过 `MAX_UPLOAD_SIZE_BYTES` 和文件白名单配置。
+- JWT 有效期、登录失败限流、可信 Host 与 HSTS 均由环境变量控制；生产环境登录限流必须使用 Redis。
 
 ---
 

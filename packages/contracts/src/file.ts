@@ -32,7 +32,7 @@ export type FileUploadLifecycleRule =
     }
   | {
       command: "confirmUpload";
-      fromStatus: "PENDING" | "UPLOADING";
+      fromStatus: "UPLOADING";
       toStatus: "READY";
       auditAction: Extract<AuditAction, "FILE_CONFIRMED">;
     }
@@ -50,6 +50,8 @@ export interface FileObject {
   purpose: "DATASET_IMPORT" | "ANSWER_ATTACHMENT" | "EXPORT_RESULT";
   mimeType: string;
   size: number;
+  uploadedSize?: number;
+  checksumSha256?: string;
   storageKey: string;
   status: FileStatus;
   createdAt: ISODateTime;

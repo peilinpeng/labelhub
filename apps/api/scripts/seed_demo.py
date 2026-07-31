@@ -31,6 +31,7 @@ from dotenv import load_dotenv
 load_dotenv()  # 必须在 import app.* 之前
 
 from app.database import SessionLocal
+from app.security import require_demo_mode
 from app.models.user import User
 from app.models.task import Task
 from app.models.schema import SchemaDraft, SchemaVersion
@@ -192,6 +193,7 @@ def _upsert_users(db) -> dict:
 
 
 def main() -> None:
+    require_demo_mode("seed_demo")
     db = SessionLocal()
     try:
         print("=" * 60)

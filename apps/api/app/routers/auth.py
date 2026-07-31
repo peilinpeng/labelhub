@@ -3,7 +3,7 @@
 # 安全要求：邮箱不存在与密码错误统一返回 401，禁止区分（防止用户枚举攻击）。
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from passlib.context import CryptContext
 from jose import jwt
 from pydantic import BaseModel
@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
-from app.middleware.error_handler import UnauthorizedException
+from app.middleware.error_handler import (
+    RateLimitExceededException,
+    UnauthorizedException,
+)
+from app.security import login_rate_limiter
 
 # ---------------------------------------------------------------------------
 # 密码工具
@@ -30,10 +34,6 @@ def verify_password(plain: str, hashed: str) -> bool:
 # JWT 生成工具
 # ---------------------------------------------------------------------------
 
-# Token 有效期：7 天（开发环境使用，方便 Postman 测试）
-_ACCESS_TOKEN_EXPIRE = timedelta(days=7)
-
-
 def create_access_token(user_id: str, role: str, display_name: str) -> str:
     """
     生成 HS256 签名的 JWT Token。
@@ -45,7 +45,9 @@ def create_access_token(user_id: str, role: str, display_name: str) -> str:
         "role": role,                 # 契约 §3 Role：OWNER / LABELER / REVIEWER / SYSTEM / ADMIN
         "display_name": display_name, # 契约 §3 Actor.displayName
         "iat": now,
-        "exp": now + _ACCESS_TOKEN_EXPIRE,
+        "exp": now + timedelta(
+            minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+        ),
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 
@@ -78,7 +80,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+def login(
+    body: LoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> LoginResponse:
     """
     POST /api/v1/auth/login — 邮箱密码登录，公开接口无需鉴权。
 
@@ -87,16 +93,34 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     - 密码错误   → 401 PERMISSION_DENIED
     - status 非 ACTIVE → 401 PERMISSION_DENIED，message 说明账号状态
     """
+    client_ip = request.client.host if request.client is not None else "unknown"
+    rate_state = login_rate_limiter.state(client_ip, body.email)
+    if rate_state.blocked:
+        raise RateLimitExceededException(
+            "登录失败次数过多，请稍后重试",
+            details={"retryAfterSeconds": rate_state.retry_after_seconds},
+            headers={"Retry-After": str(rate_state.retry_after_seconds)},
+        )
+
     user: User | None = db.query(User).filter(User.email == body.email).first()
 
     # 邮箱不存在或密码错误：统一返回 401，禁止区分两种失败原因（防用户枚举）
     if user is None or not verify_password(body.password, user.hashed_password):
+        failure_state = login_rate_limiter.record_failure(client_ip, body.email)
+        if failure_state.blocked:
+            raise RateLimitExceededException(
+                "登录失败次数过多，请稍后重试",
+                details={"retryAfterSeconds": failure_state.retry_after_seconds},
+                headers={"Retry-After": str(failure_state.retry_after_seconds)},
+            )
         raise UnauthorizedException("邮箱或密码不正确")
 
     # 账号状态检查：只允许 ACTIVE 账号登录
     if user.status != "ACTIVE":
+        login_rate_limiter.record_failure(client_ip, body.email)
         raise UnauthorizedException(f"账号当前状态为 {user.status}，无法登录")
 
+    login_rate_limiter.reset(client_ip, body.email)
     token = create_access_token(user.id, user.role, user.display_name)
     return LoginResponse(
         token=token,

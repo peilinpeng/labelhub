@@ -34,6 +34,7 @@ load_dotenv()  # 必须在 import app.* 之前（读 DOUBAO_API_KEY 等）
 
 import app.models  # noqa: F401  聚合注册全部模型，避免跨表 FK 解析报错
 from app.database import SessionLocal
+from app.security import require_demo_mode
 from app.models.task import Task
 from app.models.dataset import DatasetItem
 from app.models.assignment import Assignment, Draft
@@ -291,6 +292,7 @@ def _drop_news(db) -> None:
 
 
 def main() -> None:
+    require_demo_mode("真实演示评审流水线初始化")
     parser = argparse.ArgumentParser(description="在举办方真实数据上生成真实评审历史（真调 Doubao）")
     parser.add_argument("--task", choices=["qa", "pref", "both"], default="both")
     parser.add_argument("--per-task", type=int, default=9, help="每任务生成的提交数（留余量不领完）")

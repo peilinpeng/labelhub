@@ -2,7 +2,7 @@
 
 本文档说明如何在本地与云端部署 LabelHub：Docker 全栈模式、前端 Mock 模式、迁移与 seed、以及云部署。
 
-技术栈：前端 React + TS（Vite），后端 FastAPI + SQLAlchemy + Alembic，异步 Celery worker，MySQL 8 + Redis 7，LLM 接入豆包（OpenAI 兼容）。`docker compose up -d --build` 一条命令拉起全部服务（web / api / worker / mysql / redis）。
+技术栈：前端 React + TS（Vite），后端 FastAPI + SQLAlchemy + Alembic，异步 Celery worker 与 scheduler，MySQL 8 + Redis 7，LLM 接入豆包（OpenAI 兼容）。`docker compose up -d --build --wait` 一条命令拉起全部服务（web / api / worker / scheduler / mysql / redis）。
 
 ## 1. 本地 Mock 前端模式
 
@@ -42,10 +42,11 @@ VITE_ENABLE_MSW=true npm run dev -- --host 0.0.0.0
 cp .env.example .env
 ```
 
-启动全部服务：
+启动全部服务并等待健康检查：
 
 ```bash
-docker compose up --build
+docker compose up -d --build --wait
+docker compose --profile tools run --rm seed
 ```
 
 服务端口：
@@ -58,9 +59,10 @@ docker compose up --build
 
 Docker Compose 服务：
 
-- `web`：前端 Vite / React；当前缺少 `apps/web/package.json` 时启动占位页面。
-- `api`：后端 API；当前缺少 `apps/api/package.json` 时启动占位 API。
-- `worker`：AI Review / Export 异步任务 worker；当前缺少 worker 脚本时启动不阻塞的占位进程。
+- `web`：前端 Vite / React，默认通过 Vite 代理访问真实 API。
+- `api`：FastAPI 后端与文件流式上传入口。
+- `worker`：AI Review / Export / Maintenance 异步任务 worker。
+- `scheduler`：Celery Beat 调度器，每小时清理过期幂等记录。
 - `mysql`：MySQL 8，数据库名 `labelhub`。
 - `redis`：Redis 7，用于队列和缓存。
 - `seed`：演示数据 seed 占位服务，使用 `tools` profile。
@@ -134,18 +136,18 @@ npm run clean:test
 
 ## 6. 数据库迁移（Alembic）
 
-后端使用 Alembic 管理迁移，迁移链 head 为 `c3d4e5f6a7b8`（新增 `ai_assist_actions` 表）：
+后端使用 Alembic 管理迁移，迁移链 head 为 `d4e5f6a7b8c9`（幂等过期索引与上传校验元数据）：
 
 ```bash
 docker compose exec -w /workspace/apps/api api alembic upgrade head
-docker compose exec -w /workspace/apps/api api alembic current   # 应显示 c3d4e5f6a7b8 (head)
+docker compose exec -w /workspace/apps/api api alembic current   # 应显示 d4e5f6a7b8c9 (head)
 ```
 
 迁移覆盖 task、schema_drafts、schema_versions、dataset_items、assignments、drafts、submissions、ai_review_jobs、review_results、review_configs、export_jobs、export_records、files、llm_call_logs、audit_logs、audit_events 等表。
 
 ## 7. Seed demo data
 
-提供三套独立 seed 脚本（写入真实 MySQL）：
+提供三套独立 seed 脚本（写入真实 MySQL）。这些入口仅允许在 `DEMO_MODE=true` 的非生产环境运行：
 
 ```bash
 # E2E 种子（账号 *@labelhub.test / Seed@1234）—— e2e_test.sh 依赖
@@ -167,9 +169,11 @@ docker compose exec -w /workspace/apps/api api python scripts/clean_demo.py
 ```bash
 FILE_STORAGE_DRIVER=local
 LOCAL_STORAGE_DIR=/workspace/.storage/files
+MAX_UPLOAD_SIZE_BYTES=20971520
+FILE_ALLOWED_EXTENSIONS=.csv,.json,.jsonl,.txt,.pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls
 ```
 
-Compose 中该目录映射到 `file_storage` volume。后续接入对象存储时，应保持 File Upload Contract 不变，只替换存储驱动实现。
+Compose 中该目录映射到 `file_storage` volume。API 以分块方式写入临时文件，验证实际大小、扩展名、MIME、内容签名与 SHA-256 后再原子落盘；失败会清理临时文件。后续接入对象存储或内容扫描时，应保持 File Upload Contract 不变，只替换存储驱动实现。
 
 ## 9. 常见问题排查
 
@@ -238,17 +242,24 @@ VITE_API_BASE_URL=http://localhost:3000/api/v1
    ```
 3. **配置环境变量**（云平台 Secret / 环境变量面板，切勿写进镜像）：
    ```bash
-   DATABASE_URL=mysql+pymysql://<user>:<pwd>@<mysql-host>:3306/labelhub
+   APP_ENV=production
+   DEMO_MODE=false
+   DATABASE_URL=mysql+pymysql://<user>:<non-default-password>@<mysql-host>:3306/labelhub
    REDIS_URL=redis://<redis-host>:6379
-   JWT_SECRET=<高强度随机值>
+   JWT_SECRET=<至少 32 字符的高强度随机值>
+   JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
+   LOGIN_RATE_LIMIT_BACKEND=redis
+   TRUSTED_HOSTS=api.example.com
+   ENABLE_HSTS=true
    DOUBAO_API_KEY=<真实 key>
    DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
    DOUBAO_MODEL=<接入点 ep-...>
    FILE_STORAGE_DRIVER=local   # 或对接对象存储
    ```
-4. **启动顺序**：api 容器启动前先跑迁移 `alembic upgrade head`；首次部署跑一次 seed。
+4. **启动顺序**：api 容器启动前先跑迁移 `alembic upgrade head`；生产环境不得运行任何 demo seed。若上述生产安全配置不完整，API 会快速失败。
 5. **前端代理/接口地址**：
-   - 若 web 容器内置 Vite 代理：注入 `VITE_PROXY_TARGET=http://<api-host>:3000`、`VITE_ENABLE_MSW=false`。
+   - 正式构建必须注入 `VITE_DEMO_MODE=false` 与 `VITE_ENABLE_MSW=false`。
+   - 若 web 容器内置 Vite 代理：注入 `VITE_PROXY_TARGET=http://<api-host>:3000`。
    - 若前端走静态托管 + 网关：将 `/api` 反向代理到 api 服务，或构建时设 `VITE_API_BASE_URL` 为公网 api 地址。
 6. **健康检查**：api `GET /docs`（或自定义 `/health`）；mysql/redis 用云厂商健康检查；worker 看 Celery 日志。
 7. **演示环境最小配置建议**：2 vCPU / 4GB；api 与 worker 同镜像不同启动命令；MySQL/Redis 用托管小规格即可。

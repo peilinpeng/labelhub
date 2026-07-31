@@ -17,18 +17,6 @@ export class ApiRequestError extends Error {
   }
 }
 
-const ROLE_CREDENTIALS: Record<string, { email: string; password: string }> = {
-  OWNER:    { email: "owner@labelhub.test",    password: "Seed@1234" },
-  LABELER:  { email: "labeler@labelhub.test",  password: "Seed@1234" },
-  REVIEWER: { email: "reviewer@labelhub.test", password: "Seed@1234" },
-};
-
-export async function loginForRole(role: string): Promise<void> {
-  const creds = ROLE_CREDENTIALS[role];
-  if (!creds) return;
-  await loginWithCredentials(role, creds.email, creds.password);
-}
-
 export async function loginWithCredentials(role: string, email: string, password: string): Promise<void> {
   const res = await fetch("/api/v1/auth/login", {
     method: "POST",

@@ -20,6 +20,7 @@ load_dotenv()
 
 import app.models  # noqa: F401
 from app.database import SessionLocal
+from app.security import require_demo_mode
 from app.models.task import Task
 from app.models.schema import SchemaDraft, SchemaVersion
 from app.models.dataset import DatasetItem
@@ -215,6 +216,7 @@ def _cleanup(db):
 
 
 def main():
+    require_demo_mode("verify_news_task_e2e")
     db = SessionLocal()
     try:
         sv_id = _build_task(db)

@@ -4,13 +4,16 @@
 # 中间件注册顺序（Starlette LIFO，后加的先执行）：
 #   app.add_middleware(IdempotencyMiddleware)  # 第1个加 → 内层，在 AuthMiddleware 之后执行
 #   app.add_middleware(AuthMiddleware)          # 第2个加 → 外层，最先执行
-# 请求进入顺序：AuthMiddleware → IdempotencyMiddleware → 路由处理函数
+# 请求进入顺序：SecurityHeaders → TrustedHost → Auth → Idempotency → 路由。
 # register_error_handlers 必须在 add_middleware 之后、include_router 之前调用。
 from fastapi import FastAPI
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.config import settings
 from app.middleware.auth import AuthMiddleware
 from app.middleware.idempotency import IdempotencyMiddleware
 from app.middleware.error_handler import register_error_handlers
+from app.security import SecurityHeadersMiddleware
 from app.routers import auth as auth_router
 
 # 其余路由暂未实现，导入后按需解注释
@@ -24,11 +27,19 @@ from app.routers import audit_events
 from app.routers import analytics
 # from app.routers import ai_review
 
-app = FastAPI(title="LabelHub API", version="1.0.0")
+app = FastAPI(
+    title="LabelHub API",
+    version="1.0.0",
+    docs_url=None if settings.APP_ENV == "production" else "/docs",
+    redoc_url=None if settings.APP_ENV == "production" else "/redoc",
+    openapi_url=None if settings.APP_ENV == "production" else "/openapi.json",
+)
 
 # ① 挂载中间件（LIFO：后加的先执行）
 app.add_middleware(IdempotencyMiddleware)  # 内层，需要 actor 已被注入
 app.add_middleware(AuthMiddleware)          # 外层，先于 IdempotencyMiddleware 执行
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # ② 注册全局异常处理器
 register_error_handlers(app)

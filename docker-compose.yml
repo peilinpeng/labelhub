@@ -8,6 +8,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000/api/v1}
       VITE_ENABLE_MSW: ${VITE_ENABLE_MSW:-false}
+      VITE_DEMO_MODE: ${DEMO_MODE:-true}
       # Docker 网络内 Vite 代理需指向 api 服务（容器内 localhost 不是 api）
       VITE_PROXY_TARGET: ${VITE_PROXY_TARGET:-http://api:3000}
     ports:
@@ -37,14 +38,25 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: labelhub-api
     environment:
+      APP_ENV: ${APP_ENV:-demo}
+      DEMO_MODE: ${DEMO_MODE:-true}
       DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
       DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
       DOUBAO_MODEL: ${DOUBAO_MODEL:-}
       JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      LOGIN_RATE_LIMIT_BACKEND: ${LOGIN_RATE_LIMIT_BACKEND:-memory}
+      LOGIN_RATE_LIMIT_ATTEMPTS: ${LOGIN_RATE_LIMIT_ATTEMPTS:-5}
+      LOGIN_RATE_LIMIT_WINDOW_SECONDS: ${LOGIN_RATE_LIMIT_WINDOW_SECONDS:-300}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1,testserver,api}
+      ENABLE_HSTS: ${ENABLE_HSTS:-false}
       FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
       LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:-20971520}
+      FILE_ALLOWED_EXTENSIONS: ${FILE_ALLOWED_EXTENSIONS:-.csv,.json,.jsonl,.txt,.pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls}
+      FILE_ALLOWED_MIME_TYPES: ${FILE_ALLOWED_MIME_TYPES:-text/csv,application/json,application/x-ndjson,text/plain,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel}
     ports:
       - "${API_PORT:-3000}:3000"
     volumes:
@@ -75,22 +87,71 @@ services:
     container_name: labelhub-worker
     working_dir: /workspace/apps/api
     environment:
+      APP_ENV: ${APP_ENV:-demo}
+      DEMO_MODE: ${DEMO_MODE:-true}
       DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
       DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
       DOUBAO_MODEL: ${DOUBAO_MODEL:-}
       JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      LOGIN_RATE_LIMIT_BACKEND: ${LOGIN_RATE_LIMIT_BACKEND:-memory}
+      LOGIN_RATE_LIMIT_ATTEMPTS: ${LOGIN_RATE_LIMIT_ATTEMPTS:-5}
+      LOGIN_RATE_LIMIT_WINDOW_SECONDS: ${LOGIN_RATE_LIMIT_WINDOW_SECONDS:-300}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1,testserver,api}
+      ENABLE_HSTS: ${ENABLE_HSTS:-false}
       FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
       LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:-20971520}
+      FILE_ALLOWED_EXTENSIONS: ${FILE_ALLOWED_EXTENSIONS:-.csv,.json,.jsonl,.txt,.pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls}
+      FILE_ALLOWED_MIME_TYPES: ${FILE_ALLOWED_MIME_TYPES:-text/csv,application/json,application/x-ndjson,text/plain,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel}
     command: >
       celery -A app.worker.celery_app.celery_app worker
-      --queues=ai_review,export
+      --queues=ai_review,export,maintenance
       --loglevel=info
       --concurrency=2
     volumes:
       - .:/workspace
       - file_storage:/workspace/.storage/files
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: labelhub-scheduler
+    working_dir: /workspace/apps/api
+    environment:
+      APP_ENV: ${APP_ENV:-demo}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
+      DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      DOUBAO_MODEL: ${DOUBAO_MODEL:-}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      LOGIN_RATE_LIMIT_BACKEND: ${LOGIN_RATE_LIMIT_BACKEND:-memory}
+      LOGIN_RATE_LIMIT_ATTEMPTS: ${LOGIN_RATE_LIMIT_ATTEMPTS:-5}
+      LOGIN_RATE_LIMIT_WINDOW_SECONDS: ${LOGIN_RATE_LIMIT_WINDOW_SECONDS:-300}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1,testserver,api}
+      ENABLE_HSTS: ${ENABLE_HSTS:-false}
+      FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
+      LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:-20971520}
+      FILE_ALLOWED_EXTENSIONS: ${FILE_ALLOWED_EXTENSIONS:-.csv,.json,.jsonl,.txt,.pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls}
+      FILE_ALLOWED_MIME_TYPES: ${FILE_ALLOWED_MIME_TYPES:-text/csv,application/json,application/x-ndjson,text/plain,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel}
+    command: >
+      celery -A app.worker.celery_app.celery_app beat
+      --loglevel=info
+      --schedule=/tmp/labelhub-celerybeat-schedule
+    volumes:
+      - .:/workspace
     depends_on:
       mysql:
         condition: service_healthy
@@ -106,14 +167,25 @@ services:
       - tools
     working_dir: /workspace/apps/api
     environment:
+      APP_ENV: ${APP_ENV:-demo}
+      DEMO_MODE: ${DEMO_MODE:-true}
       DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
       DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
       DOUBAO_MODEL: ${DOUBAO_MODEL:-}
       JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      LOGIN_RATE_LIMIT_BACKEND: ${LOGIN_RATE_LIMIT_BACKEND:-memory}
+      LOGIN_RATE_LIMIT_ATTEMPTS: ${LOGIN_RATE_LIMIT_ATTEMPTS:-5}
+      LOGIN_RATE_LIMIT_WINDOW_SECONDS: ${LOGIN_RATE_LIMIT_WINDOW_SECONDS:-300}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1,testserver,api}
+      ENABLE_HSTS: ${ENABLE_HSTS:-false}
       FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
       LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:-20971520}
+      FILE_ALLOWED_EXTENSIONS: ${FILE_ALLOWED_EXTENSIONS:-.csv,.json,.jsonl,.txt,.pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls}
+      FILE_ALLOWED_MIME_TYPES: ${FILE_ALLOWED_MIME_TYPES:-text/csv,application/json,application/x-ndjson,text/plain,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel}
     command: ["sh", "-lc", "alembic upgrade head && python scripts/seed_e2e.py"]
     volumes:
       - .:/workspace
