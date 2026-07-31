@@ -37,6 +37,7 @@ function buildAuditEventSearchParams(query: AuditEventQuery): URLSearchParams {
   appendOptional(search, "source", query.source);
   appendOptional(search, "createdFrom", query.createdFrom);
   appendOptional(search, "createdTo", query.createdTo);
+  appendOptional(search, "cursor", query.cursor);
   if (query.limit !== undefined) {
     search.set("limit", String(query.limit));
   }

@@ -143,7 +143,39 @@ export const handlers = [
     });
   }),
 
-  http.get("/api/v1/tasks", () => okJson(mockDb.tasks)),
+  http.get("/api/v1/tasks", ({ request }) => {
+    const includeStats = new URL(request.url).searchParams.get("includeStats") === "true";
+    if (!includeStats) return okJson(mockDb.tasks);
+    return okJson({
+      tasks: mockDb.tasks,
+      total: mockDb.tasks.length,
+      page: 1,
+      pageSize: 20,
+      statsByTaskId: Object.fromEntries(
+        mockDb.tasks.map((task) => {
+          const quotaTotal = task.quota?.total ?? null;
+          const accepted = 2;
+          return [
+            task.id,
+            {
+              taskId: task.id,
+              datasetTotal: 12,
+              datasetAvailable: 8,
+              inProgress: 1,
+              inReview: 1,
+              accepted,
+              returned: 0,
+              rejected: 0,
+              submittedTotal: 3,
+              quotaTotal,
+              quotaRemaining: quotaTotal === null ? null : Math.max(quotaTotal - accepted, 0),
+              progressPercent: 25,
+            },
+          ];
+        }),
+      ),
+    });
+  }),
 
   http.post("/api/v1/tasks", async ({ request }) => {
     const body = await readJson<Pick<Parameters<typeof createTask>[0], "title" | "description"> & Partial<Parameters<typeof createTask>[0]>>(request);
@@ -630,6 +662,7 @@ function parseAuditEventQuery(search: URLSearchParams): AuditEventQuery {
   setOptionalQueryValue(search, query, "actorId");
   setOptionalQueryValue(search, query, "createdFrom");
   setOptionalQueryValue(search, query, "createdTo");
+  setOptionalQueryValue(search, query, "cursor");
 
   const entityType = search.get("entityType");
   if (entityType !== null) query.entityType = entityType as AuditTargetEntityType;
@@ -671,6 +704,7 @@ function setAuditQueryStringValue(query: AuditEventQuery, key: keyof AuditEventQ
     case "actorId":
     case "createdFrom":
     case "createdTo":
+    case "cursor":
       query[key] = value;
       return;
     default:

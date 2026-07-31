@@ -477,6 +477,7 @@ export type AuditEventQuery = {
   source?: AuditSource;
   createdFrom?: ISODateTime | string;
   createdTo?: ISODateTime | string;
+  cursor?: string;
   limit?: number;
 };
 

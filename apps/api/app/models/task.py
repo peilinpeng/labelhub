@@ -1,7 +1,7 @@
 # tasks 表 ORM 模型，对应契约 §6.1 Task 领域模型与 §24 存储契约。
 # status 合法值（契约 §6.1 TaskStatus）：DRAFT / PUBLISHED / PAUSED / ENDED / ARCHIVED
 # 状态迁移由 app/state_machines/task_sm.py 管控，此文件不包含任何业务逻辑。
-from sqlalchemy import Column, String, Text, DateTime, JSON, ForeignKey, func
+from sqlalchemy import Column, String, Text, DateTime, JSON, ForeignKey, Index, func
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -63,3 +63,7 @@ class Task(Base):
 
     # 关联关系，通过 foreign_keys 明确指定（owner_id 为唯一 FK）
     owner = relationship("User", foreign_keys=[owner_id])
+
+    __table_args__ = (
+        Index("ix_tasks_owner_created", "owner_id", "created_at"),
+    )

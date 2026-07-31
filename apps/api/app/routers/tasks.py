@@ -7,7 +7,7 @@
 #   POST /tasks/:taskId/schema/publish、POST /tasks/:taskId/schema/ai-generate、
 #   GET /schema-versions/:schemaVersionId。
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.middleware.auth import Actor, require_roles
 from app.schemas.task import ServerComponentRegistryItem
@@ -689,8 +689,9 @@ def validate_schema(
     summary="获取任务列表（OWNER）",
 )
 def list_tasks(
-    page: int = 1,
-    pageSize: int = 20,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    includeStats: bool = Query(False),
     db: Session = Depends(get_db),
     actor: Actor = Depends(require_roles("OWNER", "ADMIN")),
 ):
@@ -698,9 +699,12 @@ def list_tasks(
     query = db.query(Task).filter(Task.owner_id == actor.id)
     total = query.count()
     tasks = query.order_by(Task.created_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
-    return {
+    response = {
         "tasks": [TaskResponse.from_orm(t) for t in tasks],
         "total": total,
         "page": page,
         "pageSize": pageSize,
     }
+    if includeStats:
+        response["statsByTaskId"] = task_domain.get_task_stats_batch(db, tasks)
+    return response

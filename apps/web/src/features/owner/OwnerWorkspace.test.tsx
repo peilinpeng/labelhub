@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import OwnerWorkspace from "./OwnerWorkspace";
 import { authenticateAs, renderRoute } from "../../test/render";
+import { server } from "../../test/server";
+import { mockDb } from "../../mocks/mock-db";
 
 // Layer C —— Owner 任务生命周期操作（本轮 P1/P2/P3 修复的回归网）。
 // 覆盖一致性审计的三处修复：
@@ -44,5 +47,49 @@ describe("OwnerWorkspace 任务管理", () => {
       .getAllByRole("option", { name: "已暂停" })
       .find((opt) => opt.tagName === "OPTION");
     expect(pausedOption).toBeDefined();
+  });
+
+  it("OPT-08：任务列表只发起一次含批量统计的请求", async () => {
+    let taskListRequests = 0;
+    let individualStatsRequests = 0;
+    server.use(
+      http.get("/api/v1/tasks", ({ request }) => {
+        taskListRequests += 1;
+        expect(new URL(request.url).searchParams.get("includeStats")).toBe("true");
+        return HttpResponse.json({
+          tasks: mockDb.tasks,
+          total: mockDb.tasks.length,
+          page: 1,
+          pageSize: 20,
+          statsByTaskId: Object.fromEntries(
+            mockDb.tasks.map((task) => [
+              task.id,
+              {
+                taskId: task.id,
+                datasetTotal: 10,
+                datasetAvailable: 5,
+                inProgress: 1,
+                inReview: 1,
+                accepted: 3,
+                returned: 0,
+                rejected: 0,
+                submittedTotal: 4,
+                quotaTotal: task.quota.total,
+                quotaRemaining: Math.max(task.quota.total - 5, 0),
+                progressPercent: 40,
+              },
+            ]),
+          ),
+        });
+      }),
+      http.get("/api/v1/tasks/:taskId/stats", () => {
+        individualStatsRequests += 1;
+        return HttpResponse.json({}, { status: 500 });
+      }),
+    );
+
+    await renderOwner();
+    await waitFor(() => expect(taskListRequests).toBe(1));
+    expect(individualStatsRequests).toBe(0);
   });
 });

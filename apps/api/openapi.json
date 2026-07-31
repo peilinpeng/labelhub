@@ -130,6 +130,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "minimum": 1,
               "default": 1,
               "title": "Page"
             }
@@ -140,8 +141,20 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
               "default": 20,
               "title": "Pagesize"
+            }
+          },
+          {
+            "name": "includeStats",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Includestats"
             }
           }
         ],
@@ -249,6 +262,41 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "tasks",
+          "schema"
+        ],
+        "summary": "删除草稿任务（仅 DRAFT）",
+        "description": "删除草稿任务，级联清理 schema 草稿 / 版本 / 数据项 / 审计日志。非 DRAFT 返回 409。",
+        "operationId": "delete_draft_task_api_v1_tasks__task_id__delete",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -1686,6 +1734,57 @@
         }
       }
     },
+    "/api/v1/review/agreement": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "AI 预审与人工最终决策的一致性指标（只读，质量评估）",
+        "operationId": "get_review_agreement_api_v1_review_agreement_get",
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按任务过滤；不传则跨全部任务统计",
+              "title": "Taskid"
+            },
+            "description": "按任务过滤；不传则跨全部任务统计"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewAgreementResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/review/submissions/{submission_id}": {
       "get": {
         "tags": [
@@ -2581,6 +2680,44 @@
             }
           },
           {
+            "name": "types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Types"
+            }
+          },
+          {
+            "name": "severities",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severities"
+            }
+          },
+          {
             "name": "source",
             "in": "query",
             "required": false,
@@ -2610,6 +2747,22 @@
                 }
               ],
               "title": "Taskid"
+            }
+          },
+          {
+            "name": "entityType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entitytype"
             }
           },
           {
@@ -2709,12 +2862,95 @@
             }
           },
           {
+            "name": "migrationPlanId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Migrationplanid"
+            }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actorid"
+            }
+          },
+          {
+            "name": "createdFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Createdfrom"
+            }
+          },
+          {
+            "name": "createdTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Createdto"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 500,
+              "maximum": 200,
               "minimum": 1,
               "default": 100,
               "title": "Limit"
@@ -2728,6 +2964,57 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/QueryAuditEventsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/dashboard": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "绩效看板：AI 成本 / 标注员效能 / AI-人工一致率（只读聚合）",
+        "operationId": "get_analytics_dashboard_api_v1_analytics_dashboard_get",
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按任务过滤；留空为全局口径",
+              "title": "Taskid"
+            },
+            "description": "按任务过滤；留空为全局口径"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsDashboardResponse"
                 }
               }
             }
@@ -3251,6 +3538,222 @@
           "createdAt"
         ],
         "title": "AiAssistSuggestionModel"
+      },
+      "AiCostByPurpose": {
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "calls": {
+            "type": "integer",
+            "title": "Calls"
+          },
+          "succeeded": {
+            "type": "integer",
+            "title": "Succeeded"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "failureRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurerate"
+          },
+          "totalTokens": {
+            "type": "integer",
+            "title": "Totaltokens"
+          },
+          "tokenCoverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokencoverage"
+          },
+          "avgLatencyMs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avglatencyms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "purpose",
+          "scope",
+          "calls",
+          "succeeded",
+          "failed",
+          "failureRate",
+          "totalTokens",
+          "tokenCoverage",
+          "avgLatencyMs"
+        ],
+        "title": "AiCostByPurpose"
+      },
+      "AiCostSection": {
+        "properties": {
+          "byPurpose": {
+            "items": {
+              "$ref": "#/components/schemas/AiCostByPurpose"
+            },
+            "type": "array",
+            "title": "Bypurpose"
+          },
+          "totalCalls": {
+            "type": "integer",
+            "title": "Totalcalls"
+          },
+          "totalTokens": {
+            "type": "integer",
+            "title": "Totaltokens"
+          },
+          "schemaGenerationTaskScoped": {
+            "type": "boolean",
+            "title": "Schemagenerationtaskscoped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "byPurpose",
+          "totalCalls",
+          "totalTokens",
+          "schemaGenerationTaskScoped"
+        ],
+        "title": "AiCostSection"
+      },
+      "AiQualitySection": {
+        "properties": {
+          "aiRawTotal": {
+            "type": "integer",
+            "title": "Airawtotal"
+          },
+          "byRawDecision": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Byrawdecision"
+          },
+          "humanReviewRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humanreviewrate"
+          },
+          "evaluated": {
+            "type": "integer",
+            "title": "Evaluated"
+          },
+          "agreements": {
+            "type": "integer",
+            "title": "Agreements"
+          },
+          "agreementRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreementrate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aiRawTotal",
+          "byRawDecision",
+          "humanReviewRate",
+          "evaluated",
+          "agreements",
+          "agreementRate"
+        ],
+        "title": "AiQualitySection"
+      },
+      "AnalyticsDashboardResponse": {
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScope"
+          },
+          "aiCost": {
+            "$ref": "#/components/schemas/AiCostSection"
+          },
+          "labelers": {
+            "items": {
+              "$ref": "#/components/schemas/LabelerRow"
+            },
+            "type": "array",
+            "title": "Labelers"
+          },
+          "aiQuality": {
+            "$ref": "#/components/schemas/AiQualitySection"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope",
+          "aiCost",
+          "labelers",
+          "aiQuality"
+        ],
+        "title": "AnalyticsDashboardResponse"
+      },
+      "AnalyticsScope": {
+        "properties": {
+          "taskId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taskid"
+          },
+          "taskTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tasktitle"
+          }
+        },
+        "type": "object",
+        "title": "AnalyticsScope"
       },
       "AppendAuditEventRequest": {
         "properties": {
@@ -3968,6 +4471,11 @@
             "type": "boolean",
             "title": "Humanreviewotherwise",
             "default": true
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "AI_THEN_HUMAN"
           }
         },
         "type": "object",
@@ -3978,7 +4486,8 @@
           "storageKey": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               {
                 "type": "null"
@@ -3989,7 +4498,8 @@
           "checksum": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 80
               },
               {
                 "type": "null"
@@ -4228,14 +4738,19 @@
         "properties": {
           "fileName": {
             "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Filename"
           },
           "mimeType": {
             "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Mimetype"
           },
           "size": {
             "type": "integer",
+            "exclusiveMinimum": 0.0,
             "title": "Size"
           },
           "purpose": {
@@ -4369,7 +4884,7 @@
             ],
             "title": "Aiassistused"
           },
-          "aiAssistCallCount": {
+          "aiAcceptedCount": {
             "anyOf": [
               {
                 "type": "integer"
@@ -4378,7 +4893,40 @@
                 "type": "null"
               }
             ],
-            "title": "Aiassistcallcount"
+            "title": "Aiacceptedcount"
+          },
+          "aiDismissedCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aidismissedcount"
+          },
+          "aiEditedCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aieditedcount"
+          },
+          "auditEventCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auditeventcount"
           },
           "qualityLedgerRef": {
             "anyOf": [
@@ -4978,6 +5526,28 @@
             "type": "integer",
             "title": "Size"
           },
+          "uploadedSize": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploadedsize"
+          },
+          "checksumSha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checksumsha256"
+          },
           "storageKey": {
             "type": "string",
             "title": "Storagekey"
@@ -5012,6 +5582,8 @@
           "purpose",
           "mimeType",
           "size",
+          "uploadedSize",
+          "checksumSha256",
           "storageKey",
           "status",
           "createdAt",
@@ -5411,6 +5983,90 @@
         "title": "LLMAssistResponse",
         "description": "契约 LLMRuntimeResponse + Quality Layer 元数据（hash 由后端生成）。"
       },
+      "LabelerRow": {
+        "properties": {
+          "labelerId": {
+            "type": "string",
+            "title": "Labelerid"
+          },
+          "displayName": {
+            "type": "string",
+            "title": "Displayname"
+          },
+          "submitted": {
+            "type": "integer",
+            "title": "Submitted"
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted"
+          },
+          "returned": {
+            "type": "integer",
+            "title": "Returned"
+          },
+          "rejected": {
+            "type": "integer",
+            "title": "Rejected"
+          },
+          "inReview": {
+            "type": "integer",
+            "title": "Inreview"
+          },
+          "acceptRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptrate"
+          },
+          "returnRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnrate"
+          },
+          "avgAiScore": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avgaiscore"
+          },
+          "reviewerPatchedFields": {
+            "type": "integer",
+            "title": "Reviewerpatchedfields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "labelerId",
+          "displayName",
+          "submitted",
+          "accepted",
+          "returned",
+          "rejected",
+          "inReview",
+          "acceptRate",
+          "returnRate",
+          "avgAiScore",
+          "reviewerPatchedFields"
+        ],
+        "title": "LabelerRow"
+      },
       "ListAiAssistSuggestionsResponse": {
         "properties": {
           "suggestions": {
@@ -5772,6 +6428,11 @@
             "type": "array",
             "title": "Events"
           },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          },
           "nextCursor": {
             "anyOf": [
               {
@@ -5786,7 +6447,7 @@
         },
         "type": "object",
         "title": "QueryAuditEventsResponse",
-        "description": "GET /audit-events 响应（对齐契约 api.ts：events + 可选 nextCursor）。"
+        "description": "GET /audit-events 响应：总数 + 稳定游标分页。"
       },
       "QuotaClaimStrategy": {
         "properties": {
@@ -5836,6 +6497,90 @@
         ],
         "title": "QuotaSchema",
         "description": "契约 Task.quota"
+      },
+      "ReviewAgreementConfusion": {
+        "properties": {
+          "aiPassHumanPass": {
+            "type": "integer",
+            "title": "Aipasshumanpass"
+          },
+          "aiPassHumanReturn": {
+            "type": "integer",
+            "title": "Aipasshumanreturn"
+          },
+          "aiReturnHumanPass": {
+            "type": "integer",
+            "title": "Aireturnhumanpass"
+          },
+          "aiReturnHumanReturn": {
+            "type": "integer",
+            "title": "Aireturnhumanreturn"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aiPassHumanPass",
+          "aiPassHumanReturn",
+          "aiReturnHumanPass",
+          "aiReturnHumanReturn"
+        ],
+        "title": "ReviewAgreementConfusion"
+      },
+      "ReviewAgreementResponse": {
+        "properties": {
+          "taskId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taskid"
+          },
+          "evaluated": {
+            "type": "integer",
+            "title": "Evaluated"
+          },
+          "agreementCount": {
+            "type": "integer",
+            "title": "Agreementcount"
+          },
+          "agreementRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreementrate"
+          },
+          "aiAbstain": {
+            "type": "integer",
+            "title": "Aiabstain"
+          },
+          "confusion": {
+            "$ref": "#/components/schemas/ReviewAgreementConfusion"
+          },
+          "submissionsConsidered": {
+            "type": "integer",
+            "title": "Submissionsconsidered"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluated",
+          "agreementCount",
+          "agreementRate",
+          "aiAbstain",
+          "confusion",
+          "submissionsConsidered"
+        ],
+        "title": "ReviewAgreementResponse",
+        "description": "AI 预审 vs 人工最终决策的一致性指标（只读统计）。"
       },
       "ReviewComment": {
         "properties": {
@@ -6188,6 +6933,22 @@
               }
             ],
             "title": "Aidecision"
+          },
+          "humanDecided": {
+            "type": "boolean",
+            "title": "Humandecided",
+            "default": false
+          },
+          "flowMode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flowmode"
           }
         },
         "type": "object",
@@ -6741,6 +7502,11 @@
             "type": "string",
             "title": "Status"
           },
+          "answers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Answers"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -6762,6 +7528,7 @@
           "schemaVersionId",
           "attemptNo",
           "status",
+          "answers",
           "createdAt",
           "updatedAt"
         ],

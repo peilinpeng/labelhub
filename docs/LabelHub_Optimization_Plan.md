@@ -327,6 +327,15 @@ npm --prefix apps/web run typecheck
 - 后端不再为每个状态执行一条独立 `COUNT`。
 - 优化前后列表数据和进度计算结果一致。
 
+完成记录（2026-07-31）：
+
+- `GET /tasks?includeStats=true` 在任务分页响应中返回 `statsByTaskId`，Owner
+  工作台不再逐任务请求 `/tasks/{taskId}/stats`。
+- 数据集、领取、提交三张事实表各执行一次 `GROUP BY task_id + CASE WHEN`
+  条件聚合，20 个任务的统计 SQL 次数固定为 3。
+- 独立统计接口保留，并复用同一批量聚合实现；集成测试同时校验统计值和 SQL
+  形态，Web 组件测试校验列表请求为 1、单任务统计请求为 0。
+
 ### OPT-09 优化审计查询
 
 **优先级：P1**
@@ -344,6 +353,15 @@ npm --prefix apps/web run typecheck
 - 查询少量结果时不加载整张审计事件表。
 - `total`、排序和分页结果准确。
 - 热点查询命中预期索引。
+
+完成记录（2026-07-31）：
+
+- 将审计目标与 actor 常用键物化为普通可空列；原始 JSON 仍是不可变权威快照，
+  新写入自动同步，迁移负责历史数据回填。
+- `type/types`、severity、source、全部 target ID、actor 和时间范围均在数据库
+  过滤；数据库完成 `COUNT`、`(created_at, id)` 稳定倒序和游标分页。
+- page size 上限固定为 200。查询只取 `limit + 1` 行，响应提供准确 `total` 与
+  `nextCursor`；组合过滤、同页无重复、非法游标和超限均有自动化测试。
 
 ### OPT-10 补充数据库索引
 
@@ -369,6 +387,21 @@ npm --prefix apps/web run typecheck
 - 热点查询不再出现不必要的全表扫描。
 - Alembic 升级与回滚均通过。
 - 写入性能没有不可接受的退化。
+
+完成记录（2026-07-31）：
+
+- 新增任务列表、领取列表、任务领取互斥、审核队列、任务提交聚合、数据领取与
+  审计时间线所需复合索引；`submissions(assignment_id)` 由现有
+  `(assignment_id, attempt_no)` 唯一索引左前缀覆盖，未重复创建。
+- MySQL 8 `EXPLAIN` 对照已完成：用 `IGNORE INDEX` 模拟加索引前时 assignment
+  与 audit task 查询均为 `ALL + Using filesort`；启用索引后分别变为
+  `ix_assignments_labeler_created`、`ix_audit_events_task_created` 的 `ref +
+  Backward index scan`。submission 状态队列也命中预期复合索引。
+- Alembic `d4e5f6a7b8c9 ↔ e5f6a7b8c9d0` 在真实 MySQL 上完成降级、再升级；
+  回滚会先恢复 MySQL 外键隐式索引，避免复合索引被外键占用导致回滚失败。
+- 10,000 行 audit 形态批量写入基准：无二级索引约 22.9 ms，5 个审计索引约
+  97.8 ms（约 4.27 倍索引维护成本、绝对吞吐仍约 10 万行/秒）。结合该表低频
+  追加写、读多写少的用途可接受；同时主动删除被复合索引覆盖的冗余 FK 索引。
 
 ### OPT-11 提升 Web 测试覆盖率
 
@@ -633,9 +666,9 @@ git diff --check
 | OPT-05 | 修正幂等中间件 | P1 | 已完成 | 后端 | 1.5 天 | OPT-04 |
 | OPT-06 | 加固文件上传 | P1 | 已完成 | 后端 | 1.5 天 | OPT-04 |
 | OPT-07 | 生产环境安全配置 | P1 | 已完成 | 后端 / DevOps | 1 天 | OPT-03 |
-| OPT-08 | 消除任务统计 N+1 | P1 | 待开始 | 前后端 | 1 天 | OPT-04 |
-| OPT-09 | 优化审计查询 | P1 | 待开始 | 后端 | 1 天 | OPT-04 |
-| OPT-10 | 补充数据库索引 | P1 | 待开始 | 后端 | 1 天 | OPT-08、OPT-09 |
+| OPT-08 | 消除任务统计 N+1 | P1 | 已完成 | 前后端 | 1 天 | OPT-04 |
+| OPT-09 | 优化审计查询 | P1 | 已完成 | 后端 | 1 天 | OPT-04 |
+| OPT-10 | 补充数据库索引 | P1 | 已完成 | 后端 | 1 天 | OPT-08、OPT-09 |
 | OPT-11 | 提升 Web 测试覆盖率 | P1 | 待开始 | 前端 / QA | 2 天 | OPT-04 |
 | OPT-12 | 拆分 Owner Schema 页面 | P2 | 待开始 | 前端 / Schema | 2 天 | OPT-11 |
 | OPT-13 | 样式治理 | P2 | 待开始 | 前端 | 1.5 天 | OPT-11 |
@@ -652,4 +685,7 @@ git diff --check
 3. OPT-03 固定 Node 与依赖安装方式。
 4. OPT-04 建立空数据库可重复 E2E。
 
-第二批 OPT-05、OPT-06、OPT-07 已完成。下一步建议进入 OPT-08～OPT-10 的性能优化：先消除任务统计 N+1 与审计查询全表加载，再基于实际访问模式补充复合索引和 `EXPLAIN` 验证。后续每一次优化都应继续复用现有 Node 20、CI、空库迁移与真实后端 E2E 门禁。
+第二批 OPT-05～OPT-07 与第三批 OPT-08～OPT-10 已完成，M3「可扩展性能」
+达成。下一步建议进入 OPT-11～OPT-13：先提高 Web 关键链路覆盖率，再拆分超大
+Owner Schema 页面并治理样式。后续每一次优化都应继续复用现有 Node 20、CI、
+空库迁移与真实后端 E2E 门禁。

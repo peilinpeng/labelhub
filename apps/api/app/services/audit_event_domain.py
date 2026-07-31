@@ -1,11 +1,42 @@
-"""审计事件领域服务：append（幂等）+ query。"""
+"""审计事件领域服务：append（幂等）+ 数据库过滤的游标分页 query。"""
+import base64
+import binascii
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from app.middleware.error_handler import ValidationFailedException
 from app.models.audit_event import AuditEvent
+
+
+_TARGET_COLUMN_MAP = {
+    "entityType": "entity_type",
+    "entityId": "entity_id",
+    "taskId": "task_id",
+    "schemaVersionId": "schema_version_id",
+    "assignmentId": "assignment_id",
+    "submissionId": "submission_id",
+    "reviewId": "review_id",
+    "exportId": "export_id",
+    "migrationPlanId": "migration_plan_id",
+}
+
+
+def _string_value(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _indexed_fields(actor: dict, target: dict) -> dict[str, str | None]:
+    fields = {
+        column: _string_value(target.get(json_key))
+        for json_key, column in _TARGET_COLUMN_MAP.items()
+    }
+    fields["actor_id"] = _string_value(actor.get("id"))
+    return fields
 
 
 def append_audit_event(db: Session, req: Any) -> AuditEvent:
@@ -30,6 +61,7 @@ def append_audit_event(db: Session, req: Any) -> AuditEvent:
         idempotency_key=req.idempotencyKey,
         checksum=req.checksum,
         created_at=datetime.now(timezone.utc),
+        **_indexed_fields(req.actor, req.target),
     )
     db.add(event)
     db.commit()
@@ -58,6 +90,7 @@ def emit_audit_event(
         actor_json=actor, target_json=target, payload_json=payload,
         request_id=request_id, idempotency_key=idempotency_key,
         created_at=datetime.now(timezone.utc),
+        **_indexed_fields(actor, target),
     )
     db.add(event)
     if commit:
@@ -66,37 +99,103 @@ def emit_audit_event(
     return event
 
 
-_TARGET_ID_FIELDS = (
-    "taskId", "submissionId", "reviewId", "exportId",
-    "assignmentId", "schemaVersionId", "entityId",
-)
+def _encode_cursor(event: AuditEvent) -> str:
+    payload = json.dumps(
+        {"createdAt": event.created_at.isoformat(), "id": event.id},
+        separators=(",", ":"),
+    ).encode()
+    return base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, str]:
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded).decode())
+        created_at = datetime.fromisoformat(payload["createdAt"])
+        event_id = payload["id"]
+        if not isinstance(event_id, str) or not event_id:
+            raise ValueError
+        # MySQL DATETIME 与 SQLite 测试库都以无时区 UTC 存储。
+        if created_at.tzinfo is not None:
+            created_at = created_at.astimezone(timezone.utc).replace(tzinfo=None)
+        return created_at, event_id
+    except (
+        binascii.Error,
+        KeyError,
+        TypeError,
+        UnicodeDecodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ValidationFailedException("audit cursor 无效或已损坏") from exc
+
+
+def _database_datetime(value: datetime) -> datetime:
+    """统一为 MySQL DATETIME / SQLite 使用的无时区 UTC。"""
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def query_audit_events(
     db: Session,
     *,
     type: str | None = None,
+    types: list[str] | None = None,
+    severities: list[str] | None = None,
     source: str | None = None,
     target_filters: dict | None = None,
+    actor_id: str | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    cursor: str | None = None,
     limit: int = 100,
-) -> tuple[list[AuditEvent], int]:
+) -> tuple[list[AuditEvent], int, str | None]:
     """
-    查询审计事件。type/source 走 DB 列过滤；target.* 字段在 Python 内按 JSON 过滤（可移植）。
-    返回 (items, total)；total 为过滤后总数，items 取最近 limit 条。
+    所有过滤、总数、稳定排序与分页均在数据库内完成。
+
+    total 表示游标条件之前的完整匹配数；分页按 (created_at, id) 倒序，
+    相同时间戳也不会重复或漏项。
     """
     q = db.query(AuditEvent)
     if type:
         q = q.filter(AuditEvent.type == type)
+    if types:
+        q = q.filter(AuditEvent.type.in_(types))
+    if severities:
+        q = q.filter(AuditEvent.severity.in_(severities))
     if source:
         q = q.filter(AuditEvent.source == source)
-    rows = q.order_by(AuditEvent.created_at.desc()).all()
-
     target_filters = {k: v for k, v in (target_filters or {}).items() if v is not None}
-    if target_filters:
-        def _match(ev: AuditEvent) -> bool:
-            tgt = ev.target_json or {}
-            return all(tgt.get(k) == v for k, v in target_filters.items())
-        rows = [ev for ev in rows if _match(ev)]
+    for json_key, value in target_filters.items():
+        column_name = _TARGET_COLUMN_MAP.get(json_key)
+        if column_name is not None:
+            q = q.filter(getattr(AuditEvent, column_name) == value)
+    if actor_id:
+        q = q.filter(AuditEvent.actor_id == actor_id)
+    if created_from:
+        q = q.filter(AuditEvent.created_at >= _database_datetime(created_from))
+    if created_to:
+        q = q.filter(AuditEvent.created_at <= _database_datetime(created_to))
 
-    total = len(rows)
-    return rows[:limit], total
+    total = q.count()
+    if cursor:
+        cursor_created_at, cursor_id = _decode_cursor(cursor)
+        q = q.filter(
+            or_(
+                AuditEvent.created_at < cursor_created_at,
+                and_(
+                    AuditEvent.created_at == cursor_created_at,
+                    AuditEvent.id < cursor_id,
+                ),
+            )
+        )
+    rows = (
+        q.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+        .limit(limit + 1)
+        .all()
+    )
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = _encode_cursor(items[-1]) if has_more and items else None
+    return items, total, next_cursor

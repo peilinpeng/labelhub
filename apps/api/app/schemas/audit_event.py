@@ -50,6 +50,7 @@ class AppendAuditEventResponse(BaseModel):
 
 
 class QueryAuditEventsResponse(BaseModel):
-    """GET /audit-events 响应（对齐契约 api.ts：events + 可选 nextCursor）。"""
+    """GET /audit-events 响应：总数 + 稳定游标分页。"""
     events: list[AuditEventRecordResponse] = Field(default_factory=list)
+    total: int = 0
     nextCursor: str | None = None
