@@ -9,6 +9,7 @@
 - [submission/README.md](../submission/README.md)：答辩提交物索引（对照课题 §八）。
 - [docs/LabelHub_Final_Delivery.md](LabelHub_Final_Delivery.md)：最终交付说明（稳定状态、交付范围、验收点、已知边界）。
 - [docs/LabelHub_Delivery_Runbook.md](LabelHub_Delivery_Runbook.md)：本地运行与现场演示手册。
+- [docs/LabelHub_Optimization_Plan.md](LabelHub_Optimization_Plan.md)：基于 2026-07-31 实测基线的当前优化路线图、工作包与验收标准。
 
 ## 2. 演示与 QA
 
@@ -35,13 +36,13 @@
 - [docs/deployment.md](deployment.md)：本地与云部署说明。
 - [docs/git-workflow.md](git-workflow.md)：Git 协作流程。
 - [CONTRIBUTING.md](../CONTRIBUTING.md)：贡献指南。
-- [docs/optimization-checklist.md](optimization-checklist.md)：优化检查清单。
-- [docs/backend-optimization-plan.md](backend-optimization-plan.md)：后端优化计划。
 
 ## 6. 历史计划
 
 > 反映特定阶段的上下文，作为历史记录保留；阅读时请以 README 与 Final Delivery 中的当前状态为准。
 
+- [docs/optimization-checklist.md](optimization-checklist.md)：2026-06-07 课题验收阶段优化清单。
+- [docs/backend-optimization-plan.md](backend-optimization-plan.md)：早期后端接口补齐与测试建设计划。
 - [docs/final-iteration-plan.md](final-iteration-plan.md)：最终迭代计划。
 
 ## 7. 阅读建议
