@@ -22,7 +22,7 @@ ENV VITE_ENABLE_MSW=${VITE_ENABLE_MSW}
 RUN npm run build --prefix apps/web \
     && rm -f apps/web/dist/mockServiceWorker.js
 
-FROM nginxinc/nginx-unprivileged:1.27.5-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.31.3-alpine AS runtime
 
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder --chown=101:101 /workspace/apps/web/dist/ /usr/share/nginx/html/
