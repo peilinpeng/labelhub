@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import uuid
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
-from jose import jwt
+import jwt
 from dotenv import load_dotenv
 
 # 必须在 import app.* 之前加载 .env，否则 settings 会因缺少环境变量而报错

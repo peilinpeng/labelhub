@@ -51,6 +51,9 @@ jobs:
       - name: Test shared packages
         run: npm test
 
+      - name: Audit shared production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
   web:
     name: Web
     runs-on: ubuntu-latest
@@ -85,3 +88,6 @@ jobs:
 
       - name: Build Web
         run: npm run build
+
+      - name: Audit Web production dependencies
+        run: npm audit --omit=dev --audit-level=high

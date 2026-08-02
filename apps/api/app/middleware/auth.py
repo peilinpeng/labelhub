@@ -3,7 +3,8 @@
 # 未携带或无效 token 时软失败（actor = None），由路由层通过 Depends 决定是否强制要求鉴权。
 from dataclasses import dataclass
 
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import InvalidTokenError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -63,8 +64,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 role=payload["role"],
                 display_name=payload["display_name"],
             )
-        except (JWTError, KeyError):
-            # JWTError：签名非法、token 过期、格式错误等
+        except (InvalidTokenError, KeyError):
+            # InvalidTokenError：签名非法、token 过期、格式错误等
             # KeyError：payload 缺少必要字段
             return None
 

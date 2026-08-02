@@ -20,12 +20,16 @@ apps/api/
 │   └── worker/             # Celery worker（AI 预审）
 ├── alembic/                # 数据库迁移
 ├── scripts/                # seed / e2e / openapi 导出
+├── requirements.in         # 生产直接依赖
+├── requirements.lock       # 生产完整依赖锁（含 SHA-256）
+├── requirements-dev.lock   # 测试完整依赖锁（含 SHA-256）
 └── tests/                  # pytest 单元 + 集成测试
 ```
 
 ## 环境变量
 
-复制 `.env.example` 为 `.env` 并填写：
+直接运行 API 时复制本目录 `.env.example` 为 `.env`；Compose 使用仓库根
+`.env.example`。权威清单见 `docs/environment-variables.md`。
 
 | 变量 | 说明 |
 |------|------|
@@ -39,14 +43,15 @@ apps/api/
 
 ```bash
 # 仓库根目录
-docker compose up -d            # 启动 mysql / redis / api / worker / web
-docker compose exec -w /workspace/apps/api api alembic upgrade head   # 应用迁移
-docker compose exec -w /workspace/apps/api api python scripts/seed.py # 测试账号
+docker compose build api
+docker compose up -d mysql redis --wait
+docker compose --profile tools run --rm seed
+docker compose up -d api worker scheduler web --wait
 ```
 
-> ⚠️ **改动后端代码后需重建镜像**：服务运行自镜像内 `/app`（无 `--reload`），
-> `.:/workspace` 挂载不影响运行进程。
-> 执行：`docker compose build api worker && docker compose up -d api worker`
+> **改动后端代码后需重建镜像**：服务运行自镜像内 `/app`（无源码挂载、无
+> `--reload`）。API、Worker、Scheduler 复用同一镜像：
+> `docker compose build api && docker compose up -d api worker scheduler`。
 
 健康检查：`curl http://localhost:3000/api/v1/health`
 
@@ -62,15 +67,23 @@ docker compose exec -w /workspace/apps/api api python scripts/seed.py # 测试�
 ## 运行测试
 
 ```bash
-# 单元 + 集成（SQLite in-memory，无需 MySQL/Redis；CI 同款）
-docker compose exec -w /workspace/apps/api api pytest -m "not integration" -v
+# 全新 Python 3.11 环境按哈希锁安装（生产镜像不包含 pytest）
+python3.11 -m venv .venv
+.venv/bin/python -m pip install --require-hashes -r requirements-dev.lock
 
-# 并发/行锁测试（需真实 MySQL，本地手动）
-docker compose exec -w /workspace/apps/api api pytest -m integration -v
+# 单元 + SQLite 集成测试（CI 同款）
+.venv/bin/python -m pytest -m "not integration" -v
+
+# 并发/行锁测试（先从仓库根叠加 dev override、运行 scripts/seed.py）
+DATABASE_URL=mysql+pymysql://labelhub:labelhub@127.0.0.1:3306/labelhub \
+E2E_BASE=http://127.0.0.1:3000/api/v1 \
+  .venv/bin/python -m pytest -m integration -v
 
 # 端到端冒烟（需后端 + DB 运行）
 bash scripts/e2e_test.sh
 ```
+
+CI 还会使用 `pip-audit` 扫描 `requirements.lock`，发现已知漏洞即失败。
 
 ## 其他脚本
 

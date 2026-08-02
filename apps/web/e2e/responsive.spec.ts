@@ -1,7 +1,15 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import type { Role } from "../src/app/routes";
+import { login } from "./helpers";
+
+const useMsw = process.env.PLAYWRIGHT_USE_MSW === "true";
+const ownerSchemaTaskId = useMsw ? "task_news_quality" : "task_demo_news_quality";
 
 async function authenticateInBrowser(page: Page, role: Role): Promise<void> {
+  if (!useMsw) {
+    await login(page, role);
+    return;
+  }
   await page.goto("/");
   await page.evaluate((nextRole) => {
     localStorage.setItem("labelhub_token", "responsive-test-token");
@@ -37,7 +45,7 @@ test.describe("关键工作台响应式视觉回归", () => {
   test("桌面端 Owner 模板搭建无横向溢出", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await authenticateInBrowser(page, "OWNER");
-    await page.goto("/owner/tasks/task_news_quality/designer");
+    await page.goto(`/owner/tasks/${ownerSchemaTaskId}/designer`);
     await expect(page.getByRole("heading", { name: "模板搭建" })).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await attachViewportScreenshot(page, testInfo, "owner-schema-desktop");
@@ -57,7 +65,7 @@ test.describe("关键工作台响应式视觉回归", () => {
     await attachViewportScreenshot(page, testInfo, "reviewer-queue-mobile");
 
     await authenticateInBrowser(page, "OWNER");
-    await page.goto("/owner/tasks/task_news_quality/designer");
+    await page.goto(`/owner/tasks/${ownerSchemaTaskId}/designer`);
     await expect(page.getByRole("heading", { name: "模板搭建" })).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await attachViewportScreenshot(page, testInfo, "owner-schema-mobile");

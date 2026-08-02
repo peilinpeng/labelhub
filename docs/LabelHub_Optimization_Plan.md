@@ -532,6 +532,20 @@ OwnerSchemaPage
 - 镜像体积相较当前版本有明显下降。
 - 容器健康状态能反映真实服务状态。
 
+完成记录（2026-08-02）：
+
+- Web 改为 Node 多阶段构建 + unprivileged Nginx 静态运行层；生产镜像不包含 Vite
+  dev server、源码或 node_modules，启动阶段不再安装依赖。
+- API 使用 `python:3.11-slim` 多阶段镜像和纯 wheel 安装，API / Worker / Scheduler
+  复用同一版本镜像并以 UID 10001 运行；Compose 去除整仓源码挂载。
+- MySQL / Redis 默认只在 Compose 内网开放；新增显式开发端口 override、只读文件
+  系统、capability 收缩、SIGTERM 宽限期，以及覆盖 API / MySQL / Redis 的健康探针。
+- `.dockerignore` 排除依赖、测试产物、文档和本地数据，Web 运行层从完整 Node
+  开发环境收敛为静态 Nginx 产物。Docker Desktop 实测 Web 镜像从 194 MB 降至
+  77.2 MB（约 60%），API 镜像从 645 MB 降至 502 MB（约 22%）。
+- 在全新 Compose project 与空数据卷中实测迁移、确定性 seed、API / Worker /
+  Scheduler / Web 健康检查全部通过；API 与 Worker 均以 UID 10001 运行。
+
 ### OPT-15 依赖与配置治理
 
 **优先级：P2**
@@ -549,6 +563,17 @@ OwnerSchemaPage
 - 相同 commit 的依赖安装结果一致。
 - 配置项不存在“已声明但不生效”的情况。
 - 高危依赖问题能够在 CI 中被发现。
+
+完成记录（2026-08-02）：
+
+- 新增生产 / 测试两套带 SHA-256 的 Python 完整锁文件，并在全新 Python 3.11
+  虚拟环境用 `--require-hashes` 安装成功；API 常规测试 264 passed、2 deselected，
+  真实 MySQL 并发集成测试另行 2 passed。
+- 漏洞扫描推动 `python-jose` 迁移到 PyJWT，并升级 `python-dotenv`、
+  `python-multipart`；`pip-audit` 最终无已知漏洞，npm 生产依赖无高危漏洞。
+- CI 新增 Python 与 npm 漏洞门禁，Dependabot 覆盖 npm、pip、Docker 和 Actions。
+- 删除无实际读取方的 `VITE_API_BASE_URL`，统一使用同源 `/api`；移除 Compose 的
+  开发安装 / 占位结构，建立 `docs/environment-variables.md` 权威配置清单。
 
 ### OPT-16 更新项目文档
 
@@ -569,6 +594,17 @@ OwnerSchemaPage
 - 新成员只使用 README 和运行手册即可从零启动项目。
 - 文档中的所有命令均在干净环境实测。
 - README、部署文档、CI 与 Docker 配置相互一致。
+
+完成记录（2026-08-02）：
+
+- README、API README、交付运行手册和部署文档已统一到静态 Web / 真实 API 当前
+  架构，修正 API 264、共享包 375、Web 41、Playwright 6 个场景的测试基线。
+- 明确 Mock 只用于隔离前端开发，真实后端已完成；统一记录 Docker 5173 / 3000、
+  Vite Mock 5180 和内网 MySQL / Redis 端口。
+- 从零构建、迁移、确定性 seed、测试、停止、数据清理、生产部署和故障排查均形成
+  可执行命令；历史答辩与旧优化文档已在索引中标注为历史快照。
+- 6 个 Playwright 场景已在 Nginx 静态 Web、真实 API 与空 MySQL 数据卷组成的生产
+  拓扑中全部通过，不依赖 MSW。
 
 ## 7. 依赖关系与并行方式
 
@@ -655,9 +691,12 @@ docker compose up -d --build --wait
 docker compose --profile tools run --rm seed
 npm --prefix apps/web run e2e
 
-# API
-docker compose exec -T -w /workspace/apps/api api pytest -m "not integration" -q
-docker compose exec -T -w /workspace/apps/api api pytest -m integration -q
+# API（Python 3.11 虚拟环境）
+cd apps/api
+python3.11 -m venv .venv
+.venv/bin/python -m pip install --require-hashes -r requirements-dev.lock
+.venv/bin/python -m pytest -m "not integration" -q
+cd ../..
 
 # 提交质量
 git diff --check
@@ -704,9 +743,9 @@ git diff --check
 | OPT-11 | 提升 Web 测试覆盖率 | P1 | 已完成 | 前端 / QA | 2 天 | OPT-04 |
 | OPT-12 | 拆分 Owner Schema 页面 | P2 | 已完成 | 前端 / Schema | 2 天 | OPT-11 |
 | OPT-13 | 样式治理 | P2 | 已完成 | 前端 | 1.5 天 | OPT-11 |
-| OPT-14 | 优化生产镜像 | P2 | 待开始 | DevOps | 1 天 | OPT-03 |
-| OPT-15 | 依赖与配置治理 | P2 | 待开始 | 前后端 / DevOps | 1 天 | OPT-03 |
-| OPT-16 | 更新项目文档 | P2 | 待开始 | 合并负责人 | 1 天 | 其余任务 |
+| OPT-14 | 优化生产镜像 | P2 | 已完成 | DevOps | 1 天 | OPT-03 |
+| OPT-15 | 依赖与配置治理 | P2 | 已完成 | 前后端 / DevOps | 1 天 | OPT-03 |
+| OPT-16 | 更新项目文档 | P2 | 已完成 | 合并负责人 | 1 天 | 其余任务 |
 
 ## 13. 推荐启动顺序
 
@@ -717,7 +756,6 @@ git diff --check
 3. OPT-03 固定 Node 与依赖安装方式。
 4. OPT-04 建立空数据库可重复 E2E。
 
-第二批 OPT-05～OPT-07、第三批 OPT-08～OPT-10 与第四批 OPT-11～OPT-13 已完成，
-M4「可维护质量」达成。下一步建议进入 OPT-14～OPT-16：先优化生产镜像，再治理
-依赖与配置，最后集中更新项目文档。后续每一次优化都应继续复用现有 Node 20、
-CI、空库迁移与真实后端 E2E 门禁。
+OPT-01～OPT-16 已全部完成，M1～M4 均已达成，干净环境镜像构建、迁移、seed、
+健康检查和 6 个真实后端 Playwright 场景也已验证通过。下一步提交并推送本批改动，
+随后创建 PR 做最终合并验收。

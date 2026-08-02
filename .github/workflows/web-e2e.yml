@@ -17,7 +17,10 @@ on:
       - ".nvmrc"
       - "docker-compose.yml"
       - "apps/api/Dockerfile"
+      - "apps/api/requirements.lock"
       - "apps/web/Dockerfile"
+      - "apps/web/nginx.conf"
+      - ".dockerignore"
       - ".github/workflows/web-e2e.yml"
   pull_request:
     paths:
@@ -29,7 +32,10 @@ on:
       - ".nvmrc"
       - "docker-compose.yml"
       - "apps/api/Dockerfile"
+      - "apps/api/requirements.lock"
       - "apps/web/Dockerfile"
+      - "apps/web/nginx.conf"
+      - ".dockerignore"
       - ".github/workflows/web-e2e.yml"
 
 concurrency:
@@ -72,7 +78,15 @@ jobs:
       - name: Verify API and Web
         run: |
           curl --fail --show-error http://localhost:3000/api/v1/health
+          curl --fail --show-error http://localhost:5173/healthz
           curl --fail --show-error --output /dev/null http://localhost:5173/
+
+      - name: Verify runtime users and internal-only data services
+        run: |
+          test "$(docker compose exec -T api id -u)" = "10001"
+          test "$(docker compose exec -T worker id -u)" = "10001"
+          test -z "$(docker compose port mysql 3306 2>/dev/null || true)"
+          test -z "$(docker compose port redis 6379 2>/dev/null || true)"
 
       - name: Run Playwright e2e
         working-directory: apps/web

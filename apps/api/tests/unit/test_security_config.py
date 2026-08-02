@@ -2,8 +2,8 @@
 
 from datetime import datetime, timezone
 
+import jwt
 import pytest
-from jose import jwt
 from pydantic import ValidationError
 
 from app.config import Settings, settings

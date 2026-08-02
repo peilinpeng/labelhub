@@ -1,22 +1,2 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-alembic
-celery[redis]
-redis
-PyMySQL
-openai
-python-jose[cryptography]
-passlib[bcrypt]==1.7.4
-bcrypt==4.0.1
-pandas
-openpyxl
-pydantic-settings
-python-multipart
-python-dotenv
-email-validator
-jinja2
-
-# 测试依赖（Part D）
-pytest
-httpx
+# 兼容既有安装命令；权威生产锁文件为 requirements.lock。
+-r requirements.lock

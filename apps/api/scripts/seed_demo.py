@@ -106,10 +106,12 @@ _DEMO_REVIEW_CONCLUSION_MAPPING = {
 
 def _load_items() -> list[dict]:
     """优先从 datasets/ 读取 JSON/JSONL；不存在则生成 10 条 mock。"""
-    candidates = [
-        Path(__file__).resolve().parents[3] / "datasets",
-        Path(__file__).resolve().parents[1] / "datasets",
-    ]
+    script_parents = Path(__file__).resolve().parents
+    candidates = []
+    # 源码仓库中可回退到项目根 datasets/；精简生产镜像只有 /app/datasets。
+    if len(script_parents) > 3:
+        candidates.append(script_parents[3] / "datasets")
+    candidates.append(script_parents[1] / "datasets")
     for d in candidates:
         if d.is_dir():
             for f in sorted(d.glob("*.json*")):
