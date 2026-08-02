@@ -4,12 +4,14 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./app/App";
+import { installMockWorkerUpgradeReload } from "./mocks/worker-upgrade";
 
 async function bootstrap() {
   const baseUrl = import.meta.env.BASE_URL;
   const routerBasename = baseUrl === "/" ? undefined : baseUrl.replace(/\/$/, "");
 
   if (import.meta.env.VITE_ENABLE_MSW === "true") {
+    installMockWorkerUpgradeReload();
     const { worker } = await import("./mocks/browser");
     await worker.start({
       serviceWorker: {

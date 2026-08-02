@@ -93,6 +93,8 @@ VITE_ENABLE_MSW=true VITE_DEMO_MODE=true \
 
 `npm --prefix apps/web run build:demo` 会同时启用 MSW 和 Demo 登录提示，供
 GitHub Pages 等公开 Mock 演示环境使用；正式构建必须使用 `build:production`。
+当已打开的演示页面遇到 MSW worker 版本升级时，页面会在新 worker 接管后自动刷新
+一次并重新建立 Mock 通道，避免请求短暂落到静态托管服务。
 
 响应式 E2E 可在 Mock 服务运行时单独执行：
 
@@ -261,6 +263,7 @@ docker history labelhub-web:local
 | Web 502 | `docker compose ps api`，再查 `docker compose logs api` |
 | API unhealthy | 健康探针会同时检查 API、MySQL、Redis；按日志中的失败依赖排查 |
 | 页面 `/api` 404 | Mock 模式确认 `VITE_ENABLE_MSW=true`；真实模式确认 Nginx / Vite 代理 |
+| Pages 演示登录返回 405 | 确认 `mockServiceWorker.js` 与 `msw` 版本一致；已打开的旧页面应在 worker 更新后自动刷新一次 |
 | 数据表不存在 | 执行 `docker compose run --rm api alembic upgrade head` |
 | Worker 不消费任务 | 检查 Worker health、Redis URL、队列名和 `DOUBAO_*` |
 | 宿主无法连 MySQL / Redis | 默认是安全行为；确有需要时叠加 `docker-compose.dev.yml` |
