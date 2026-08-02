@@ -1,6 +1,6 @@
 # 生产运行时直接依赖。修改后执行：
 # uv pip compile --python-version 3.11 --universal --generate-hashes requirements.in -o requirements.lock
-fastapi==0.136.3
+fastapi==0.141.1
 uvicorn[standard]==0.46.0
 sqlalchemy==2.0.39
 alembic==1.17.2
