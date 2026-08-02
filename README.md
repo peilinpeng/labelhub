@@ -304,7 +304,7 @@ cd ../..
 
 # 生产依赖漏洞门禁
 npm audit --omit=dev --audit-level=high
-npm --prefix apps/web audit --omit=dev --audit-level=high
+npm --prefix apps/web run audit:production
 
 # 交付前检查 whitespace / conflict markers
 git diff --check

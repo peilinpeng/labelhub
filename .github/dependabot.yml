@@ -5,12 +5,54 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      react-test-runtime:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
+          - jsdom
+          - vitest
+    ignore:
+      - dependency-name: "@types/node"
+        versions: [">=21"]
+      - dependency-name: jsdom
+        versions: [">=30"]
 
   - package-ecosystem: npm
     directory: /apps/web
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      react-runtime:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
+          - react-router-dom
+      vite-test-toolchain:
+        patterns:
+          - vite
+          - "@vitejs/plugin-react"
+          - vitest
+          - "@vitest/coverage-v8"
+          - jsdom
+    ignore:
+      - dependency-name: "@types/node"
+        versions: [">=21"]
+      - dependency-name: jsdom
+        versions: [">=30"]
+      - dependency-name: vite
+        versions: [">=8"]
+      - dependency-name: "@vitejs/plugin-react"
+        versions: [">=5"]
+      - dependency-name: vitest
+        versions: [">=4"]
+      - dependency-name: "@vitest/coverage-v8"
+        versions: [">=4"]
 
   - package-ecosystem: pip
     directory: /apps/api

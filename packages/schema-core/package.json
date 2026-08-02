@@ -18,7 +18,7 @@
     "@labelhub/contracts": "file:../contracts"
   },
   "devDependencies": {
-    "@types/node": "20.19.41",
+    "@types/node": "20.19.43",
     "typescript": "^5.0.0"
   }
 }

@@ -1,0 +1,9 @@
+{
+  "advisories": {
+    "GHSA-qwww-vcr4-c8h2": {
+      "packages": ["react-router"],
+      "expiresOn": "2026-10-31",
+      "reason": "Only affects unstable React Server Components APIs; LabelHub is a static CSR application and does not enable RSC."
+    }
+  }
+}
