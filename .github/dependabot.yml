@@ -77,6 +77,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Keep the image builder aligned with package engines and Node 20 CI.
+      - dependency-name: node
+        versions: [">=21"]
 
   - package-ecosystem: github-actions
     directory: /
