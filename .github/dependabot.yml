@@ -44,7 +44,7 @@ updates:
       - dependency-name: "@types/node"
         versions: [">=21"]
       - dependency-name: jsdom
-        versions: [">=30"]
+        versions: [">=27"]
       - dependency-name: vite
         versions: [">=8"]
       - dependency-name: "@vitejs/plugin-react"
