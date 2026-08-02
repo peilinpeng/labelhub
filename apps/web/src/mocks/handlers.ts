@@ -219,6 +219,34 @@ export const handlers = [
     });
   }),
 
+  http.get("/api/v1/tasks/:taskId/items", ({ request, params }) => {
+    const taskId = getParam(params as MockParams, "taskId");
+    const search = new URL(request.url).searchParams;
+    const page = Math.max(Number(search.get("page") ?? 1), 1);
+    const pageSize = Math.max(Number(search.get("pageSize") ?? 50), 1);
+    const matchingItems = mockDb.datasetItems.filter((item) => item.taskId === taskId);
+    const start = (page - 1) * pageSize;
+    return okJson({
+      items: matchingItems.slice(start, start + pageSize),
+      total: matchingItems.length,
+      page,
+      pageSize,
+    });
+  }),
+
+  http.patch("/api/v1/items/:itemId", async ({ request, params }) => {
+    const itemId = getParam(params as MockParams, "itemId");
+    const item = mockDb.datasetItems.find((candidate) => candidate.id === itemId);
+    if (item === undefined) {
+      return errorJson("RESOURCE_NOT_FOUND", "数据项不存在", 404);
+    }
+    const patch = await readJson<{ sourcePayload?: Record<string, unknown>; status?: "AVAILABLE" | "DISABLED" }>(request);
+    if (patch.sourcePayload !== undefined) item.sourcePayload = patch.sourcePayload;
+    if (patch.status !== undefined) item.status = patch.status;
+    item.updatedAt = new Date().toISOString();
+    return okJson(item);
+  }),
+
   http.get("/api/v1/tasks/:taskId/schema/draft", ({ params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const draft = getSchemaDraft(taskId);
@@ -363,6 +391,21 @@ export const handlers = [
   http.get("/api/v1/exports/:exportJobId", ({ params }) => {
     const exportJob = mockDb.exportJobs.find((item) => item.id === getParam(params as MockParams, "exportJobId"));
     return exportJob === undefined ? errorJson("RESOURCE_NOT_FOUND", "导出任务不存在", 404) : okJson({ exportJob });
+  }),
+
+  http.get("/api/v1/exports/:exportId/download/file", ({ params }) => {
+    const exportId = getParam(params as MockParams, "exportId");
+    const exportJob = mockDb.exportJobs.find((item) => item.id === exportId);
+    if (exportJob === undefined) {
+      return errorJson("RESOURCE_NOT_FOUND", "导出任务不存在", 404);
+    }
+    const content = listExportRecords(exportId).map((record) => JSON.stringify(record)).join("\n");
+    return new HttpResponse(content, {
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "Content-Disposition": `attachment; filename="${exportId}.jsonl"`,
+      },
+    });
   }),
 
   // 数据看板（只读聚合）。mock 返回一份代表性数据，保证页面渲染与空状态逻辑可被验证。
@@ -573,6 +616,14 @@ export const handlers = [
       };
       return { body: response, status: 201 };
     });
+  }),
+
+  http.post("/api/v1/files/:fileId/upload", ({ params }) => {
+    const fileId = getParam(params as MockParams, "fileId");
+    const file = mockDb.files.find((candidate) => candidate.id === fileId);
+    return file === undefined
+      ? errorJson("RESOURCE_NOT_FOUND", "文件不存在", 404)
+      : new HttpResponse(null, { status: 204 });
   }),
 
   http.post("/api/v1/files/:fileId/confirm", async ({ request, params }) => {

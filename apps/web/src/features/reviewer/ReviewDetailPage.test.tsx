@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import ReviewDetailPage from "./ReviewDetailPage";
 import { listReviewQueue } from "../../mocks/mock-db";
 import { authenticateAs, renderRoute } from "../../test/render";
@@ -48,5 +49,45 @@ describe("ReviewDetailPage 审核详情页", () => {
     expect(screen.getByRole("tab", { name: "通过" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "打回" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "修订提交" })).toBeInTheDocument();
+  });
+
+  it("PASS 必须经过确认后才提交", async () => {
+    const user = userEvent.setup();
+    renderDetail(submissionId!);
+    await screen.findByRole("heading", { name: "原始数据" });
+    await user.click(screen.getByRole("button", { name: /通过入库/ }));
+    const dialog = await screen.findByRole("dialog", { name: "确认审核通过？" });
+    expect(within(dialog).getByRole("button", { name: "通过" })).toBeInTheDocument();
+  });
+
+  it("RETURN 强制填写审核意见并显示独立确认文案", async () => {
+    const user = userEvent.setup();
+    renderDetail(submissionId!);
+    await screen.findByRole("heading", { name: "原始数据" });
+    await user.click(screen.getByRole("tab", { name: "打回" }));
+    const returnButton = screen.getByRole("button", { name: /打回修改/ });
+    expect(returnButton).toBeDisabled();
+    await user.type(screen.getByPlaceholderText("请说明打回原因，便于标注员修正"), "事实依据不足");
+    expect(returnButton).toBeEnabled();
+    await user.click(returnButton);
+    expect(await screen.findByRole("dialog", { name: "确认打回提交？" })).toBeInTheDocument();
+  });
+
+  it("REVISE 至少产生一个字段 patch 才允许保存并通过", async () => {
+    const user = userEvent.setup();
+    const view = renderDetail(submissionId!);
+    await screen.findByRole("heading", { name: "原始数据" });
+    await user.click(screen.getByRole("tab", { name: "修订提交" }));
+    const reviseButton = screen.getByRole("button", { name: /保存修订并通过/ });
+    expect(reviseButton).toBeDisabled();
+    const editable = view.container.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+      ".review-correction__edit input, .review-correction__edit textarea",
+    );
+    expect(editable).not.toBeNull();
+    await user.clear(editable!);
+    await user.type(editable!, "修订后的内容");
+    expect(reviseButton).toBeEnabled();
+    await user.click(reviseButton);
+    expect(await screen.findByRole("dialog", { name: "确认保存修订并通过？" })).toBeInTheDocument();
   });
 });

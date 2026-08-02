@@ -8,6 +8,7 @@ import path from "path";
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@labelhub/contracts": path.resolve(__dirname, "../../packages/contracts/src/index.ts"),
@@ -26,6 +27,12 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html"],
       include: ["src/features/**", "src/api/**", "src/app/**"],
+      thresholds: {
+        statements: 35,
+        branches: 50,
+        functions: 35,
+        lines: 35,
+      },
     },
   },
 });

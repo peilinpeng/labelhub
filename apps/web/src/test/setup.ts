@@ -3,6 +3,23 @@ import { afterAll, afterEach, beforeAll } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { server } from "./server";
 
+// Node 22 在 coverage worker 中可能暴露一个未配置 --localstorage-file 的空
+// localStorage 对象，覆盖 jsdom 的 Storage。测试启动时校正为确定性的内存实现，
+// 保证普通运行与 coverage 运行使用同一套浏览器存储语义。
+if (typeof globalThis.localStorage?.getItem !== "function") {
+  const values = new Map<string, string>();
+  const storage: Storage = {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key) => { values.delete(key); },
+    setItem: (key, value) => { values.set(key, String(value)); },
+  };
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
+  Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
+}
+
 // ── 相对 URL 修正 ──────────────────────────────────────────────────────────
 // api/client.ts 用相对路径 fetch("/api/v1/...")。Node 的 undici fetch 不会
 // 像浏览器那样基于 location 解析相对 URL，会抛 "Failed to parse URL"。
