@@ -7,8 +7,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.test.json && node -e \"require('node:fs').writeFileSync('./.contract-test-dist/package.json', '{\\\"type\\\":\\\"commonjs\\\"}\\n')\" && node --test ./.contract-test-dist/src/__tests__/*.test.js",
-    "clean:test": "rm -rf ./.contract-test-dist"
+    "test": "tsx --test src/__tests__/*.test.ts"
   },
   "exports": {
     ".": {
@@ -17,6 +16,6 @@
   },
   "devDependencies": {
     "@types/node": "20.19.43",
-    "typescript": "^5.0.0"
+    "typescript": "^7.0.2"
   }
 }

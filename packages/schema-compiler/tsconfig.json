@@ -11,7 +11,6 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "allowImportingTsExtensions": true,
-    "baseUrl": ".",
     "paths": {
       "@labelhub/contracts": ["../contracts/src/index.ts"],
       "@labelhub/schema-core": ["../schema-core/src/index.ts"]
