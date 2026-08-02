@@ -91,6 +91,9 @@ VITE_ENABLE_MSW=true VITE_DEMO_MODE=true \
 访问 <http://127.0.0.1:5180/>，使用 `*@labelhub.test / Seed@1234` 账号。Mock 数据
 不会写入 MySQL，也不验证真实 API 契约或 Celery 执行，因此不能替代真实后端 E2E。
 
+`npm --prefix apps/web run build:demo` 会同时启用 MSW 和 Demo 登录提示，供
+GitHub Pages 等公开 Mock 演示环境使用；正式构建必须使用 `build:production`。
+
 响应式 E2E 可在 Mock 服务运行时单独执行：
 
 ```bash
