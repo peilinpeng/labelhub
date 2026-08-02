@@ -20,7 +20,7 @@
     "@labelhub/schema-core": "file:../schema-core"
   },
   "devDependencies": {
-    "@types/node": "20.19.41",
+    "@types/node": "26.1.2",
     "typescript": "^5.0.0"
   }
 }
