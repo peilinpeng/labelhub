@@ -61,9 +61,19 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # requirements.txt only forwards legacy install commands to the hashed
+    # lockfile. Scanning it in isolation makes pip-compile lose that target.
+    exclude-paths:
+      - requirements.txt
 
   - package-ecosystem: docker
-    directory: /
+    directory: /apps/api
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directory: /apps/web
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
