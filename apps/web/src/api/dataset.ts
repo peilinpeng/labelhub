@@ -48,7 +48,8 @@ export async function importDataset(
   format: DatasetFormat,
   externalKeyPath?: string,
 ): Promise<ImportDatasetResult> {
-  const contentType = file.type || "application/octet-stream";
+  // 浏览器对 csv/jsonl 的 file.type 在不同系统上并不稳定，以已校验扩展名映射为准。
+  const contentType = inferUploadMimeType(file.name);
   const created = await apiPost<{ file: { id: string }; uploadUrl: string }>(
     "/api/v1/files/upload-url",
     {
@@ -68,6 +69,18 @@ export async function importDataset(
   const body: Record<string, unknown> = { fileId, format };
   if (externalKeyPath) body.externalKeyPath = externalKeyPath;
   return apiPost<ImportDatasetResult>(`/api/v1/tasks/${taskId}/dataset/import`, body);
+}
+
+function inferUploadMimeType(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".csv")) return "text/csv";
+  if (lower.endsWith(".json")) return "application/json";
+  if (lower.endsWith(".jsonl")) return "application/x-ndjson";
+  if (lower.endsWith(".xlsx")) {
+    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  }
+  if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
+  return "text/plain";
 }
 
 export async function listItems(taskId: string, page = 1, pageSize = 50): Promise<ListItemsResult> {

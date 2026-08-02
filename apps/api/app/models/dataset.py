@@ -46,4 +46,10 @@ class DatasetItem(Base):
     __table_args__ = (
         Index("ix_dataset_items_task_id", "task_id"),
         Index("ix_dataset_items_external_key", "task_id", "external_key"),
+        Index(
+            "ix_dataset_items_task_status_created",
+            "task_id",
+            "status",
+            "created_at",
+        ),
     )

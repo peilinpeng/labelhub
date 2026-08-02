@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 load_dotenv()  # 必须在 import app.* 之前
 
 from app.database import SessionLocal
+from app.security import require_demo_mode
 from app.models.user import User
 from app.models.task import Task
 from app.models.schema import SchemaDraft, SchemaVersion
@@ -403,10 +404,10 @@ _TASKS = [
 # ---------------------------------------------------------------------------
 
 def _load_dataset(stem: str) -> list[dict]:
-    candidates_dirs = [
-        Path(__file__).resolve().parents[1] / "datasets",   # apps/api/datasets/
-        Path(__file__).resolve().parents[3] / "datasets",   # 项目根 datasets/
-    ]
+    script_parents = Path(__file__).resolve().parents
+    candidates_dirs = [script_parents[1] / "datasets"]  # apps/api/datasets/ 或 /app/datasets
+    if len(script_parents) > 3:
+        candidates_dirs.append(script_parents[3] / "datasets")  # 项目根 datasets/
     for d in candidates_dirs:
         for suffix in (".jsonl", ".json"):
             f = d / f"{stem}{suffix}"
@@ -515,6 +516,7 @@ def _seed_task(db, owner_id: str, spec: dict) -> dict:
 
 
 def main() -> None:
+    require_demo_mode("seed_competition")
     db = SessionLocal()
     try:
         print("=" * 60)

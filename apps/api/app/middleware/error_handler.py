@@ -24,10 +24,16 @@ class LabelHubException(Exception):
     code: str = "UNKNOWN"
     status_code: int = 400
 
-    def __init__(self, message: str, details: Any = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        details: Any = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.details = details
+        self.headers = headers or {}
 
 
 # ---------------------------------------------------------------------------
@@ -44,6 +50,12 @@ class PermissionDeniedException(LabelHubException):
     """403：角色权限不足，契约 §3 ErrorCode PERMISSION_DENIED。"""
     code = "PERMISSION_DENIED"
     status_code = 403
+
+
+class RateLimitExceededException(LabelHubException):
+    """429：登录失败次数超限；沿用契约 PERMISSION_DENIED，避免扩张平行错误码。"""
+    code = "PERMISSION_DENIED"
+    status_code = 429
 
 
 class ResourceNotFoundException(LabelHubException):
@@ -153,6 +165,7 @@ def register_error_handlers(app: FastAPI) -> None:
         """处理所有业务异常，返回契约 §3 ApiError 结构。"""
         return JSONResponse(
             status_code=exc.status_code,
+            headers=exc.headers,
             content={
                 "code": exc.code,
                 "message": exc.message,

@@ -25,6 +25,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.models.dataset import DatasetItem
+from app.models.task import Task
 
 pytestmark = pytest.mark.integration
 
@@ -101,3 +102,54 @@ def test_concurrent_claim_no_oversell(live_api):
 
     success = [s for s in results if s == 201]
     assert len(success) == 1, f"应恰好 1 次成功（无超卖），实际 {len(success)}：{results}"
+
+
+def test_concurrent_idempotent_create_executes_business_once(live_api):
+    owner = _login("owner@labelhub.test")
+    title = f"幂等并发_{uuid4().hex[:8]}"
+    payload = {
+        "title": title,
+        "description": "concurrent idempotency",
+        "quota": {"total": 1},
+        "distributionStrategy": {"type": "FIRST_COME_FIRST_SERVED"},
+        "reviewPolicy": {"type": "SINGLE_REVIEW"},
+    }
+    idempotency_key = f"idem-{uuid4().hex}"
+    headers = {
+        **_h(owner),
+        "Idempotency-Key": idempotency_key,
+    }
+
+    def _create(_):
+        return httpx.post(
+            f"{BASE}/tasks",
+            headers=headers,
+            json=payload,
+            timeout=15,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        responses = list(executor.map(_create, range(8)))
+
+    assert {response.status_code for response in responses} <= {201, 409}
+    assert any(response.status_code == 201 for response in responses)
+    assert all(
+        response.status_code != 409
+        or response.json()["details"]["state"] == "PROCESSING"
+        for response in responses
+    )
+
+    db = _real_db()
+    try:
+        assert db.query(Task).filter_by(title=title).count() == 1
+    finally:
+        db.close()
+
+    replay = httpx.post(
+        f"{BASE}/tasks",
+        headers=headers,
+        json=payload,
+        timeout=15,
+    )
+    assert replay.status_code == 201
+    assert replay.headers["X-Idempotent-Replayed"] == "true"

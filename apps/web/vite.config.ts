@@ -6,6 +6,7 @@ export default defineConfig({
   base: process.env.VITE_BASE_PATH ?? "/",
   plugins: [react()],
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@labelhub/contracts": path.resolve(__dirname, "../../packages/contracts/src/index.ts"),

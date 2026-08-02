@@ -50,8 +50,8 @@ export function confirmUpload(
   confirmedAt?: ISODateTime,
 ): TransitionResult<"confirmUpload", FileObject, FileStatus> {
   const command = "confirmUpload";
-  if (file.status !== "PENDING" && file.status !== "UPLOADING") {
-    return invalidState(command, file.status, "confirmUpload 只能从 PENDING 或 UPLOADING 进入 READY");
+  if (file.status !== "UPLOADING") {
+    return invalidState(command, file.status, "confirmUpload 只能从 UPLOADING 进入 READY");
   }
 
   const entity: FileObject =

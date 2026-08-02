@@ -23,6 +23,7 @@ load_dotenv()
 
 import app.models  # noqa: F401  聚合注册全部模型
 from app.database import SessionLocal
+from app.security import require_demo_mode
 from app.models.task import Task
 from app.models.dataset import DatasetItem
 from app.models.assignment import Assignment, Draft
@@ -70,6 +71,7 @@ def _run_to_terminal(db, job_id, sub_id):
 
 
 def main():
+    require_demo_mode("verify_auto_threshold")
     db = SessionLocal()
     created_sub_ids, created_asn_ids = [], []
     touched_items = {}  # item_id -> (orig_status, orig_assignment)

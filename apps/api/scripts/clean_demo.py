@@ -22,6 +22,7 @@ load_dotenv()
 
 import app.models  # noqa: F401  聚合注册全部模型（避免跨表 FK 解析报错）
 from app.database import SessionLocal
+from app.security import require_demo_mode
 from app.models.task import Task
 from app.models.schema import SchemaDraft, SchemaVersion
 from app.models.dataset import DatasetItem
@@ -85,6 +86,7 @@ def _delete_tasks(db, task_ids: list[str]) -> None:
 
 
 def main() -> None:
+    require_demo_mode("clean_demo")
     apply = "--apply" in sys.argv
     db = SessionLocal()
     try:

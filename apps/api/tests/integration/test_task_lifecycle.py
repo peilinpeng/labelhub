@@ -202,6 +202,50 @@ def test_task_stats_requires_owner(client, auth, db_session):
     assert resp.status_code == 403
 
 
+def test_list_tasks_embeds_batch_stats_with_constant_query_count(
+    client, auth, db_session
+):
+    """OPT-08：20 个任务的统计仍只对三张事实表各聚合一次。"""
+    from sqlalchemy import event
+    from tests.helpers import create_task
+
+    for index in range(20):
+        create_task(client, auth["OWNER"], title=f"批量统计任务 {index}")
+
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(" ".join(statement.lower().split()))
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", capture_sql)
+    try:
+        resp = client.get(
+            "/api/v1/tasks?includeStats=true&pageSize=20",
+            headers=auth["OWNER"],
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", capture_sql)
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body["tasks"]) == 20
+    assert len(body["statsByTaskId"]) == 20
+    assert all(
+        stats["submittedTotal"] == 0
+        for stats in body["statsByTaskId"].values()
+    )
+    for table in ("dataset_items", "assignments", "submissions"):
+        aggregate_queries = [
+            sql
+            for sql in statements
+            if sql.startswith("select") and f"from {table}" in sql
+        ]
+        assert len(aggregate_queries) == 1, (table, aggregate_queries)
+        assert "group by" in aggregate_queries[0]
+        assert "case when" in aggregate_queries[0]
+
+
 # ── TC-TASK-07：删除草稿任务（仅 DRAFT，级联清理）────────────────────────────
 
 def test_delete_draft_task_succeeds_and_cascades(client, auth, db_session):

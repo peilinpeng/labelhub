@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class FileObjectResponse(BaseModel):
@@ -12,6 +12,8 @@ class FileObjectResponse(BaseModel):
     purpose: str
     mimeType: str
     size: int
+    uploadedSize: int | None
+    checksumSha256: str | None
     storageKey: str
     status: str
     createdAt: datetime
@@ -22,15 +24,17 @@ class FileObjectResponse(BaseModel):
         return cls(
             id=f.id, ownerId=f.owner_id, ownerType=f.owner_type,
             purpose=f.purpose, mimeType=f.mime_type, size=f.size,
+            uploadedSize=f.uploaded_size,
+            checksumSha256=f.checksum_sha256,
             storageKey=f.storage_key, status=f.status,
             createdAt=f.created_at, confirmedAt=f.confirmed_at,
         )
 
 
 class CreateUploadUrlRequest(BaseModel):
-    fileName: str
-    mimeType: str
-    size: int
+    fileName: str = Field(min_length=1, max_length=255)
+    mimeType: str = Field(min_length=1, max_length=255)
+    size: int = Field(gt=0)
     purpose: str        # DATASET_IMPORT / ANSWER_ATTACHMENT / EXPORT_RESULT
     ownerType: str      # USER / ASSIGNMENT / EXPORT_JOB
     ownerId: str
@@ -44,8 +48,8 @@ class CreateUploadUrlResponse(BaseModel):
 
 
 class ConfirmUploadRequest(BaseModel):
-    storageKey: str | None = None
-    checksum: str | None = None
+    storageKey: str | None = Field(default=None, max_length=500)
+    checksum: str | None = Field(default=None, max_length=80)
 
 
 class ConfirmUploadResponse(BaseModel):

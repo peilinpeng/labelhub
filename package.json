@@ -4,6 +4,11 @@
   "private": true,
   "description": "LabelHub 数据标注平台",
   "type": "module",
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": ">=20.20.2 <21",
+    "npm": ">=10.8.2 <11"
+  },
   "workspaces": [
     "packages/*"
   ],
@@ -18,7 +23,8 @@
     "test:workflow-core": "npm run -w @labelhub/workflow-core test"
   },
   "devDependencies": {
-    "@types/node": "^24.12.4",
+    "@types/node": "20.19.41",
+    "tsx": "4.20.6",
     "typescript": "^5.0.0"
   }
 }

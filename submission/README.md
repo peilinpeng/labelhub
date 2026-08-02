@@ -70,11 +70,15 @@
 ## 答辩前一键自查
 
 ```bash
-docker compose up -d --build
-docker compose exec -w /workspace/apps/api api alembic upgrade head
-docker compose exec -w /workspace/apps/api api pytest -m "not integration" -q   # 170 passed
-bash apps/api/scripts/e2e_test.sh                                               # 21 / 21
+docker compose build --pull
+docker compose up -d mysql redis --wait
+docker compose --profile tools run --rm seed
+docker compose up -d --wait
+npm --prefix apps/web run e2e                  # 6 个 Playwright 场景
 ```
+
+当前自动化基线：共享包 375 passed、Web 41 passed、API 常规测试 264 passed / 2
+deselected；API 测试按 `apps/api/requirements-dev.lock` 在 Python 3.11 环境执行。
 
 ## 交付完成确认
 

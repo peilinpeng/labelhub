@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import uuid
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
-from jose import jwt
+import jwt
 from dotenv import load_dotenv
 
 # 必须在 import app.* 之前加载 .env，否则 settings 会因缺少环境变量而报错
@@ -20,6 +20,7 @@ load_dotenv()
 
 from app.config import settings
 from app.database import SessionLocal
+from app.security import require_demo_mode
 from app.models.user import User
 
 # ---------------------------------------------------------------------------
@@ -70,6 +71,7 @@ def _create_token(user_id: str, role: str, display_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    require_demo_mode("seed")
     db = SessionLocal()
     try:
         print("=" * 60)

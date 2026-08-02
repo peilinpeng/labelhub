@@ -1,0 +1,10 @@
+# 仅在需要从宿主机直连数据库或 Redis 时显式叠加：
+# docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  mysql:
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+
+  redis:
+    ports:
+      - "${REDIS_PORT:-6379}:6379"

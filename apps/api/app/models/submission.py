@@ -4,7 +4,7 @@
 #   HUMAN_REVIEWING / FINAL_REVIEWING / RETURNED / ACCEPTED / REJECTED
 # answers_json 为提交当时的完整答案快照，禁止覆盖历史提交。
 # (assignment_id, attempt_no) 唯一约束确保同一 Assignment 的每次打回重提都生成新记录。
-from sqlalchemy import Column, String, Integer, DateTime, JSON, ForeignKey, UniqueConstraint, func
+from sqlalchemy import Column, String, Integer, DateTime, JSON, ForeignKey, Index, UniqueConstraint, func
 
 from app.database import Base
 
@@ -62,4 +62,6 @@ class Submission(Base):
             "attempt_no",
             name="uq_submissions_assignment_attempt",
         ),
+        Index("ix_submissions_status_created", "status", "created_at"),
+        Index("ix_submissions_task_status", "task_id", "status"),
     )

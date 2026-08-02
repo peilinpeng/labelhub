@@ -1,6 +1,3 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
 import { expect, type APIResponse, type Page } from "@playwright/test";
 
 export type Role = "OWNER" | "LABELER" | "REVIEWER";
@@ -20,9 +17,6 @@ const ROLE_HOME: Record<Role, RegExp> = {
   REVIEWER: /\/reviewer\/items/,
 };
 
-const execFileAsync = promisify(execFile);
-let backendSetupPromise: Promise<void> | null = null;
-
 async function responseText(response: APIResponse): Promise<string> {
   try {
     return await response.text();
@@ -31,75 +25,20 @@ async function responseText(response: APIResponse): Promise<string> {
   }
 }
 
-async function runBackendSetup(): Promise<void> {
-  const isLocalBaseUrl = BASE_URL.includes("localhost") || BASE_URL.includes("127.0.0.1");
-  if (!isLocalBaseUrl) {
-    throw new Error(`Login failed and auto-seed is disabled for non-local baseURL: ${BASE_URL}`);
-  }
-
-  const options = {
-    cwd: new URL("../../..", import.meta.url),
-    timeout: 120_000,
-    maxBuffer: 1024 * 1024 * 10,
-  };
-
-  await execFileAsync(
-    "docker",
-    [
-      "compose",
-      "exec",
-      "-T",
-      "-w",
-      "/workspace/apps/api",
-      "api",
-      "alembic",
-      "upgrade",
-      "head",
-    ],
-    options,
-  );
-  await execFileAsync(
-    "docker",
-    [
-      "compose",
-      "exec",
-      "-T",
-      "-w",
-      "/workspace/apps/api",
-      "api",
-      "python",
-      "scripts/seed_demo.py",
-    ],
-    options,
-  );
-}
-
 async function ensureBackendLoginReady(page: Page, role: Role): Promise<void> {
   const loginPayload = { email: ROLE_EMAIL[role], password: PASSWORD };
   const probe = await page.request.post("/api/v1/auth/login", {
     data: loginPayload,
     failOnStatusCode: false,
   });
-  if (probe.ok()) return;
-
-  if (probe.status() === 401 || probe.status() >= 500) {
-    backendSetupPromise ??= runBackendSetup();
-    await backendSetupPromise;
-
-    const retry = await page.request.post("/api/v1/auth/login", {
-      data: loginPayload,
-      failOnStatusCode: false,
-    });
-    expect(
-      retry.ok(),
-      `Login preflight failed after migration/seed. status=${retry.status()} body=${await responseText(retry)}`,
-    ).toBe(true);
-    return;
-  }
-
   expect(
     probe.ok(),
-    `登录预检返回 ${probe.status()}: ${await responseText(probe)}`,
+    [
+      `E2E 登录预检失败：${ROLE_EMAIL[role]} 返回 ${probe.status()}`,
+      `响应：${await responseText(probe)}`,
+      `请先执行：docker compose --profile tools run --rm seed`,
+      `baseURL：${BASE_URL}`,
+    ].join("\n"),
   ).toBe(true);
 }
 

@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.schemas.file import FileObjectResponse
+
 
 class TransformSpec(BaseModel):
     type: str  # TEXT / MARKDOWN / JSON_STRINGIFY / DATE / FILE_URLS / IMAGE_PREVIEW
@@ -100,28 +102,6 @@ class ListExportJobsResponse(BaseModel):
     total: int
     page: int
     pageSize: int
-
-
-class FileObjectResponse(BaseModel):
-    id: str
-    ownerId: str
-    ownerType: str
-    purpose: str
-    mimeType: str
-    size: int
-    storageKey: str
-    status: str
-    createdAt: datetime
-    confirmedAt: datetime | None
-
-    @classmethod
-    def from_orm(cls, f) -> "FileObjectResponse":
-        return cls(
-            id=f.id, ownerId=f.owner_id, ownerType=f.owner_type,
-            purpose=f.purpose, mimeType=f.mime_type, size=f.size,
-            storageKey=f.storage_key, status=f.status,
-            createdAt=f.created_at, confirmedAt=f.confirmed_at,
-        )
 
 
 class DownloadExportResponse(BaseModel):

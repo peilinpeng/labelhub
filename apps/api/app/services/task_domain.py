@@ -4,6 +4,7 @@
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.task import Task
@@ -370,60 +371,132 @@ def delete_draft_task(db: Session, task_id: str, actor: Actor) -> None:
     db.commit()
 
 
-def get_task_stats(db: Session, task_id: str, actor: Actor) -> dict:
-    """任务概览统计：数据集进度、各状态计数、剩余配额（契约 §23.1 OWNER 看板）。"""
+def get_task_stats_batch(db: Session, tasks: list[Task]) -> dict[str, dict]:
+    """
+    批量计算任务概览统计。
+
+    每张事实表只执行一次按 task_id 分组的条件聚合；查询次数固定为 3，
+    不随任务数或状态数增长，避免任务列表的 N+1 与逐状态 COUNT。
+    """
     from app.models.dataset import DatasetItem
     from app.models.assignment import Assignment
     from app.models.submission import Submission
 
-    task = _get_task_or_404(db, task_id)
-    _assert_owner(task, actor)
+    if not tasks:
+        return {}
 
-    def _count(model, *conds) -> int:
-        return db.query(model).filter(model.task_id == task_id, *conds).count()
-
-    dataset_total = _count(DatasetItem)
-    dataset_available = _count(DatasetItem, DatasetItem.status == "AVAILABLE")
-
-    in_progress = _count(
-        Assignment, Assignment.status.in_(("CLAIMED", "DRAFTING"))
-    )
-    # 占用配额的领取：未取消 / 未过期
-    quota_used = _count(
-        Assignment, ~Assignment.status.in_(("CANCELED", "EXPIRED"))
-    )
-
+    task_ids = [task.id for task in tasks]
+    dataset_rows = {
+        row.task_id: row
+        for row in (
+            db.query(
+                DatasetItem.task_id.label("task_id"),
+                func.count(DatasetItem.id).label("dataset_total"),
+                func.sum(
+                    case((DatasetItem.status == "AVAILABLE", 1), else_=0)
+                ).label("dataset_available"),
+            )
+            .filter(DatasetItem.task_id.in_(task_ids))
+            .group_by(DatasetItem.task_id)
+            .all()
+        )
+    }
+    assignment_rows = {
+        row.task_id: row
+        for row in (
+            db.query(
+                Assignment.task_id.label("task_id"),
+                func.sum(
+                    case(
+                        (Assignment.status.in_(("CLAIMED", "DRAFTING")), 1),
+                        else_=0,
+                    )
+                ).label("in_progress"),
+                func.sum(
+                    case(
+                        (~Assignment.status.in_(("CANCELED", "EXPIRED")), 1),
+                        else_=0,
+                    )
+                ).label("quota_used"),
+            )
+            .filter(Assignment.task_id.in_(task_ids))
+            .group_by(Assignment.task_id)
+            .all()
+        )
+    }
     review_pipeline = (
         "SUBMITTED", "AI_REVIEWING", "AI_PASSED",
         "NEEDS_HUMAN_REVIEW", "HUMAN_REVIEWING", "FINAL_REVIEWING",
     )
-    in_review = _count(Submission, Submission.status.in_(review_pipeline))
-    accepted = _count(Submission, Submission.status == "ACCEPTED")
-    returned = _count(Submission, Submission.status == "RETURNED")
-    rejected = _count(Submission, Submission.status == "REJECTED")
-    submitted_total = in_review + accepted + returned + rejected
-
-    quota = task.quota_json or {}
-    quota_total = quota.get("total")
-    quota_remaining = (
-        max(quota_total - quota_used, 0) if isinstance(quota_total, int) else None
-    )
-    progress_percent = (
-        min(round(100 * submitted_total / dataset_total), 100)
-        if dataset_total > 0 else 0
-    )
-
-    return {
-        "taskId": task_id,
-        "datasetTotal": dataset_total,
-        "datasetAvailable": dataset_available,
-        "inProgress": in_progress,
-        "inReview": in_review,
-        "accepted": accepted,
-        "returned": returned,
-        "rejected": rejected,
-        "submittedTotal": submitted_total,
-        "quotaTotal": quota_total,
-        "quotaRemaining": quota_remaining,
-        "progressPercent": progress_percent,
+    submission_rows = {
+        row.task_id: row
+        for row in (
+            db.query(
+                Submission.task_id.label("task_id"),
+                func.sum(
+                    case((Submission.status.in_(review_pipeline), 1), else_=0)
+                ).label("in_review"),
+                func.sum(
+                    case((Submission.status == "ACCEPTED", 1), else_=0)
+                ).label("accepted"),
+                func.sum(
+                    case((Submission.status == "RETURNED", 1), else_=0)
+                ).label("returned"),
+                func.sum(
+                    case((Submission.status == "REJECTED", 1), else_=0)
+                ).label("rejected"),
+            )
+            .filter(Submission.task_id.in_(task_ids))
+            .group_by(Submission.task_id)
+            .all()
+        )
     }
+
+    result: dict[str, dict] = {}
+    for task in tasks:
+        dataset = dataset_rows.get(task.id)
+        assignments = assignment_rows.get(task.id)
+        submissions = submission_rows.get(task.id)
+        dataset_total = int(dataset.dataset_total) if dataset else 0
+        dataset_available = int(dataset.dataset_available or 0) if dataset else 0
+        in_progress = int(assignments.in_progress or 0) if assignments else 0
+        quota_used = int(assignments.quota_used or 0) if assignments else 0
+        in_review = int(submissions.in_review or 0) if submissions else 0
+        accepted = int(submissions.accepted or 0) if submissions else 0
+        returned = int(submissions.returned or 0) if submissions else 0
+        rejected = int(submissions.rejected or 0) if submissions else 0
+        submitted_total = in_review + accepted + returned + rejected
+
+        quota = task.quota_json or {}
+        quota_total = quota.get("total")
+        quota_remaining = (
+            max(quota_total - quota_used, 0)
+            if isinstance(quota_total, int) and not isinstance(quota_total, bool)
+            else None
+        )
+        progress_percent = (
+            min(round(100 * submitted_total / dataset_total), 100)
+            if dataset_total > 0 else 0
+        )
+        result[task.id] = {
+            "taskId": task.id,
+            "datasetTotal": dataset_total,
+            "datasetAvailable": dataset_available,
+            "inProgress": in_progress,
+            "inReview": in_review,
+            "accepted": accepted,
+            "returned": returned,
+            "rejected": rejected,
+            "submittedTotal": submitted_total,
+            "quotaTotal": quota_total,
+            "quotaRemaining": quota_remaining,
+            "progressPercent": progress_percent,
+        }
+    return result
+
+
+def get_task_stats(db: Session, task_id: str, actor: Actor) -> dict:
+    """单任务统计端点保留给详情页，内部复用批量条件聚合。"""
+    task = _get_task_or_404(db, task_id)
+    _assert_owner(task, actor)
+    return get_task_stats_batch(db, [task])[task_id]

@@ -15,6 +15,7 @@ import type {
   LabelerRiskSignalGeneratedAuditPayload,
   LabelingSessionSummaryAuditPayload,
   MigrationExecutedAuditPayload,
+  QueryAuditEventsResponse,
   ReviewDiffGeneratedAuditPayload,
   SchemaCompatibilityCheckedAuditPayload,
   SchemaPublishBlockedAuditPayload,
@@ -229,12 +230,21 @@ describe("Audit Event 共享类型", () => {
       source: "WEB",
       createdFrom: "2026-06-01T00:00:00.000Z",
       createdTo: "2026-06-05T23:59:59.999Z",
+      cursor: "opaque-page-cursor",
       limit: 50,
     };
 
     equal(query.entityType, "SCHEMA");
     equal(query.types?.length, 2);
     equal(query.severities?.includes("ERROR"), true);
+    equal(query.cursor, "opaque-page-cursor");
+
+    const response: QueryAuditEventsResponse = {
+      events: [],
+      total: 128,
+      nextCursor: "next-page",
+    };
+    equal(response.total, 128);
   });
 
   test("可以构造 LABELING_SESSION_SUMMARY payload，且不保存完整 answers", () => {

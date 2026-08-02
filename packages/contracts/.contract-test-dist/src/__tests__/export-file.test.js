@@ -35,7 +35,7 @@ const contract_guards_1 = require("../utils/contract-guards");
         const readyFile = fileObject("file_upload_2", "USER", "usr_1", "DATASET_IMPORT", "READY");
         (0, strict_1.equal)((0, contract_guards_1.isCreateUploadUrlResult)(pendingFile), true);
         (0, strict_1.equal)((0, contract_guards_1.canMarkUploadStarted)("PENDING"), true);
-        (0, strict_1.equal)((0, contract_guards_1.canConfirmUpload)("PENDING"), true);
+        (0, strict_1.equal)((0, contract_guards_1.canConfirmUpload)("PENDING"), false);
         (0, strict_1.equal)((0, contract_guards_1.canConfirmUpload)("UPLOADING"), true);
         (0, strict_1.equal)((0, contract_guards_1.isCreateUploadUrlResult)(readyFile), false);
         (0, strict_1.equal)((0, contract_guards_1.fileUploadTransitionAuditAction)("createUploadUrl"), "FILE_UPLOAD_URL_CREATED");

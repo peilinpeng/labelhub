@@ -1,4 +1,6 @@
 """审计事件路由：POST/GET /api/v1/audit-events（Quality Layer 富审计）。"""
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -37,29 +39,46 @@ def append_audit_event(
 )
 def query_audit_events(
     type: str | None = Query(None),
+    types: list[str] | None = Query(None),
+    severities: list[str] | None = Query(None),
     source: str | None = Query(None),
     taskId: str | None = Query(None),
+    entityType: str | None = Query(None),
     submissionId: str | None = Query(None),
     reviewId: str | None = Query(None),
     exportId: str | None = Query(None),
     assignmentId: str | None = Query(None),
     schemaVersionId: str | None = Query(None),
     entityId: str | None = Query(None),
-    limit: int = Query(100, ge=1, le=500),
+    migrationPlanId: str | None = Query(None),
+    actorId: str | None = Query(None),
+    createdFrom: datetime | None = Query(None),
+    createdTo: datetime | None = Query(None),
+    cursor: str | None = Query(None, max_length=512),
+    limit: int = Query(100, ge=1, le=200),
     db: Session = Depends(get_db),
     actor: Actor = Depends(require_roles("REVIEWER", "OWNER", "ADMIN")),
 ) -> QueryAuditEventsResponse:
-    items, _total = audit_event_domain.query_audit_events(
+    items, total, next_cursor = audit_event_domain.query_audit_events(
         db,
         type=type,
+        types=types,
+        severities=severities,
         source=source,
         target_filters={
-            "taskId": taskId, "submissionId": submissionId, "reviewId": reviewId,
+            "taskId": taskId, "entityType": entityType, "submissionId": submissionId, "reviewId": reviewId,
             "exportId": exportId, "assignmentId": assignmentId,
             "schemaVersionId": schemaVersionId, "entityId": entityId,
+            "migrationPlanId": migrationPlanId,
         },
+        actor_id=actorId,
+        created_from=createdFrom,
+        created_to=createdTo,
+        cursor=cursor,
         limit=limit,
     )
     return QueryAuditEventsResponse(
         events=[AuditEventRecordResponse.from_orm(e) for e in items],
+        total=total,
+        nextCursor=next_cursor,
     )

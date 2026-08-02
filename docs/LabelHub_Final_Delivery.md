@@ -1,5 +1,9 @@
 # LabelHub 最终交付说明
 
+> **历史快照：** 本文记录 2026-06-10 答辩交付状态，不再作为当前启动或测试命令的
+> 权威来源。当前状态请以根 `README.md`、`docs/LabelHub_Delivery_Runbook.md` 和
+> `docs/deployment.md` 为准。
+
 > 版本：2026-06-10
 > 适用分支：`integration/joint-test`
 > 当前交付基线：`integration/joint-test` 分支最新提交，交付固定点 tag `final-delivery-0610`。

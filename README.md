@@ -22,7 +22,7 @@
 | **4.4 AI 预审 Agent**（核心难点）：可配置 Prompt + 评分维度、异步入队、Function Calling 结构化输出、失败重试 + 幂等、结果可见可追溯 | ✅ 维度/阈值/权重可配置；Celery 异步队列；`FUNCTION_CALLING` 结构化输出（非裸文本解析）；`retry_count` 重试 + 幂等键；AI 评语与原始 Prompt 可在审核台查看 | `apps/api/app/services/review_domain.py`、`worker/ai_review_worker.py`；`/owner/ai-config` |
 | **4.5 多角色审核流转**：`PASS/RETURN/REVISE` 状态机、迁移可追溯（审计）、批量操作、打回附理由 + 上一轮意见可见、第 1/2 轮 diff | ✅ 结构化决策流；批量审核 `BatchReviewRequest`；`RETURN` 必填理由、Labeler 可见上轮意见；`REVIEW_DIFF_GENERATED` 字段级 diff 审计 | `apps/api/app/routers/review.py`、`services/review_domain.py`；`/reviewer/items` |
 | **4.6 多格式导出**：JSON / JSONL / CSV / Excel、异步导出 + 下载历史、字段映射可配置 | ✅ 四格式真实生成；Celery 异步导出；字段映射（选字段 / 重命名 / 是否含审核记录） | `apps/api/app/worker/export_worker.py`、`services/export_domain.py`；`/owner/tasks/:id/export` |
-| **工程质量（25%）**：TypeScript 全栈类型、单测/集成测试、README + 部署文档 | ✅ `@labelhub/contracts` 单一类型来源（无大量 any）；**后端 pytest 170 passed、端到端 e2e 21/21、共享库/前端 126 个测试文件全绿**；`docs/deployment.md` 部署文档 | `npm run test`、`pytest -m "not integration"`、`scripts/e2e_test.sh` |
+| **工程质量（25%）**：TypeScript 全栈类型、单测/集成测试、README + 部署文档 | ✅ `@labelhub/contracts` 单一类型来源（无大量 any）；**API 常规测试 264 passed、MySQL 集成测试 2 个、共享库 375 passed、Web 组件测试 41 passed、Playwright 6 个场景（4 个真实链路 + 2 个响应式）**；`docs/deployment.md` 部署文档 | `npm run test`、`pytest -m "not integration"`、`npm --prefix apps/web run e2e` |
 | **产品体验（15%）**：视觉统一、错误友好、操作可逆、1280×800 & 1920×1080 | ✅ 草稿自动保存 + 可逆操作；人话错误提示（不暴露工程词）；响应式（70+ 媒体查询，移动端适配为加分项） | — |
 
 > 答辩**提交物清单**（源码 Monorepo / 演示视频 / 架构图 / AI Coding 过程记录 / Demo 截图 / 可访问演示环境说明 / API 文档）见 [`submission/README.md`](./submission/README.md)。
@@ -84,7 +84,7 @@ LabelHub 是 monorepo 全栈架构：浏览器端三角色工作台（`apps/web`
 | 存储 | MySQL 8 / Redis 7 | 领域模型 + 不可变 Schema 快照 + `audit_logs/audit_events`；Celery broker/backend |
 | 大模型 | Doubao LLM | `function_calling` 结构化输出，`temperature=0` 提升评分稳定性 |
 
-> **MSW Mock 层**（`apps/web/src/mocks`）：真实后端就绪前支持前端演示与并行开发，复用契约类型而非重新定义。
+> **MSW Mock 层**（`apps/web/src/mocks`）：真实后端已经完整实现；MSW 仅用于前端隔离开发、组件测试和无 Docker 演示，复用契约类型而非重新定义。
 
 ### 3.3 技术栈
 
@@ -215,43 +215,57 @@ submission/
 # 0) 准备环境变量
 cp .env.example .env          # 按需填 DOUBAO_API_KEY / DOUBAO_MODEL 等
 
-# 1) 构建并启动全部服务（web / api / worker / mysql / redis）
-docker compose up -d --build
+# 1) 确定性构建，并先启动基础设施
+docker compose build --pull
+docker compose up -d mysql redis --wait
 
-# 2) 数据库迁移
-docker compose exec -w /workspace/apps/api api alembic upgrade head
+# 2) 执行 Alembic 迁移并写入可重复的基础演示 / E2E 数据
+docker compose --profile tools run --rm seed
 
-# 3) 灌入演示数据
-docker compose exec -w /workspace/apps/api api python scripts/seed_demo.py
-docker compose exec -w /workspace/apps/api api python scripts/seed_competition.py
+# 3) 启动全部应用并等待真实健康检查
+docker compose up -d --wait
+
+# 4) 可选：补充竞赛演示数据
+docker compose run --rm api python scripts/seed_competition.py
 ```
 
-Compose 包含以下服务：`web`、`api`、`worker`、`mysql`、`redis`。
+Compose 包含以下服务：`web`、`api`、`worker`、`scheduler`、`mysql`、`redis`。`scheduler` 负责定时清理过期幂等记录。
 
-前端访问 `http://localhost:5173/`。web 默认走真实后端（`VITE_ENABLE_MSW=false`，Vite `/api` 代理至 `api:3000`）。
+前端访问 `http://localhost:5173/`。生产 Web 镜像只包含 Nginx 与静态构建产物，
+同源 `/api` 由 Nginx 反向代理至 `api:3000`；容器启动时不执行 npm 安装，也不运行
+Vite 开发服务器。MySQL 与 Redis 默认只在 Compose 内网开放。
 
 > **环境变量**：复制 `.env.example` 为 `.env` 并填写本地配置。**不要提交真实 API key、token 或 secret。**
 
+生产部署必须显式设置 `APP_ENV=production`、`DEMO_MODE=false`、至少 32 字符的随机 `JWT_SECRET`、非默认数据库密码、`LOGIN_RATE_LIMIT_BACKEND=redis` 和实际 `TRUSTED_HOSTS`。任一安全条件不满足时 API 会在启动阶段失败。正式前端构建需设置 `VITE_DEMO_MODE=false`，登录页不会显示或预填演示账号。
+
 ### 方式二：前端 + 共享库本地开发
 
+本项目统一使用 Node `20.20.2` 与 npm `10.8.2`。安装了 nvm 时，可先执行 `nvm use` 读取根目录 `.nvmrc`。
+
 ```bash
+# 切换到项目约定的 Node 版本
+nvm use
+
 # 共享库（packages/*）依赖与检查
-npm install
+npm ci
 npm run typecheck
 npm run test
 
 # 前端应用（apps/web 为独立 npm 项目）
 cd apps/web
-npm install
+npm ci
 npm run dev          # Vite 开发服务器
 ```
 
-如需纯前端演示（不依赖后端），可启用 MSW Mock：
+如需纯前端演示（不依赖后端），可显式启用 MSW Mock：
 
 ```bash
-# apps/web 环境
-VITE_ENABLE_MSW=true
+VITE_ENABLE_MSW=true VITE_DEMO_MODE=true \
+  npm --prefix apps/web run dev -- --host 127.0.0.1 --port 5180
 ```
+
+环境变量完整清单见 [`docs/environment-variables.md`](./docs/environment-variables.md)。
 
 ---
 
@@ -271,11 +285,26 @@ npm run test:schema-renderer
 # 前端应用
 cd apps/web
 npm run typecheck
+npm run test:run
 npm run build
+cd ../..
 
-# 后端（在 Docker 环境内）
-docker compose exec -w /workspace/apps/api api pytest -m "not integration" -q
-bash apps/api/scripts/e2e_test.sh
+# 真实后端 E2E（首次执行需安装 Chromium）
+npm --prefix apps/web exec playwright install chromium
+docker compose up -d --build --wait
+docker compose --profile tools run --rm seed
+npm --prefix apps/web run e2e
+
+# 后端（生产镜像不包含测试依赖，在 Python 3.11 虚拟环境按哈希锁安装）
+cd apps/api
+python3.11 -m venv .venv
+.venv/bin/python -m pip install --require-hashes -r requirements-dev.lock
+.venv/bin/python -m pytest -m "not integration" -q
+cd ../..
+
+# 生产依赖漏洞门禁
+npm audit --omit=dev --audit-level=high
+npm --prefix apps/web audit --omit=dev --audit-level=high
 
 # 交付前检查 whitespace / conflict markers
 git diff --check
@@ -388,6 +417,7 @@ Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追�
 | [AI_CODING_RULES.md](./AI_CODING_RULES.md) | AI Coding 统一规则（contract-driven、禁止事项、验证要求） |
 | [docs/LabelHub_Final_Delivery.md](./docs/LabelHub_Final_Delivery.md) | 最终交付说明 |
 | [docs/LabelHub_Delivery_Runbook.md](./docs/LabelHub_Delivery_Runbook.md) | 交付 / 部署 runbook |
+| [docs/environment-variables.md](./docs/environment-variables.md) | 环境变量必填项、默认值与敏感等级 |
 | [docs/LabelHub_Schema_Version_Management.md](./docs/LabelHub_Schema_Version_Management.md) | Schema 版本管理实施规格 |
 | [docs/AI_CODING_PROCESS.md](./docs/AI_CODING_PROCESS.md) | AI Coding 过程与开发记录 |
 | [submission/README.md](./submission/README.md) | 答辩交付物索引 |
@@ -399,6 +429,9 @@ Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追�
 - 不要提交 API keys、tokens 或 secrets。
 - 不要暴露私有 LLM provider credentials。
 - 使用本地 `.env` 文件管理密钥（参考 `.env.example`）。
+- 演示 seed 只允许在 `DEMO_MODE=true` 的非生产环境运行；生产环境禁止启用。
+- 文件上传会校验配置上限、实际大小、扩展名、MIME、内容签名与 SHA-256；可通过 `MAX_UPLOAD_SIZE_BYTES` 和文件白名单配置。
+- JWT 有效期、登录失败限流、可信 Host 与 HSTS 均由环境变量控制；生产环境登录限流必须使用 Redis。
 
 ---
 

@@ -1,0 +1,4 @@
+# 本地与 CI 测试依赖；完整包含生产依赖，独立编译以避免松散解析。
+-r requirements.in
+pytest==8.3.4
+httpx==0.28.1

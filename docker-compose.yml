@@ -1,96 +1,154 @@
+name: labelhub
+
+x-api-image: &api-image
+  image: labelhub-api:${LABELHUB_IMAGE_TAG:-local}
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+
+x-api-environment: &api-environment
+  APP_ENV: ${APP_ENV:-demo}
+  DEMO_MODE: ${DEMO_MODE:-true}
+  DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+  DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
+  DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+  DOUBAO_MODEL: ${DOUBAO_MODEL:-}
+  JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+  LOGIN_RATE_LIMIT_BACKEND: ${LOGIN_RATE_LIMIT_BACKEND:-memory}
+  LOGIN_RATE_LIMIT_ATTEMPTS: ${LOGIN_RATE_LIMIT_ATTEMPTS:-5}
+  LOGIN_RATE_LIMIT_WINDOW_SECONDS: ${LOGIN_RATE_LIMIT_WINDOW_SECONDS:-300}
+  TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1,testserver,api}
+  ENABLE_HSTS: ${ENABLE_HSTS:-false}
+  FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
+  LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/data/files}
+  MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:-20971520}
+  FILE_ALLOWED_EXTENSIONS: ${FILE_ALLOWED_EXTENSIONS:-.csv,.json,.jsonl,.txt,.pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls}
+  FILE_ALLOWED_MIME_TYPES: ${FILE_ALLOWED_MIME_TYPES:-text/csv,application/json,application/x-ndjson,text/plain,application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel}
+  AI_REVIEW_CONFIDENCE_THRESHOLD: ${AI_REVIEW_CONFIDENCE_THRESHOLD:-0.6}
+
+x-hardened-service: &hardened-service
+  init: true
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   web:
+    <<: *hardened-service
+    image: labelhub-web:${LABELHUB_IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-    container_name: labelhub-web
-    environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000/api/v1}
-      VITE_ENABLE_MSW: ${VITE_ENABLE_MSW:-false}
-      # Docker 网络内 Vite 代理需指向 api 服务（容器内 localhost 不是 api）
-      VITE_PROXY_TARGET: ${VITE_PROXY_TARGET:-http://api:3000}
+      args:
+        VITE_DEMO_MODE: ${DEMO_MODE:-true}
+        VITE_ENABLE_MSW: "false"
+    environment: []
     ports:
-      - "${WEB_PORT:-5173}:5180"
-    volumes:
-      - .:/workspace
-      - web_node_modules:/workspace/apps/web/node_modules
+      - "${WEB_PORT:-5173}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    stop_grace_period: 15s
 
   api:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-    container_name: labelhub-api
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
-      DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
-      DOUBAO_MODEL: ${DOUBAO_MODEL:-}
-      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
-      FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
-      LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
+    <<: [*api-image, *hardened-service]
+    environment: *api-environment
     ports:
       - "${API_PORT:-3000}:3000"
     volumes:
-      - .:/workspace
-      - file_storage:/workspace/.storage/files
+      - file_storage:/data/files
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/container_healthcheck.py", "api"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
 
   worker:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-    container_name: labelhub-worker
-    working_dir: /workspace/apps/api
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      DOUBAO_API_KEY: ${DOUBAO_API_KEY:-}
-      DOUBAO_BASE_URL: ${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
-      DOUBAO_MODEL: ${DOUBAO_MODEL:-}
-      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production}
-      FILE_STORAGE_DRIVER: ${FILE_STORAGE_DRIVER:-local}
-      LOCAL_STORAGE_DIR: ${LOCAL_STORAGE_DIR:-/workspace/.storage/files}
-    command: >
-      celery -A app.worker.celery_app.celery_app worker
-      --queues=ai_review,export
-      --loglevel=info
-      --concurrency=2
+    <<: [*api-image, *hardened-service]
+    environment: *api-environment
+    command:
+      - celery
+      - -A
+      - app.worker.celery_app.celery_app
+      - worker
+      - --queues=ai_review,export,maintenance
+      - --loglevel=info
+      - --concurrency=2
+      - --hostname=worker@%h
     volumes:
-      - .:/workspace
-      - file_storage:/workspace/.storage/files
+      - file_storage:/data/files
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/container_healthcheck.py", "worker"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+
+  scheduler:
+    <<: [*api-image, *hardened-service]
+    environment: *api-environment
+    command:
+      - celery
+      - -A
+      - app.worker.celery_app.celery_app
+      - beat
+      - --loglevel=info
+      - --schedule=/tmp/labelhub-celerybeat-schedule
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/container_healthcheck.py", "scheduler"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
 
   seed:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-    container_name: labelhub-seed
-    profiles:
-      - tools
-    environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://labelhub:labelhub@mysql:3306/labelhub}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-    command: >
-      sh -lc "if [ -f package.json ] || [ -f apps/api/package.json ]; then
-        echo 'TODO: 接入真实 ORM 后执行 scripts/seed-demo-data.ts 写入数据库。';
-      else
-        echo '当前仓库尚无可执行 TypeScript runtime，seed demo data 脚本已生成在 scripts/seed-demo-data.ts。';
-      fi"
-    volumes:
-      - .:/workspace
+    <<: *api-image
+    profiles: ["tools"]
+    restart: "no"
+    environment: *api-environment
+    command: ["sh", "-ec", "alembic upgrade head && python scripts/seed_e2e.py"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       mysql:
         condition: service_healthy
@@ -98,39 +156,37 @@ services:
         condition: service_healthy
 
   mysql:
-    image: mysql:8
-    container_name: labelhub-mysql
+    image: mysql:8.4.5
+    restart: unless-stopped
     environment:
-      MYSQL_DATABASE: labelhub
-      MYSQL_USER: labelhub
-      MYSQL_PASSWORD: labelhub
-      MYSQL_ROOT_PASSWORD: root
-    ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-labelhub}
+      MYSQL_USER: ${MYSQL_USER:-labelhub}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-labelhub}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 15
+      start_period: 20s
+    stop_grace_period: 45s
 
   redis:
-    image: redis:7
-    container_name: labelhub-redis
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
+    image: redis:7.4.5-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
-      timeout: 5s
+      timeout: 3s
       retries: 10
+    stop_grace_period: 15s
 
 volumes:
   mysql_data:
   redis_data:
   file_storage:
-  web_node_modules:
-  api_node_modules:

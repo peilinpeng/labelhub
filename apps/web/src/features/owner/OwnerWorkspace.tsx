@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { archiveTask, deleteDraftTask, endTask, fetchTaskStats, listTasks, pauseTask, resumeTask } from "../../api/owner";
+import { archiveTask, deleteDraftTask, endTask, listTasksWithStats, pauseTask, resumeTask } from "../../api/owner";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Badge, Button, Card, Input, Select } from "../../ui/primitives";
 import type { Task } from "@labelhub/contracts";
@@ -237,49 +237,34 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
     void (async () => {
       try {
         setLoading(true);
-        const data = await listTasks();
-        setTasks(data.filter((task) => !isPlaceholderTask(task)));
+        const data = await listTasksWithStats();
+        const visibleTasks = data.tasks.filter((task) => !isPlaceholderTask(task));
+        setTasks(visibleTasks);
+        setTaskStats(
+          Object.fromEntries(
+            visibleTasks
+              .filter((task) => task.status !== "DRAFT")
+              .map((task) => {
+                const stats = data.statsByTaskId?.[task.id];
+                return [
+                  task.id,
+                  stats === undefined
+                    ? ({ status: "error" } satisfies TaskStatsState)
+                    : ({ status: "ready", stats } satisfies TaskStatsState),
+                ];
+              }),
+          ),
+        );
         setError(null);
       } catch (cause) {
         setTasks([]);
+        setTaskStats({});
         setError(cause instanceof Error ? cause.message : "任务接口暂不可用，请检查后端服务。");
       } finally {
         setLoading(false);
       }
     })();
   }, []);
-
-  useEffect(() => {
-    const statTasks = tasks.filter((task) => task.status !== "DRAFT");
-    if (statTasks.length === 0) {
-      setTaskStats({});
-      return;
-    }
-
-    let cancelled = false;
-    setTaskStats(
-      Object.fromEntries(statTasks.map((task) => [task.id, { status: "loading" } satisfies TaskStatsState])),
-    );
-
-    void Promise.all(
-      statTasks.map(async (task) => {
-        try {
-          const stats = await fetchTaskStats(task.id);
-          if (!cancelled) {
-            setTaskStats((current) => ({ ...current, [task.id]: { status: "ready", stats } }));
-          }
-        } catch {
-          if (!cancelled) {
-            setTaskStats((current) => ({ ...current, [task.id]: { status: "error" } }));
-          }
-        }
-      }),
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, [tasks]);
 
   useEffect(() => {
     if (!selectedTaskId) return;

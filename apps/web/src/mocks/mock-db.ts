@@ -156,13 +156,26 @@ export function appendAuditEvent(request: AppendAuditEventRequest): AuditEventRe
 }
 
 export function queryAuditEvents(query: AuditEventQuery = {}): QueryAuditEventsResponse {
-  const events = mockDb.auditEvents
+  const matchingEvents = mockDb.auditEvents
     .filter((event) => matchesAuditQuery(event, query))
-    .sort(compareAuditEventsDesc)
-    .slice(0, query.limit ?? mockDb.auditEvents.length)
+    .sort(compareAuditEventsDesc);
+  const cursorIndex = query.cursor === undefined
+    ? -1
+    : matchingEvents.findIndex((event) => event.id === query.cursor);
+  const pageStart = cursorIndex < 0 ? 0 : cursorIndex + 1;
+  const limit = query.limit ?? matchingEvents.length;
+  const page = matchingEvents.slice(pageStart, pageStart + limit + 1);
+  const events = page
+    .slice(0, limit)
     .map((event) => clone(event));
 
-  return { events };
+  return {
+    events,
+    total: matchingEvents.length,
+    ...(page.length > limit && events.length > 0
+      ? { nextCursor: String(events[events.length - 1]?.id) }
+      : {}),
+  };
 }
 
 function createSeedAuditEvents(): AuditEventRecord[] {

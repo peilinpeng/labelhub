@@ -67,6 +67,7 @@ const shellCopy: Record<Role, { title: string; subtitle: string; navItems: Shell
 };
 
 function LoginPage({ onLogin }: { onLogin: (role: Role, email: string, password: string) => Promise<void> }) {
+  const demoMode = import.meta.env.VITE_DEMO_MODE === "true";
   const accounts: Array<{
     role: Role;
     title: string;
@@ -76,20 +77,20 @@ function LoginPage({ onLogin }: { onLogin: (role: Role, email: string, password:
     {
       role: "OWNER",
       title: "任务负责人账号",
-      username: "owner@labelhub.com",
-      password: "password123",
+      username: demoMode ? "owner@labelhub.com" : "",
+      password: demoMode ? "password123" : "",
     },
     {
       role: "LABELER",
       title: "标注员账号",
-      username: "labeler@labelhub.com",
-      password: "password123",
+      username: demoMode ? "labeler@labelhub.com" : "",
+      password: demoMode ? "password123" : "",
     },
     {
       role: "REVIEWER",
       title: "人工审核账号",
-      username: "reviewer@labelhub.com",
-      password: "password123",
+      username: demoMode ? "reviewer@labelhub.com" : "",
+      password: demoMode ? "password123" : "",
     },
   ];
   const [activeAccount, setActiveAccount] = useState<(typeof accounts)[number] | null>(null);
@@ -143,10 +144,17 @@ function LoginPage({ onLogin }: { onLogin: (role: Role, email: string, password:
         <Card className="login-card">
           <div className="login-card__header">
             <h2>登录 LabelHub</h2>
-            <p>选择一个测试账号进入对应工作台</p>
+            <p>
+              {demoMode
+                ? "选择一个演示账号进入对应工作台"
+                : "选择工作台并使用组织账号登录"}
+            </p>
           </div>
 
-          <div className="login-account-list" aria-label="测试账号">
+          <div
+            className="login-account-list"
+            aria-label={demoMode ? "演示账号" : "工作台角色"}
+          >
             {accounts.map((account) => (
               <button
                 className="login-account"
@@ -157,7 +165,9 @@ function LoginPage({ onLogin }: { onLogin: (role: Role, email: string, password:
               >
                 <span>
                   <strong>{account.title}</strong>
-                  <small>{account.username}</small>
+                  <small>
+                    {demoMode ? account.username : "使用组织账号"}
+                  </small>
                 </span>
                 <em>登录</em>
               </button>

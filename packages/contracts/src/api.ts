@@ -223,6 +223,8 @@ export type QueryAuditEventsRequest = AuditEventQuery;
 
 export type QueryAuditEventsResponse = {
   events: AuditEventRecord[];
+  /** 服务端数据库过滤后的完整匹配数；旧实现可不返回以保持兼容。 */
+  total?: number;
   nextCursor?: string;
 };
 

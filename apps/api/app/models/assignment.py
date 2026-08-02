@@ -4,7 +4,7 @@
 # latest_submission_id 为循环外键，使用 use_alter=True 避免建表顺序死锁。
 # Draft 无独立 ID，assignment_id 即为主键（一个 Assignment 对应一份活跃草稿）。
 # Draft.saved_at 由应用层在每次 save_draft 时显式写入，不使用 server_default。
-from sqlalchemy import Column, String, Integer, DateTime, JSON, ForeignKey, func
+from sqlalchemy import Column, String, Integer, DateTime, JSON, ForeignKey, Index, func
 
 from app.database import Base
 
@@ -52,6 +52,16 @@ class Assignment(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_assignments_labeler_created", "labeler_id", "created_at"),
+        Index(
+            "ix_assignments_task_labeler_status",
+            "task_id",
+            "labeler_id",
+            "status",
+        ),
     )
 
 

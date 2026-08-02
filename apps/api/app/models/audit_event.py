@@ -10,7 +10,7 @@ DATA_QUALITY_PASSPORT_GENERATED 等），禁止在后端硬编码白名单。
 actor / target / payload 均以 JSON 原样存储，避免与前端联合类型强耦合。
 本表为追加只写，无 updated_at。
 """
-from sqlalchemy import Column, String, DateTime, JSON, func
+from sqlalchemy import Column, String, DateTime, JSON, Index, func
 
 from app.database import Base
 
@@ -36,6 +36,19 @@ class AuditEvent(Base):
     # contracts AuditTarget（{entityType, entityId, taskId?, submissionId?, ...}）原样 JSON
     target_json = Column(JSON, nullable=False)
 
+    # 常用 JSON 过滤键的物化列。保留原始 JSON 作为权威事件快照，同时让筛选、
+    # 排序与分页完全在数据库中执行并可使用普通 B-Tree 索引。
+    actor_id = Column(String(64), nullable=True)
+    entity_type = Column(String(40), nullable=True)
+    entity_id = Column(String(64), nullable=True)
+    task_id = Column(String(64), nullable=True)
+    schema_version_id = Column(String(64), nullable=True)
+    assignment_id = Column(String(64), nullable=True)
+    submission_id = Column(String(64), nullable=True)
+    review_id = Column(String(64), nullable=True)
+    export_id = Column(String(64), nullable=True)
+    migration_plan_id = Column(String(64), nullable=True)
+
     # contracts AuditEventPayload（按 type 不同的结构化负载）原样 JSON
     payload_json = Column(JSON, nullable=True)
 
@@ -45,3 +58,20 @@ class AuditEvent(Base):
     checksum = Column(String(255), nullable=True)
 
     created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_audit_events_task_created", "task_id", "created_at"),
+        Index(
+            "ix_audit_events_entity_created",
+            "entity_type",
+            "entity_id",
+            "created_at",
+        ),
+        Index(
+            "ix_audit_events_submission_created",
+            "submission_id",
+            "created_at",
+        ),
+        Index("ix_audit_events_type_created", "type", "created_at"),
+        Index("ix_audit_events_actor_created", "actor_id", "created_at"),
+    )

@@ -10,6 +10,7 @@ celery_app = Celery(
     include=[
         "app.worker.ai_review_worker",
         "app.worker.export_worker",
+        "app.worker.maintenance",
     ],
 )
 
@@ -25,5 +26,12 @@ celery_app.conf.update(
     task_routes={
         "app.worker.ai_review_worker.run_ai_review": {"queue": "ai_review"},
         "app.worker.export_worker.*": {"queue": "export"},
+        "app.worker.maintenance.*": {"queue": "maintenance"},
+    },
+    beat_schedule={
+        "cleanup-expired-idempotency-records-hourly": {
+            "task": "app.worker.maintenance.cleanup_expired_idempotency_records",
+            "schedule": 3600.0,
+        },
     },
 )

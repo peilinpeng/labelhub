@@ -208,6 +208,19 @@ export async function listTasks(): Promise<Task[]> {
   return unwrapList(res);
 }
 
+export interface TaskListWithStats {
+  tasks: Task[];
+  /** 新后端提供；可选用于前后端滚动发布期间的兼容。 */
+  statsByTaskId?: Record<string, TaskStats>;
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export async function listTasksWithStats(): Promise<TaskListWithStats> {
+  return apiGet<TaskListWithStats>("/api/v1/tasks?includeStats=true");
+}
+
 export async function createExportJob(
   taskId: string,
   request: CreateExportJobRequest

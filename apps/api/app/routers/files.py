@@ -48,9 +48,32 @@ async def upload_file_binary(
     db: Session = Depends(get_db),
     actor: Actor = Depends(require_roles("LABELER", "OWNER", "ADMIN")),
 ):
-    content = await request.body()
-    file_domain.receive_upload(db, file_id, actor, content)
-    return {"status": "UPLOADING", "fileId": file_id}
+    content_length_header = request.headers.get("content-length")
+    try:
+        content_length = (
+            int(content_length_header)
+            if content_length_header is not None
+            else None
+        )
+    except ValueError as exc:
+        from app.middleware.error_handler import ValidationFailedException
+
+        raise ValidationFailedException("Content-Length 必须是整数") from exc
+
+    file_obj = await file_domain.receive_upload_stream(
+        db,
+        file_id,
+        actor,
+        request.stream(),
+        content_type=request.headers.get("content-type"),
+        content_length=content_length,
+    )
+    return {
+        "status": "UPLOADING",
+        "fileId": file_id,
+        "uploadedSize": file_obj.uploaded_size,
+        "checksumSha256": file_obj.checksum_sha256,
+    }
 
 
 @router.post(

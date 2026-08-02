@@ -31,6 +31,7 @@ from dotenv import load_dotenv
 load_dotenv()  # 必须在 import app.* 之前
 
 from app.database import SessionLocal
+from app.security import require_demo_mode
 from app.models.user import User
 from app.models.task import Task
 from app.models.schema import SchemaDraft, SchemaVersion
@@ -54,7 +55,7 @@ REVIEW_ASN_ID = "asn_demo_review_01"
 REVIEW_SUB_ID = "sub_demo_review_01"
 REVIEW_RR_ID = "rr_demo_review_ai_01"
 
-_DEMO_USERS = [
+DEMO_USERS = [
     {"id": "usr_demo_owner",    "role": "OWNER",    "email": "owner@labelhub.com",    "display_name": "演示 Owner"},
     {"id": "usr_demo_labeler",  "role": "LABELER",  "email": "labeler@labelhub.com",  "display_name": "演示 Labeler"},
     {"id": "usr_demo_reviewer", "role": "REVIEWER", "email": "reviewer@labelhub.com", "display_name": "演示 Reviewer"},
@@ -105,10 +106,12 @@ _DEMO_REVIEW_CONCLUSION_MAPPING = {
 
 def _load_items() -> list[dict]:
     """优先从 datasets/ 读取 JSON/JSONL；不存在则生成 10 条 mock。"""
-    candidates = [
-        Path(__file__).resolve().parents[3] / "datasets",
-        Path(__file__).resolve().parents[1] / "datasets",
-    ]
+    script_parents = Path(__file__).resolve().parents
+    candidates = []
+    # 源码仓库中可回退到项目根 datasets/；精简生产镜像只有 /app/datasets。
+    if len(script_parents) > 3:
+        candidates.append(script_parents[3] / "datasets")
+    candidates.append(script_parents[1] / "datasets")
     for d in candidates:
         if d.is_dir():
             for f in sorted(d.glob("*.json*")):
@@ -171,7 +174,7 @@ def _wipe_demo(db) -> None:
 
 def _upsert_users(db) -> dict:
     result = {}
-    for spec in _DEMO_USERS:
+    for spec in DEMO_USERS:
         user = db.query(User).filter_by(email=spec["email"]).first()
         if user is None:
             user = User(
@@ -180,12 +183,19 @@ def _upsert_users(db) -> dict:
                 display_name=spec["display_name"], role=spec["role"], status="ACTIVE",
             )
             db.add(user)
-        result[spec["role"]] = spec["id"]
+        else:
+            # E2E seed 必须能从被手工修改过的演示账号恢复到确定状态。
+            user.hashed_password = _pwd.hash(_PASSWORD)
+            user.display_name = spec["display_name"]
+            user.role = spec["role"]
+            user.status = "ACTIVE"
+        result[spec["role"]] = user.id
     db.commit()
     return result
 
 
 def main() -> None:
+    require_demo_mode("seed_demo")
     db = SessionLocal()
     try:
         print("=" * 60)
@@ -194,7 +204,7 @@ def main() -> None:
 
         users = _upsert_users(db)
         print(f"\n✅ 演示账号就绪（密码均为 {_PASSWORD}）：")
-        for spec in _DEMO_USERS:
+        for spec in DEMO_USERS:
             print(f"   [{spec['role']:<8}] {spec['email']}")
 
         _wipe_demo(db)
