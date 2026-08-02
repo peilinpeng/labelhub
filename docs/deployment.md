@@ -109,8 +109,9 @@ VITE_ENABLE_MSW=false VITE_PROXY_TARGET=http://127.0.0.1:3000 \
   npm --prefix apps/web run dev -- --host 127.0.0.1 --port 5180
 ```
 
-浏览器请求始终使用同源 `/api/v1/*`。应用不读取 `VITE_API_BASE_URL`；生产由 Nginx
-代理，开发由 Vite 代理。
+常规浏览器请求使用同源 `/api/v1/*`：生产由 Nginx 代理，开发由 Vite 代理。
+`VITE_API_BASE_URL` 仅供 GitHub Pages 子路径的纯 Mock 构建添加路径前缀，不配置为
+真实后端域名。
 
 ## 6. 服务与镜像约束
 

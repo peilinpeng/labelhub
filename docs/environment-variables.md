@@ -57,10 +57,12 @@
 | --- | --- | --- | --- | --- |
 | `VITE_ENABLE_MSW` | 否 | `false` | 公开 | 仅 Vite 构建 / dev 读取；生产镜像固定为 `false` |
 | `VITE_DEMO_MODE` | 否 | `false` | 公开 | 控制登录页演示账号提示；Compose 从 `DEMO_MODE` 构建参数映射 |
+| `VITE_API_BASE_URL` | 否 | 空（同源） | 公开 | 仅 GitHub Pages 等子路径 Mock 构建用于添加请求前缀；Docker / Vite 本地模式保持为空 |
 | `VITE_PROXY_TARGET` | 否 | `http://localhost:3000` | 内部 | 仅 Vite dev server 的 `/api` 代理使用 |
 
-前端请求始终使用同源 `/api/v1/*`。`VITE_API_BASE_URL` 从未被应用读取，已删除，
-生产环境由 Nginx、开发环境由 Vite 代理 `/api`，避免存在“已声明但不生效”的配置。
+常规前端请求使用同源 `/api/v1/*`：生产环境由 Nginx、开发环境由 Vite 代理
+`/api`。只有部署到 GitHub Pages 子路径的纯 Mock 构建设置 `VITE_API_BASE_URL`，例如
+`/labelhub`；它不用于真实 API 地址或 Docker Compose 配置。
 
 ## 生产最小安全配置
 

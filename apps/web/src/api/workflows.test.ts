@@ -107,12 +107,15 @@ describe("关键 API 工作流", () => {
     expect(await listExportJobs("task_news_quality")).toHaveLength(1);
     const downloaded = await downloadExportFile("job_opt11");
     expect(downloaded.filename).toBe("LabelHub Export.jsonl");
-    const content = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(reader.error ?? new Error("读取导出制品失败"));
-      reader.onload = () => resolve(String(reader.result));
-      reader.readAsText(downloaded.blob);
-    });
+    const blobWithText = downloaded.blob as Blob & { text?: () => Promise<string> };
+    const content = typeof blobWithText.text === "function"
+      ? await blobWithText.text()
+      : await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(reader.error ?? new Error("读取导出制品失败"));
+          reader.onload = () => resolve(String(reader.result));
+          reader.readAsText(downloaded.blob);
+        });
     expect(content).toContain('"ok":true');
   });
 

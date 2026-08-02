@@ -405,6 +405,7 @@ Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追�
 - 更完整的生产级权限管理
 - 更细粒度的质量分析
 - 部署监控
+- 当前系统已经记录完整审计事件；下一阶段可以基于这些审计事件接入 AI 审计摘要，让 Owner 不需要阅读原始 audit log，而是获得简洁的人类可读报告。
 
 ---
 

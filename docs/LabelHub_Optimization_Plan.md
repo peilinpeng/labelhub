@@ -572,8 +572,9 @@ OwnerSchemaPage
 - 漏洞扫描推动 `python-jose` 迁移到 PyJWT，并升级 `python-dotenv`、
   `python-multipart`；`pip-audit` 最终无已知漏洞，npm 生产依赖无高危漏洞。
 - CI 新增 Python 与 npm 漏洞门禁，Dependabot 覆盖 npm、pip、Docker 和 Actions。
-- 删除无实际读取方的 `VITE_API_BASE_URL`，统一使用同源 `/api`；移除 Compose 的
-  开发安装 / 占位结构，建立 `docs/environment-variables.md` 权威配置清单。
+- Docker / 本地真实链路统一使用同源 `/api`，不再声明无效 API 域名；
+  `VITE_API_BASE_URL` 只保留给 GitHub Pages 子路径 Mock 构建添加路径前缀。移除
+  Compose 的开发安装 / 占位结构，并建立 `docs/environment-variables.md` 权威清单。
 
 ### OPT-16 更新项目文档
 

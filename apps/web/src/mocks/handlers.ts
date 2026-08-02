@@ -129,7 +129,7 @@ function writeReviewConfig(taskId: string, payload: Record<string, unknown>): Re
 }
 
 export const handlers = [
-  http.post("/api/v1/auth/login", async ({ request }) => {
+  http.post("*/api/v1/auth/login", async ({ request }) => {
     const body = await readJson<{ email?: unknown; password?: unknown }>(request);
     const email = typeof body.email === "string" ? body.email : "";
     const password = typeof body.password === "string" ? body.password : "";
@@ -143,7 +143,7 @@ export const handlers = [
     });
   }),
 
-  http.get("/api/v1/tasks", ({ request }) => {
+  http.get("*/api/v1/tasks", ({ request }) => {
     const includeStats = new URL(request.url).searchParams.get("includeStats") === "true";
     if (!includeStats) return okJson(mockDb.tasks);
     return okJson({
@@ -177,7 +177,7 @@ export const handlers = [
     });
   }),
 
-  http.post("/api/v1/tasks", async ({ request }) => {
+  http.post("*/api/v1/tasks", async ({ request }) => {
     const body = await readJson<Pick<Parameters<typeof createTask>[0], "title" | "description"> & Partial<Parameters<typeof createTask>[0]>>(request);
     return withIdempotency(request, body, () => {
       if (body.title === undefined || body.description === undefined) {
@@ -187,12 +187,12 @@ export const handlers = [
     });
   }),
 
-  http.get("/api/v1/tasks/:taskId", ({ params }) => {
+  http.get("*/api/v1/tasks/:taskId", ({ params }) => {
     const task = getTask(getParam(params as MockParams, "taskId"));
     return task === undefined ? errorJson("RESOURCE_NOT_FOUND", "任务不存在", 404) : okJson(task);
   }),
 
-  http.get("/api/v1/tasks/:taskId/stats", ({ params }) => {
+  http.get("*/api/v1/tasks/:taskId/stats", ({ params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const task = getTask(taskId);
     if (task === undefined) {
@@ -219,7 +219,7 @@ export const handlers = [
     });
   }),
 
-  http.get("/api/v1/tasks/:taskId/items", ({ request, params }) => {
+  http.get("*/api/v1/tasks/:taskId/items", ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const search = new URL(request.url).searchParams;
     const page = Math.max(Number(search.get("page") ?? 1), 1);
@@ -234,7 +234,7 @@ export const handlers = [
     });
   }),
 
-  http.patch("/api/v1/items/:itemId", async ({ request, params }) => {
+  http.patch("*/api/v1/items/:itemId", async ({ request, params }) => {
     const itemId = getParam(params as MockParams, "itemId");
     const item = mockDb.datasetItems.find((candidate) => candidate.id === itemId);
     if (item === undefined) {
@@ -247,14 +247,14 @@ export const handlers = [
     return okJson(item);
   }),
 
-  http.get("/api/v1/tasks/:taskId/schema/draft", ({ params }) => {
+  http.get("*/api/v1/tasks/:taskId/schema/draft", ({ params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const draft = getSchemaDraft(taskId);
     return draft === undefined ? errorJson("RESOURCE_NOT_FOUND", "schema draft 不存在", 404) : okJson(draft);
   }),
 
   // 版本历史：映射 mock 的 SchemaVersion（snapshot/createdAt）为后端响应形状（schema/publishedAt），倒序。
-  http.get("/api/v1/tasks/:taskId/schema-versions", ({ params }) => {
+  http.get("*/api/v1/tasks/:taskId/schema-versions", ({ params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const versions = mockDb.schemaVersions
       .filter((v) => v.taskId === taskId)
@@ -272,7 +272,7 @@ export const handlers = [
     return okJson({ schemaVersions: versions });
   }),
 
-  http.put("/api/v1/tasks/:taskId/schema/draft", async ({ request, params }) => {
+  http.put("*/api/v1/tasks/:taskId/schema/draft", async ({ request, params }) => {
     return handleSaveSchemaDraftRequest(request, params as MockParams);
   }),
 
@@ -280,7 +280,7 @@ export const handlers = [
     return handleSaveSchemaDraftRequest(request, params as MockParams);
   }),
 
-  http.post("/api/v1/schema/validate", async ({ request }) => {
+  http.post("*/api/v1/schema/validate", async ({ request }) => {
     const schema = await readJson<LabelHubSchema>(request);
     const validation = validateSchema(schema);
     if (schemaHasUnknownNodeType(schema)) {
@@ -292,30 +292,30 @@ export const handlers = [
     return okJson<SchemaValidationResult>(validation);
   }),
 
-  http.post("/api/v1/tasks/:taskId/schema/ai-generate", async ({ request, params }) => {
+  http.post("*/api/v1/tasks/:taskId/schema/ai-generate", async ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const body = await readJson<GenerateSchemaRequest>(request);
     return withIdempotency(request, body, () => ({ body: generateSchema(taskId, body.taskDescription) }));
   }),
 
-  http.get("/api/v1/tasks/:taskId/review-config", ({ params }) => {
+  http.get("*/api/v1/tasks/:taskId/review-config", ({ params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     return okJson({ reviewConfig: readReviewConfig(taskId) });
   }),
 
-  http.post("/api/v1/tasks/:taskId/review-config", async ({ request, params }) => {
+  http.post("*/api/v1/tasks/:taskId/review-config", async ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const body = await readJson<Record<string, unknown>>(request);
     return okJson({ reviewConfig: writeReviewConfig(taskId, body) });
   }),
 
-  http.put("/api/v1/tasks/:taskId/review-config", async ({ request, params }) => {
+  http.put("*/api/v1/tasks/:taskId/review-config", async ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const body = await readJson<Record<string, unknown>>(request);
     return okJson({ reviewConfig: writeReviewConfig(taskId, body) });
   }),
 
-  http.post("/api/v1/tasks/:taskId/schema/publish", async ({ request, params }) => {
+  http.post("*/api/v1/tasks/:taskId/schema/publish", async ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const body = await readJson<unknown>(request);
     return withIdempotency(request, body, () => {
@@ -327,7 +327,7 @@ export const handlers = [
     });
   }),
 
-  http.post("/api/v1/tasks/:taskId/publish", async ({ request, params }) => {
+  http.post("*/api/v1/tasks/:taskId/publish", async ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const body = await readJson<PublishTaskRequest>(request);
     return withIdempotency(request, body, () => {
@@ -345,7 +345,7 @@ export const handlers = [
     });
   }),
 
-  http.post("/api/v1/tasks/:taskId/dataset/import", async ({ request, params }) => {
+  http.post("*/api/v1/tasks/:taskId/dataset/import", async ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const body = await readJson<ImportDatasetRequest>(request);
     return withIdempotency(request, body, () => {
@@ -356,7 +356,7 @@ export const handlers = [
     });
   }),
 
-  http.post("/api/v1/tasks/:taskId/exports", async ({ request, params }) => {
+  http.post("*/api/v1/tasks/:taskId/exports", async ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const body = await readJson<CreateExportJobRequest>(request);
     return withIdempotency(request, body, () => {
@@ -369,12 +369,12 @@ export const handlers = [
     });
   }),
 
-  http.get("/api/v1/tasks/:taskId/exports", ({ params }) => {
+  http.get("*/api/v1/tasks/:taskId/exports", ({ params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     return okJson(mockDb.exportJobs.filter((item) => item.taskId === taskId));
   }),
 
-  http.get("/api/v1/exports/:exportId/records", ({ params }) => {
+  http.get("*/api/v1/exports/:exportId/records", ({ params }) => {
     const exportId = getParam(params as MockParams, "exportId");
     const artifactSummary = getExportArtifactSummary(exportId);
     if (artifactSummary === undefined) {
@@ -388,12 +388,12 @@ export const handlers = [
     return okJson(response);
   }),
 
-  http.get("/api/v1/exports/:exportJobId", ({ params }) => {
+  http.get("*/api/v1/exports/:exportJobId", ({ params }) => {
     const exportJob = mockDb.exportJobs.find((item) => item.id === getParam(params as MockParams, "exportJobId"));
     return exportJob === undefined ? errorJson("RESOURCE_NOT_FOUND", "导出任务不存在", 404) : okJson({ exportJob });
   }),
 
-  http.get("/api/v1/exports/:exportId/download/file", ({ params }) => {
+  http.get("*/api/v1/exports/:exportId/download/file", ({ params }) => {
     const exportId = getParam(params as MockParams, "exportId");
     const exportJob = mockDb.exportJobs.find((item) => item.id === exportId);
     if (exportJob === undefined) {
@@ -409,7 +409,7 @@ export const handlers = [
   }),
 
   // 数据看板（只读聚合）。mock 返回一份代表性数据，保证页面渲染与空状态逻辑可被验证。
-  http.get("/api/v1/analytics/dashboard", () =>
+  http.get("*/api/v1/analytics/dashboard", () =>
     okJson({
       scope: { taskId: null, taskTitle: null },
       aiCost: {
@@ -436,9 +436,9 @@ export const handlers = [
     }),
   ),
 
-  http.get("/api/v1/marketplace/tasks", () => okJson(listMarketplaceTasks())),
+  http.get("*/api/v1/marketplace/tasks", () => okJson(listMarketplaceTasks())),
 
-  http.post("/api/v1/tasks/:taskId/claim", async ({ request, params }) => {
+  http.post("*/api/v1/tasks/:taskId/claim", async ({ request, params }) => {
     const taskId = getParam(params as MockParams, "taskId");
     const body = await readJson<ClaimTaskRequest>(request);
     return withIdempotency(request, body, () => {
@@ -449,17 +449,17 @@ export const handlers = [
     });
   }),
 
-  http.get("/api/v1/assignments/:assignmentId", ({ params }) => {
+  http.get("*/api/v1/assignments/:assignmentId", ({ params }) => {
     const context = getAssignmentContext(getParam(params as MockParams, "assignmentId"));
     return context === undefined ? errorJson("RESOURCE_NOT_FOUND", "作答上下文不存在", 404) : okJson(context);
   }),
 
-  http.get("/api/v1/assignments/:assignmentId/items", ({ params }) => {
+  http.get("*/api/v1/assignments/:assignmentId/items", ({ params }) => {
     const items = listAssignmentDatasetItems(getParam(params as MockParams, "assignmentId"));
     return okJson({ items });
   }),
 
-  http.put("/api/v1/assignments/:assignmentId/draft", async ({ request, params }) => {
+  http.put("*/api/v1/assignments/:assignmentId/draft", async ({ request, params }) => {
     const assignmentId = getParam(params as MockParams, "assignmentId");
     const body = await readJson<SaveDraftRequest>(request);
     return withIdempotency(request, body, () => {
@@ -470,7 +470,7 @@ export const handlers = [
     });
   }),
 
-  http.post("/api/v1/assignments/:assignmentId/submit", async ({ request, params }) => {
+  http.post("*/api/v1/assignments/:assignmentId/submit", async ({ request, params }) => {
     const assignmentId = getParam(params as MockParams, "assignmentId");
     const body = await readJson<SubmitAssignmentRequest>(request);
     return withIdempotency(request, body, () => {
@@ -485,14 +485,14 @@ export const handlers = [
     });
   }),
 
-  http.post("/api/v1/assignments/:assignmentId/llm-assist", async ({ request }) => {
+  http.post("*/api/v1/assignments/:assignmentId/llm-assist", async ({ request }) => {
     const body = await readJson<unknown>(request);
     return withIdempotency(request, body, async () => ({ body: await callLLMAssist(readLLMAssistRequest(body)) }));
   }),
 
-  http.get("/api/v1/me/submissions", () => okJson(listMySubmissions())),
+  http.get("*/api/v1/me/submissions", () => okJson(listMySubmissions())),
 
-  http.get("/api/v1/review/queue", () =>
+  http.get("*/api/v1/review/queue", () =>
     // 契约要求 ReviewQueueItem（{ submission, taskId, taskTitle, itemId, aiDecision }）；
     // mock-db 内部存的是原始 Submission，这里包装成队列项形状，否则前端按 item.submission.* 读取会全部落空。
     okJson(
@@ -517,12 +517,12 @@ export const handlers = [
     ),
   ),
 
-  http.get("/api/v1/review/submissions/:submissionId", ({ params }) => {
+  http.get("*/api/v1/review/submissions/:submissionId", ({ params }) => {
     const detail = getReviewDetail(getParam(params as MockParams, "submissionId"));
     return detail === undefined ? errorJson("RESOURCE_NOT_FOUND", "审核详情不存在", 404) : okJson(detail);
   }),
 
-  http.post("/api/v1/review/submissions/:submissionId/claim", async ({ request, params }) => {
+  http.post("*/api/v1/review/submissions/:submissionId/claim", async ({ request, params }) => {
     const submissionId = getParam(params as MockParams, "submissionId");
     const body = await readJson<unknown>(request);
     return withIdempotency(request, body, () => {
@@ -533,7 +533,7 @@ export const handlers = [
     });
   }),
 
-  http.post("/api/v1/review/submissions/:submissionId/decision", async ({ request, params }) => {
+  http.post("*/api/v1/review/submissions/:submissionId/decision", async ({ request, params }) => {
     const body = await readJson<ReviewDecisionRequest>(request);
     const submissionId = getParam(params as MockParams, "submissionId");
     return withIdempotency(request, body, () => {
@@ -552,7 +552,7 @@ export const handlers = [
     });
   }),
 
-  http.get("/api/v1/review/submissions/:submissionId/ai-assist/suggestions", ({ params }) => {
+  http.get("*/api/v1/review/submissions/:submissionId/ai-assist/suggestions", ({ params }) => {
     const submissionId = getParam(params as MockParams, "submissionId");
     const submission = mockDb.submissions.find((item) => item.id === submissionId);
     if (submission === undefined) {
@@ -562,7 +562,7 @@ export const handlers = [
   }),
 
   http.post(
-    "/api/v1/review/submissions/:submissionId/ai-assist/:suggestionId/actions",
+    "*/api/v1/review/submissions/:submissionId/ai-assist/:suggestionId/actions",
     async ({ request, params }) => {
       const submissionId = getParam(params as MockParams, "submissionId");
       const suggestionId = getParam(params as MockParams, "suggestionId");
@@ -583,29 +583,29 @@ export const handlers = [
     },
   ),
 
-  http.post("/api/v1/review/batch-decision", async ({ request }) => {
+  http.post("*/api/v1/review/batch-decision", async ({ request }) => {
     const body = await readJson<BatchReviewRequest>(request);
     return withIdempotency(request, body, () => ({ body: batchDecideReview(body.items) }));
   }),
 
-  http.post("/api/v1/audit-events", async ({ request }) => {
+  http.post("*/api/v1/audit-events", async ({ request }) => {
     const body = await readJson<AppendAuditEventRequest>(request);
     return okJson({ event: appendAuditEvent(body) }, 201);
   }),
 
-  http.get("/api/v1/audit-events", ({ request }) => {
+  http.get("*/api/v1/audit-events", ({ request }) => {
     const query = parseAuditEventQuery(new URL(request.url).searchParams);
     return okJson<QueryAuditEventsResponse>(queryAuditEvents(query));
   }),
 
-  http.get("/api/v1/schema/component-registry", () => okJson(mockDb.registry)),
+  http.get("*/api/v1/schema/component-registry", () => okJson(mockDb.registry)),
 
-  http.get("/api/v1/schema-versions/:schemaVersionId", ({ params }) => {
+  http.get("*/api/v1/schema-versions/:schemaVersionId", ({ params }) => {
     const schemaVersion = mockDb.schemaVersions.find((item) => item.id === getParam(params as MockParams, "schemaVersionId"));
     return schemaVersion === undefined ? errorJson("RESOURCE_NOT_FOUND", "schema version 不存在", 404) : okJson(schemaVersion);
   }),
 
-  http.post("/api/v1/files/upload-url", async ({ request }) => {
+  http.post("*/api/v1/files/upload-url", async ({ request }) => {
     const body = await readJson<CreateUploadUrlRequest>(request);
     return withIdempotency(request, body, () => {
       const file = createUploadFile(body);
@@ -618,7 +618,7 @@ export const handlers = [
     });
   }),
 
-  http.post("/api/v1/files/:fileId/upload", ({ params }) => {
+  http.post("*/api/v1/files/:fileId/upload", ({ params }) => {
     const fileId = getParam(params as MockParams, "fileId");
     const file = mockDb.files.find((candidate) => candidate.id === fileId);
     return file === undefined
@@ -626,7 +626,7 @@ export const handlers = [
       : new HttpResponse(null, { status: 204 });
   }),
 
-  http.post("/api/v1/files/:fileId/confirm", async ({ request, params }) => {
+  http.post("*/api/v1/files/:fileId/confirm", async ({ request, params }) => {
     const body = await readJson<unknown>(request);
     const fileId = getParam(params as MockParams, "fileId");
     return withIdempotency(request, body, () => {

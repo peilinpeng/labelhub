@@ -6,11 +6,15 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./app/App";
 
 async function bootstrap() {
+  const baseUrl = import.meta.env.BASE_URL;
+  const routerBasename = baseUrl === "/" ? undefined : baseUrl.replace(/\/$/, "");
+
   if (import.meta.env.VITE_ENABLE_MSW === "true") {
     const { worker } = await import("./mocks/browser");
     await worker.start({
       serviceWorker: {
-        url: "/mockServiceWorker.js",
+        url: `${baseUrl}mockServiceWorker.js`,
+        options: { scope: baseUrl },
       },
       onUnhandledRequest(request, print) {
         const url = new URL(request.url);
@@ -23,7 +27,7 @@ async function bootstrap() {
 
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter basename={routerBasename} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <App />
       </BrowserRouter>
     </React.StrictMode>

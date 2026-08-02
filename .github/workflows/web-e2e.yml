@@ -83,10 +83,10 @@ jobs:
 
       - name: Verify runtime users and internal-only data services
         run: |
-          test "$(docker compose exec -T api id -u)" = "10001"
-          test "$(docker compose exec -T worker id -u)" = "10001"
-          test -z "$(docker compose port mysql 3306 2>/dev/null || true)"
-          test -z "$(docker compose port redis 6379 2>/dev/null || true)"
+          docker compose exec -T api sh -ec 'test "$(id -u)" = "10001"'
+          docker compose exec -T worker sh -ec 'test "$(id -u)" = "10001"'
+          test "$(docker inspect --format '{{len .HostConfig.PortBindings}}' "$(docker compose ps -q mysql)")" = "0"
+          test "$(docker inspect --format '{{len .HostConfig.PortBindings}}' "$(docker compose ps -q redis)")" = "0"
 
       - name: Run Playwright e2e
         working-directory: apps/web
