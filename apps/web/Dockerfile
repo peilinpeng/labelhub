@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:20.20.2-alpine AS builder
+FROM node:26.5.0-alpine AS builder
 
 WORKDIR /workspace
 
