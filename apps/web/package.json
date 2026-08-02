@@ -31,7 +31,7 @@
     "@labelhub/schema-renderer": "file:../../packages/schema-renderer",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^6.20.0"
+    "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
