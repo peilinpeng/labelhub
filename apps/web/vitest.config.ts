@@ -10,9 +10,9 @@ export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
-      "@": path.resolve(__dirname, "./src"),
-      "@labelhub/contracts": path.resolve(__dirname, "../../packages/contracts/src/index.ts"),
-      "@labelhub/schema-core": path.resolve(__dirname, "../../packages/schema-core/src/index.ts"),
+      "@": path.resolve(import.meta.dirname, "./src"),
+      "@labelhub/contracts": path.resolve(import.meta.dirname, "../../packages/contracts/src/index.ts"),
+      "@labelhub/schema-core": path.resolve(import.meta.dirname, "../../packages/schema-core/src/index.ts"),
     },
   },
   test: {

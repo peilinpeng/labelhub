@@ -146,7 +146,7 @@ npm --prefix apps/web run typecheck
 npm --prefix apps/web run test:coverage
 npm --prefix apps/web run build
 npm audit --omit=dev --audit-level=high
-npm --prefix apps/web audit --omit=dev --audit-level=high
+npm --prefix apps/web run audit:production
 ```
 
 API（全新 Python 3.11 虚拟环境）：
@@ -192,8 +192,11 @@ uv pip compile --python-version 3.11 --universal --generate-hashes \
   requirements-dev.in -o requirements-dev.lock
 ```
 
-CI 会对 Python 锁文件执行 `pip-audit`，对共享包与 Web 的生产依赖执行
-`npm audit --audit-level=high`。Dependabot 每周检查 npm、pip、Docker 与 Actions。
+CI 会对 Python 锁文件执行 `pip-audit`，对共享包执行 `npm audit --audit-level=high`，
+Web 使用 `audit:production` 保持同等门禁。Web 审计只允许
+`apps/web/audit-allowlist.json` 中带到期日与适用性说明的精确 GHSA；未批准的 high /
+critical 仍会失败，已修复后残留的例外也会失败并要求删除。Dependabot 每周检查 npm、
+pip、Docker 与 Actions，并将必须同步升级的 React / Vite 测试工具链分组。
 
 ## 8. 停止、清理与重建
 
