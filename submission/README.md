@@ -78,7 +78,7 @@ npm --prefix apps/web run e2e                  # 6 个 Playwright 场景
 ```
 
 当前自动化基线：共享包 375 passed、Web 41 passed、API 常规测试 264 passed / 2
-deselected；API 测试按 `apps/api/requirements-dev.lock` 在 Python 3.11 环境执行。
+deselected；API 测试按 `apps/api/requirements-dev.txt` 在 Python 3.11 环境执行。
 
 ## 交付完成确认
 

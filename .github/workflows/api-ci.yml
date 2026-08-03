@@ -29,10 +29,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: apps/api/requirements-dev.lock
+          cache-dependency-path: apps/api/requirements-dev.txt
 
       - name: Install locked test dependencies
-        run: python -m pip install --require-hashes -r requirements-dev.lock
+        run: python -m pip install --require-hashes -r requirements-dev.txt
 
       - name: Run tests (unit + integration via SQLite, skip @integration)
         run: pytest -m "not integration" -v
@@ -49,4 +49,4 @@ jobs:
       - name: Audit locked runtime dependencies
         uses: pypa/gh-action-pip-audit@v1.1.0
         with:
-          inputs: apps/api/requirements.lock
+          inputs: apps/api/requirements.txt
