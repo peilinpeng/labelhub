@@ -25,7 +25,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from passlib.context import CryptContext
 from dotenv import load_dotenv
 
 load_dotenv()  # 必须在 import app.* 之前
@@ -39,8 +38,8 @@ from app.models.dataset import DatasetItem
 from app.models.review import ReviewConfig, AIReviewJob, ReviewResult
 from app.models.assignment import Assignment, Draft
 from app.models.submission import Submission
+from app.passwords import hash_password
 
-_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _PASSWORD = "password123"
 
 # 固定 ID，保证幂等可重复清理
@@ -179,13 +178,13 @@ def _upsert_users(db) -> dict:
         if user is None:
             user = User(
                 id=spec["id"], email=spec["email"],
-                hashed_password=_pwd.hash(_PASSWORD),
+                hashed_password=hash_password(_PASSWORD),
                 display_name=spec["display_name"], role=spec["role"], status="ACTIVE",
             )
             db.add(user)
         else:
             # E2E seed 必须能从被手工修改过的演示账号恢复到确定状态。
-            user.hashed_password = _pwd.hash(_PASSWORD)
+            user.hashed_password = hash_password(_PASSWORD)
             user.display_name = spec["display_name"]
             user.role = spec["role"]
             user.status = "ACTIVE"

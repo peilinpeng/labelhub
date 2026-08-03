@@ -15,7 +15,7 @@ class User(Base):
     # 登录账号，实现层补充字段，契约 §24 未显式列出
     email = Column(String(255), unique=True, nullable=False)
 
-    # bcrypt 哈希密码，实现层补充字段
+    # Argon2id 哈希密码；迁移期兼容读取历史 bcrypt 哈希
     hashed_password = Column(String(255), nullable=False)
 
     # 契约 Actor.displayName

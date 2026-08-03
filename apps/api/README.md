@@ -64,6 +64,14 @@ docker compose up -d api worker scheduler web --wait
 
 `seed_demo.py` 还会创建一个已发布的演示任务（含 Schema + 10 题 + ReviewConfig），可重复执行。
 
+## 密码哈希迁移
+
+- 新账号与 Seed 统一使用 pwdlib 的 Argon2id 推荐参数，不再生成 bcrypt 哈希。
+- 历史 bcrypt 哈希仍可登录；账号状态正常且密码验证成功后，会在同一事务中渐进重哈希为
+  Argon2id，无需批量读取明文或强制用户重置密码。
+- 未知邮箱仍执行一次 dummy Argon2 验证，降低通过响应耗时枚举账号的风险；未知或损坏的
+  哈希统一按认证失败处理，不向客户端暴露存储状态。
+
 ## 运行测试
 
 ```bash

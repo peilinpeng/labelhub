@@ -11,7 +11,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from passlib.context import CryptContext
 import jwt
 from dotenv import load_dotenv
 
@@ -22,12 +21,11 @@ from app.config import settings
 from app.database import SessionLocal
 from app.security import require_demo_mode
 from app.models.user import User
+from app.passwords import hash_password
 
 # ---------------------------------------------------------------------------
 # 工具函数
 # ---------------------------------------------------------------------------
-
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Seed 脚本生成的 token 有效期 30 天（方便 Postman 测试，不影响生产）
 _TOKEN_EXPIRE_DAYS = 30
@@ -89,7 +87,7 @@ def main() -> None:
                 user = User(
                     id=_gen_id(),
                     email=spec["email"],
-                    hashed_password=_pwd_context.hash(_SEED_PASSWORD),
+                    hashed_password=hash_password(_SEED_PASSWORD),
                     display_name=spec["display_name"],
                     role=spec["role"],
                     status="ACTIVE",
