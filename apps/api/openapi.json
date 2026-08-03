@@ -6194,10 +6194,14 @@
         "properties": {
           "email": {
             "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Email"
           },
           "password": {
             "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
             "title": "Password"
           }
         },

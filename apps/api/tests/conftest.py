@@ -61,7 +61,8 @@ import app.models.idempotency  # noqa: E402,F401
 from fastapi.testclient import TestClient  # noqa: E402
 from main import app as fastapi_app  # noqa: E402
 from app.database import get_db  # noqa: E402
-from app.routers.auth import create_access_token, _pwd_context  # noqa: E402
+from app.routers.auth import create_access_token  # noqa: E402
+from app.passwords import hash_password  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.security import login_rate_limiter  # noqa: E402
@@ -108,7 +109,7 @@ def _make_user(db, *, role: str, suffix: str) -> User:
     user = User(
         id=f"usr_{role.lower()}_{suffix}",
         email=f"{role.lower()}_{suffix}@test.local",
-        hashed_password=_pwd_context.hash("password123"),
+        hashed_password=hash_password("password123"),
         display_name=f"测试 {role}",
         role=role,
         status="ACTIVE",

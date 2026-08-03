@@ -22,7 +22,6 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from passlib.context import CryptContext
 from dotenv import load_dotenv
 
 load_dotenv()  # 必须在 import app.* 之前
@@ -30,12 +29,12 @@ load_dotenv()  # 必须在 import app.* 之前
 from app.database import SessionLocal
 from app.security import require_demo_mode
 from app.models.user import User
+from app.passwords import hash_password
 from app.models.task import Task
 from app.models.schema import SchemaDraft, SchemaVersion
 from app.models.dataset import DatasetItem
 from app.models.review import ReviewConfig
 
-_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _PASSWORD = "password123"
 
 # 复用演示账号（与 seed_demo 一致，互不覆盖）
@@ -431,7 +430,7 @@ def _ensure_users(db) -> dict:
         if user is None:
             user = User(
                 id=spec["id"], email=spec["email"],
-                hashed_password=_pwd.hash(_PASSWORD),
+                hashed_password=hash_password(_PASSWORD),
                 display_name=spec["display_name"], role=spec["role"], status="ACTIVE",
             )
             db.add(user)

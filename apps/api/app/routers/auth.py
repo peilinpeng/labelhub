@@ -5,30 +5,18 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request
 import jwt
-from passlib.context import CryptContext
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
+from app.passwords import DUMMY_PASSWORD_HASH, verify_password_and_update
 from app.middleware.error_handler import (
     RateLimitExceededException,
     UnauthorizedException,
 )
 from app.security import login_rate_limiter
-
-# ---------------------------------------------------------------------------
-# 密码工具
-# ---------------------------------------------------------------------------
-
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def verify_password(plain: str, hashed: str) -> bool:
-    """校验明文密码与 bcrypt 哈希是否匹配。"""
-    return _pwd_context.verify(plain, hashed)
-
 
 # ---------------------------------------------------------------------------
 # JWT 生成工具
@@ -57,8 +45,8 @@ def create_access_token(user_id: str, role: str, display_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=1024)
 
 
 class ActorResponse(BaseModel):
@@ -103,9 +91,20 @@ def login(
         )
 
     user: User | None = db.query(User).filter(User.email == body.email).first()
+    updated_hash: str | None = None
+
+    if user is None:
+        # 与真实账号一样执行密码哈希验证，降低通过响应耗时枚举邮箱的风险。
+        verify_password_and_update(body.password, DUMMY_PASSWORD_HASH)
+        password_valid = False
+    else:
+        password_valid, updated_hash = verify_password_and_update(
+            body.password,
+            user.hashed_password,
+        )
 
     # 邮箱不存在或密码错误：统一返回 401，禁止区分两种失败原因（防用户枚举）
-    if user is None or not verify_password(body.password, user.hashed_password):
+    if user is None or not password_valid:
         failure_state = login_rate_limiter.record_failure(client_ip, body.email)
         if failure_state.blocked:
             raise RateLimitExceededException(
@@ -119,6 +118,12 @@ def login(
     if user.status != "ACTIVE":
         login_rate_limiter.record_failure(client_ip, body.email)
         raise UnauthorizedException(f"账号当前状态为 {user.status}，无法登录")
+
+    # 仅在账号可登录且密码已验证后持久化新哈希。旧 bcrypt 与过时 Argon2 参数都会
+    # 由 pwdlib 返回 updated_hash；并发登录即使重复计算，结果也验证同一明文密码。
+    if updated_hash is not None:
+        user.hashed_password = updated_hash
+        db.commit()
 
     login_rate_limiter.reset(client_ip, body.email)
     token = create_access_token(user.id, user.role, user.display_name)
