@@ -65,6 +65,9 @@ updates:
       # passlib 1.7.4 probes bcrypt with >72-byte input; bcrypt 5 raises.
       - dependency-name: bcrypt
         versions: [">=5"]
+      # Celery 5.6 / Kombu 5.6 require redis-py <6.5.
+      - dependency-name: redis
+        versions: [">=6.5"]
   - package-ecosystem: docker
     directory: /apps/api
     schedule:
