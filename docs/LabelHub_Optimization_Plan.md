@@ -695,7 +695,7 @@ npm --prefix apps/web run e2e
 # API（Python 3.11 虚拟环境）
 cd apps/api
 python3.11 -m venv .venv
-.venv/bin/python -m pip install --require-hashes -r requirements-dev.lock
+.venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
 .venv/bin/python -m pytest -m "not integration" -q
 cd ../..
 

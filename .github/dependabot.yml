@@ -61,11 +61,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    # requirements.txt only forwards legacy install commands to the hashed
-    # lockfile. Scanning it in isolation makes pip-compile lose that target.
-    exclude-paths:
-      - requirements.txt
-
+    ignore:
+      # passlib 1.7.4 probes bcrypt with >72-byte input; bcrypt 5 raises.
+      - dependency-name: bcrypt
+        versions: [">=5"]
   - package-ecosystem: docker
     directory: /apps/api
     schedule:

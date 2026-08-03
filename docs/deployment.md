@@ -122,8 +122,8 @@ VITE_ENABLE_MSW=false VITE_PROXY_TARGET=http://127.0.0.1:3000 \
 
 - Web Dockerfile 使用 Node builder 执行两次 `npm ci`，运行层只包含 Nginx 和
   `dist` 静态文件，不含 Vite、源码或 node_modules。
-- API Dockerfile 使用带 SHA-256 的 `requirements.lock`，只安装运行时依赖；测试
-  依赖位于独立 `requirements-dev.lock`。
+- API Dockerfile 使用带 SHA-256 的 `requirements.txt`，只安装运行时依赖；测试
+  依赖位于独立 `requirements-dev.txt`。
 - API、Worker、Scheduler 和 seed 复用同一 `labelhub-api:<tag>` 镜像。
 - API / Worker / Scheduler 以 UID/GID `10001` 运行；Web 使用 unprivileged Nginx。
 - 服务默认 `cap_drop: ALL`、`no-new-privileges`，API 与 Worker 使用持久化文件卷。
@@ -156,7 +156,7 @@ API（全新 Python 3.11 虚拟环境）：
 ```bash
 cd apps/api
 python3.11 -m venv .venv
-.venv/bin/python -m pip install --require-hashes -r requirements-dev.lock
+.venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
 .venv/bin/python -m pytest -m "not integration" -q
 ```
 
@@ -189,9 +189,9 @@ npm --prefix apps/web run e2e
 ```bash
 cd apps/api
 uv pip compile --python-version 3.11 --universal --generate-hashes \
-  requirements.in -o requirements.lock
+  requirements.in -o requirements.txt
 uv pip compile --python-version 3.11 --universal --generate-hashes \
-  requirements-dev.in -o requirements-dev.lock
+  requirements-dev.in -o requirements-dev.txt
 ```
 
 CI 会对 Python 锁文件执行 `pip-audit`，对共享包执行 `npm audit --audit-level=high`，

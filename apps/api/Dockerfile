@@ -9,13 +9,13 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /build
-COPY apps/api/requirements.lock ./requirements.lock
+COPY apps/api/requirements.txt ./requirements.txt
 RUN python -m pip install \
     --no-compile \
     --prefix=/install \
     --require-hashes \
     --only-binary=:all: \
-    -r requirements.lock
+    -r requirements.txt
 
 FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
 

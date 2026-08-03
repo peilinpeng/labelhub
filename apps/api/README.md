@@ -21,8 +21,8 @@ apps/api/
 ├── alembic/                # 数据库迁移
 ├── scripts/                # seed / e2e / openapi 导出
 ├── requirements.in         # 生产直接依赖
-├── requirements.lock       # 生产完整依赖锁（含 SHA-256）
-├── requirements-dev.lock   # 测试完整依赖锁（含 SHA-256）
+├── requirements.txt        # 生产完整依赖锁（含 SHA-256）
+├── requirements-dev.txt    # 测试完整依赖锁（含 SHA-256）
 └── tests/                  # pytest 单元 + 集成测试
 ```
 
@@ -69,7 +69,7 @@ docker compose up -d api worker scheduler web --wait
 ```bash
 # 全新 Python 3.11 环境按哈希锁安装（生产镜像不包含 pytest）
 python3.11 -m venv .venv
-.venv/bin/python -m pip install --require-hashes -r requirements-dev.lock
+.venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
 
 # 单元 + SQLite 集成测试（CI 同款）
 .venv/bin/python -m pytest -m "not integration" -v
@@ -83,7 +83,7 @@ E2E_BASE=http://127.0.0.1:3000/api/v1 \
 bash scripts/e2e_test.sh
 ```
 
-CI 还会使用 `pip-audit` 扫描 `requirements.lock`，发现已知漏洞即失败。
+CI 还会使用 `pip-audit` 扫描 `requirements.txt`，发现已知漏洞即失败。
 
 ## 其他脚本
 
