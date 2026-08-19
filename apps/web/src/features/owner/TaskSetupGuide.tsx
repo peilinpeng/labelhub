@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Badge, Card } from "../../ui/primitives";
 
 export type TaskSetupStepKey = "basic" | "data" | "template" | "ai" | "publish";

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router";
 import { collectFieldNodes } from "@labelhub/schema-core";
 import type {
   AuditEventRecord,

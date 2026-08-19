@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useEffect, useState } from "react";
 import { Role } from "../../app/routes";
 import { claimTask, listMarketplaceTasks, listMyAssignments } from "../../api/labeler";

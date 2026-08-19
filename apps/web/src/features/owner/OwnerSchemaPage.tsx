@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { RoutePath, type Role } from "../../app/routes";
 import { AuditTimelinePanel } from "./AuditTimelinePanel";
 import { SchemaVersionPanel } from "./SchemaVersionPanel";

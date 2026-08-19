@@ -10,7 +10,7 @@ Worker / Scheduler、MySQL 8 和 Redis 7。前端 Mock 与真实后端是两种�
 ## 1. 前置条件
 
 - Docker Engine 24+ 与 Docker Compose v2；或 Docker Desktop。
-- 仅做前端开发时：Node `20.20.2`、npm `10.8.2`。
+- 仅做前端开发时：Node `22.23.1`、npm `10.9.7`。
 - 直接运行 API / pytest 时：Python 3.11。
 
 仓库根目录的 `.nvmrc`、`package-lock.json`、`apps/web/package-lock.json` 与

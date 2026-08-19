@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router";
 import { RoutePath, Role } from "../../app/routes";
 import { fetchTask, fetchTaskStats, updateTask, type TaskStats } from "../../api/owner";
 import { getReviewConfig } from "../../api/reviewer";

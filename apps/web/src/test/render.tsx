@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { render, type RenderResult } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router";
 import type { Role } from "../app/routes";
 
 interface RenderRouteOptions {

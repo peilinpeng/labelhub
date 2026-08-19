@@ -8,7 +8,7 @@ import type {
   SchemaValidationResult,
   ServerComponentRegistryItem,
 } from "@labelhub/contracts";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Badge, Button, Card } from "../../ui/primitives";
 import {
   FIELD_SECTIONS,

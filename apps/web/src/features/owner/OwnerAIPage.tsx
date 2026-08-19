@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router";
 import type { Task } from "@labelhub/contracts";
 import { RoutePath, Role } from "../../app/routes";
 import { fetchTaskStats, listTasks, type TaskStats } from "../../api/owner";

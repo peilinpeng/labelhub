@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { AuditEventRecord, AuditEventType, AuditSeverity, Task } from "@labelhub/contracts";
 import { Role } from "../../app/routes";
 import { queryAuditEvents } from "../../api/audit";
