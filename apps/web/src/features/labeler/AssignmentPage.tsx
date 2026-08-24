@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { runSchemaPreflight } from "@labelhub/schema-compiler";
 import { collectFieldNodes } from "@labelhub/schema-core";
 import { SchemaRenderer, type LLMAssistOutcome } from "@labelhub/schema-renderer";

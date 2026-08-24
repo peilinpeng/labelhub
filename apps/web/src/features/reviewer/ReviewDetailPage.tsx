@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router";
 import { RoutePath, Role } from "../../app/routes";
 import { queryAuditEvents } from "../../api/audit";
 import { claimReview, decideReview, getReviewDetail, listReviewQueue } from "../../api/reviewer";

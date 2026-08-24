@@ -1,6 +1,6 @@
 import type { AssignmentStatus, Submission, Task } from "@labelhub/contracts";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { listMarketplaceTasks, listMySubmissions } from "../../api/labeler";
 import { Badge, Button, Card, KpiCard } from "../../ui/primitives";
 import { formatBeijingDateTime } from "../../utils/formatTime";

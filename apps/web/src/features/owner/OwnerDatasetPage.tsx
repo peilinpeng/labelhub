@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router";
 import type { DatasetItem, Task } from "@labelhub/contracts";
 import { Role } from "../../app/routes";
 import { fetchTask } from "../../api/owner";

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Role } from "../../app/routes";
 import { batchDecideReview, claimReview, fetchReviewQueueCount, getReviewDetail, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
 import type { AIPrecheckDecision, ReviewDecisionRequest } from "@labelhub/contracts";

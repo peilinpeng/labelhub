@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { Routes, Route, useLocation, useNavigate } from "react-router";
 import { RoutePath, Role } from "./routes";
 import OwnerWorkspace from "../features/owner/OwnerWorkspace";
 import OwnerSchemaPage from "../features/owner/OwnerSchemaPage";
