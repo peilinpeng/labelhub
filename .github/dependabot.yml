@@ -14,11 +14,6 @@ updates:
           - "@types/react-dom"
           - jsdom
           - vitest
-    ignore:
-      # jsdom 30 requires Node 24; keep the root test runtime on the Node 22-compatible line.
-      - dependency-name: jsdom
-        versions: [">=30"]
-
   - package-ecosystem: npm
     directory: /apps/web
     schedule:
@@ -40,11 +35,6 @@ updates:
           - "@vitest/coverage-v8"
           - jsdom
           - "@testing-library/jest-dom"
-    ignore:
-      # jsdom 30 requires Node 24; keep the Web test runtime on the Node 22-compatible line.
-      - dependency-name: jsdom
-        versions: [">=30"]
-
   - package-ecosystem: pip
     directory: /apps/api
     schedule:
