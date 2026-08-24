@@ -90,7 +90,7 @@ LabelHub 是 monorepo 全栈架构：浏览器端三角色工作台（`apps/web`
 
 | 领域 | 选型 |
 |---|---|
-| 前端 | React 19、TypeScript 5、Vite 5、Formily 运行时 |
+| 前端 | React 19、TypeScript 7、Vite 8、Formily 运行时 |
 | 后端 | Python 3.11、FastAPI、SQLAlchemy、Alembic、Pydantic |
 | 异步 / 队列 | Celery + Redis 7 |
 | 数据库 | MySQL 8 |
