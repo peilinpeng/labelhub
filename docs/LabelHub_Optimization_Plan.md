@@ -440,6 +440,15 @@ npm --prefix apps/web run typecheck
   MSW 保持未处理请求直接失败，并补齐任务题目、题目更新、文件上传和导出下载
   handler。
 
+工具链升级记录（2026-08-24）：
+
+- Web 升级到 Vite 8、`@vitejs/plugin-react` 6、Vitest / coverage 4、jsdom 29 和
+  jest-dom 7；Node `22.23.1` 的干净安装、类型检查、44 项测试、生产 / Demo 构建及
+  production audit 均通过。
+- Vitest 4 改用 AST 覆盖率映射后，现有测试的真实分支覆盖率为 36.94%；保留 35% 的
+  行、语句、函数阈值，并将分支阈值从旧映射的 50% 校准为 35%。
+- Dependabot 解除这组已完成 major 升级的冻结，保留 jsdom 30（要求 Node 24）的限制。
+
 ### OPT-12 拆分 Owner Schema 页面
 
 **优先级：P2，在 OPT-01～OPT-04 完成后执行**

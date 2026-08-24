@@ -276,8 +276,6 @@ git diff --check                         通过，仅 LF/CRLF warning
 | Worker / Redis | 若本地未启动 Redis 或 worker，真实异步 AIReviewJob 不会执行 | 同步页面、Mock 演示、配置读取不受影响 |
 | Mock Reviewer 状态流转 | 部分 mock 审核通过后 submission 状态不流转，可能导致 mock 导出 0 条 | 真实后端不受影响；QA 表中已有记录 |
 | 文件上传 confirm | 后端 `confirm` 对未上传二进制文件的检查仍可加强 | 错误会延迟到 dataset import 暴露 |
-| Vitest CVE | `vitest <4.1.0` 有非阻断安全提示 | 由维护者决定升级时机 |
-| Vite chunk | build 仍提示 `vendor -> vendor-react -> vendor` circular chunk | 非阻断，构建产物正常生成 |
 
 ---
 
