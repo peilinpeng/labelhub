@@ -447,7 +447,12 @@ npm --prefix apps/web run typecheck
   production audit 均通过。
 - Vitest 4 改用 AST 覆盖率映射后，现有测试的真实分支覆盖率为 36.94%；保留 35% 的
   行、语句、函数阈值，并将分支阈值从旧映射的 50% 校准为 35%。
-- Dependabot 解除这组已完成 major 升级的冻结，保留 jsdom 30（要求 Node 24）的限制。
+- 该记录已由后续 Node 24 / jsdom 30 兼容性升级取代；最终运行时与验证结果见最新交接记录。
+- 后续兼容性升级将运行时统一为 Node `24.19.0`（npm `11.17.0`）并将根工作区、
+  Web、Schema Renderer 与 Schema Designer 的 jsdom 升至 `30.0.1`；同步了类型声明、
+  Docker builder、CI、真实后端 E2E、Pages 与 Dependabot。Node 24 下共享包 375 项、
+  Web 44 项覆盖率测试、生产 / Demo 构建、生产审计、隔离 Compose 迁移与真实 Playwright
+  6 项场景均通过。
 
 ### OPT-12 拆分 Owner Schema 页面
 
