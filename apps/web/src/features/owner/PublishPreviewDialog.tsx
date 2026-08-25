@@ -6,7 +6,7 @@ import type {
   SchemaValidationResult,
 } from "@labelhub/contracts";
 import type { DeprecationIssue } from "@labelhub/schema-core";
-import { Badge, Button } from "../../ui/primitives";
+import { Badge, Button, HelpDisclosure } from "../../ui/primitives";
 
 export interface PublishPreviewDialogProps {
   open: boolean;
@@ -89,7 +89,7 @@ export function PublishPreviewDialog({
           <div>
             <span>发布前检查</span>
             <h2 id="publish-preview-title">Schema 版本治理预检</h2>
-            <p>{isFirstPublish ? "首次发布，无历史版本对比。" : "已对当前草稿和上一已发布版本进行本地对比。"}</p>
+            <p>{isFirstPublish ? "首次发布" : "已与上一版本对比"}</p>
           </div>
           <Badge tone={publishAllowed ? "success" : "danger"}>
             {publishAllowed ? "允许发布" : "阻止发布"}
@@ -137,9 +137,12 @@ export function PublishPreviewDialog({
           <h3>检测到需要迁移的变更</h3>
           <ChangeList changes={migrationChanges} emptyText={isFirstPublish ? "首次发布无需迁移。" : "暂无需要迁移的变更。"} />
           {requiresMigration ? (
-            <p className="publish-preview-dialog__notice">
-              说明：此处仅做迁移影响预览。迁移执行链路（Dry Run 与历史答卷批量迁移）将在后续接入后端 migration pipeline，本次发布不会自动改动历史答卷。
-            </p>
+            <>
+              <p className="publish-preview-dialog__notice">本次仅预览迁移影响，不会修改历史答卷。</p>
+              <HelpDisclosure summary="查看迁移说明">
+                Dry Run 与历史答卷批量迁移将在后续迁移流程中执行。
+              </HelpDisclosure>
+            </>
           ) : null}
         </section>
 
@@ -147,9 +150,6 @@ export function PublishPreviewDialog({
           <h3>需要人工映射的字段</h3>
           {manualMappingSlots.length > 0 ? (
             <>
-              <p className="publish-preview-dialog__notice">
-                当前仅展示需要人工映射的字段，正式迁移与 Dry Run 将在后续流程中执行。
-              </p>
               <ul className="publish-preview-list">
                 {manualMappingSlots.map((slot) => (
                   <li key={slot.slotId}>

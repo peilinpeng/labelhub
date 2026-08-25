@@ -477,12 +477,10 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
         <div className="review-human-compare">
           <Card className="review-human-compare-card">
             <h3>原始数据</h3>
-            <p className="review-human-compare-card__hint">标注员标注前拿到的源数据（题目 / 参考材料）。</p>
             <PayloadFieldList payload={sourcePayload} hideEmpty />
           </Card>
           <Card className="review-human-compare-card">
             <h3>本轮提交</h3>
-            <p className="review-human-compare-card__hint">标注员本轮提交的标注内容，供你人工复核。</p>
             <PayloadFieldList payload={answers} />
           </Card>
         </div>
@@ -535,10 +533,6 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
             </div>
           </div>
 
-          {actionMode === "PASS" ? (
-            <p className="review-human-mode-hint">确认字段无误后直接通过，无需填写审核意见或修订。</p>
-          ) : null}
-
           {actionMode === "RETURN" ? (
             <div className="review-human-mode-panel">
               <label className="review-human-opinion">
@@ -568,9 +562,6 @@ export default function ReviewDetailPage({ role }: ReviewDetailPageProps) {
 
           {actionMode === "REVISE" ? (
             <div className="review-human-mode-panel">
-              <p className="review-human-corrected-answers__desc">
-                按字段修改提交内容，系统会在通过时生成字段级修订记录。
-              </p>
               <FieldCorrectionPanel
                 original={answers}
                 corrected={correctedAnswers}
