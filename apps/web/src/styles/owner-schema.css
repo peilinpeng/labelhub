@@ -240,6 +240,39 @@
   line-height: 1.55;
 }
 
+/* 低频帮助默认收起，保留上下文可达性，避免说明文字持续拉长表单。 */
+.lh-help-disclosure {
+  color: var(--lh-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.lh-help-disclosure summary {
+  display: inline-flex;
+  cursor: pointer;
+  color: var(--lh-muted);
+  font-weight: 750;
+  list-style: none;
+}
+
+.lh-help-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.lh-help-disclosure summary::before {
+  margin-right: 6px;
+  content: "+";
+}
+
+.lh-help-disclosure[open] summary::before {
+  content: "−";
+}
+
+.lh-help-disclosure__content {
+  margin-top: 6px;
+  max-width: 58ch;
+}
+
 .owner-schema-issue-list {
   display: grid;
   gap: 8px;

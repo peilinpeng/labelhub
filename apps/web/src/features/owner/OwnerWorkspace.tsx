@@ -401,7 +401,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       <div className="page-header owner-page-header">
         <div>
           <h2 className="page-title">任务管理</h2>
-          <p className="page-subtitle">维护任务全生命周期：草稿 → 发布中 → 已暂停 → 已结束</p>
+          <p className="page-subtitle">查看任务状态与配置进度。</p>
         </div>
       </div>
 
@@ -423,8 +423,7 @@ export default function OwnerWorkspace({ role: _role }: OwnerWorkspaceProps) {
       <Card className="soft-panel owner-draft-card">
         <div className="owner-draft-head">
           <div>
-            <h3>任务草稿 · 待完成配置流程</h3>
-            <p>创建任务后先导入数据，再配置模板、AI 预审和发布检查。</p>
+            <h3>待配置草稿</h3>
           </div>
           <Badge tone="warning">{draftCount} 个草稿</Badge>
         </div>

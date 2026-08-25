@@ -20,11 +20,9 @@ describe("OwnerWorkspace 任务管理", () => {
     return view;
   }
 
-  it("承诺全生命周期副标题", async () => {
+  it("展示精简后的任务管理副标题", async () => {
     await renderOwner();
-    expect(
-      screen.getByText("维护任务全生命周期：草稿 → 发布中 → 已暂停 → 已结束"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("查看任务状态与配置进度。")).toBeInTheDocument();
   });
 
   it("P1：已发布任务暴露「暂停」入口", async () => {

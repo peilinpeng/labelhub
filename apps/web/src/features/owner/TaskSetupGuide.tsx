@@ -7,7 +7,8 @@ export type TaskSetupStepState = "done" | "current" | "pending" | "error";
 export interface TaskSetupStep {
   key: TaskSetupStepKey;
   title: string;
-  description: string;
+  /** 供向导数据复用；步骤条默认不常驻渲染说明，避免重复引导。 */
+  description?: string;
   state: TaskSetupStepState;
   href?: string;
   actionLabel?: string;
@@ -25,12 +26,12 @@ export interface ReadinessItem {
 
 const stepOrder: TaskSetupStepKey[] = ["basic", "data", "template", "ai", "publish"];
 
-const stepCopy: Record<TaskSetupStepKey, { title: string; description: string; actionLabel: string }> = {
-  basic: { title: "基础信息", description: "任务名称、说明、配额与分发策略", actionLabel: "查看基础信息" },
-  data: { title: "数据管理", description: "导入本任务需要标注的数据", actionLabel: "去导入数据" },
-  template: { title: "模板配置", description: "配置字段、校验规则与联动逻辑", actionLabel: "去配置模板" },
-  ai: { title: "AI 预审配置", description: "配置质量检查规则或明确关闭", actionLabel: "去配置 AI 预审" },
-  publish: { title: "发布任务", description: "完成发布前检查并开放领取", actionLabel: "去发布任务" },
+const stepCopy: Record<TaskSetupStepKey, { title: string; actionLabel: string }> = {
+  basic: { title: "基础信息", actionLabel: "查看基础信息" },
+  data: { title: "数据管理", actionLabel: "去导入数据" },
+  template: { title: "模板配置", actionLabel: "去配置模板" },
+  ai: { title: "AI 预审配置", actionLabel: "去配置 AI 预审" },
+  publish: { title: "发布任务", actionLabel: "去发布任务" },
 };
 
 export function buildTaskSetupSteps({
@@ -80,7 +81,6 @@ export function buildTaskSetupSteps({
     const step: TaskSetupStep = {
       key,
       title: base.title,
-      description: base.description,
       state,
       actionLabel: base.actionLabel,
       href: routeForStep(taskId, key),
@@ -102,8 +102,7 @@ export function TaskSetupStepper({ steps }: { steps: TaskSetupStep[] }) {
     <Card className="owner-setup-stepper" aria-label="任务配置流程">
       <div className="owner-setup-stepper__head">
         <div>
-          <span>任务配置流程</span>
-          <h3>从数据到发布的完整准备</h3>
+          <h3>配置进度</h3>
         </div>
       </div>
       <ol className="owner-setup-steps">
@@ -113,7 +112,7 @@ export function TaskSetupStepper({ steps }: { steps: TaskSetupStep[] }) {
               <span className="owner-setup-step__index">{index + 1}</span>
               <span className="owner-setup-step__body">
                 <strong>{step.title}</strong>
-                <small>{step.meta ?? step.description}</small>
+                {step.meta ? <small>{step.meta}</small> : null}
               </span>
               <Badge tone={badgeTone(step.state)}>{stateLabel(step.state)}</Badge>
             </>
@@ -138,7 +137,7 @@ export function TaskSetupStepper({ steps }: { steps: TaskSetupStep[] }) {
 export function PublishReadinessPanel({
   items,
   title = "发布前检查",
-  description = "发布前会先检查任务配置完整性，缺失项需要回到对应步骤补齐。",
+  description = "完成以下项目后即可发布。",
 }: {
   items: ReadinessItem[];
   title?: string;

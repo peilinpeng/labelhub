@@ -59,6 +59,25 @@ export function Badge({ children, tone = "default", className = "" }: BadgeProps
   return <span className={["lh-badge", toneClass, className].filter(Boolean).join(" ")}>{children}</span>;
 }
 
+interface HelpDisclosureProps {
+  summary: string;
+  children: ReactNode;
+  className?: string;
+}
+
+/**
+ * 将低频的解释性文案收进原生 disclosure：默认界面只保留决策和操作，
+ * 需要理解规则时仍可在当前上下文中展开，不必跳转到文档。
+ */
+export function HelpDisclosure({ summary, children, className = "" }: HelpDisclosureProps) {
+  return (
+    <details className={["lh-help-disclosure", className].filter(Boolean).join(" ")}>
+      <summary>{summary}</summary>
+      <div className="lh-help-disclosure__content">{children}</div>
+    </details>
+  );
+}
+
 interface KpiCardProps {
   label: string;
   value: string | number;

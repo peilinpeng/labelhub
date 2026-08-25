@@ -9,7 +9,7 @@ import {
   updateReviewConfig,
   type ReviewConfigPayload,
 } from "../../api/reviewer";
-import { AIReviewPanel, Badge, Button, Card, Input, Select } from "../../ui/primitives";
+import { AIReviewPanel, Badge, Button, Card, HelpDisclosure, Input, Select } from "../../ui/primitives";
 import { buildTaskSetupSteps, TaskSetupStepper } from "./TaskSetupGuide";
 
 interface OwnerAIPageProps {
@@ -199,7 +199,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
       <div className="page-header">
         <div>
           <h2 className="page-title">AI 预审配置</h2>
-          <p className="page-subtitle">配置本任务在提交前或审核前需要执行的 AI 质量检查规则。保存后再回到发布前检查完成发布。</p>
+          <p className="page-subtitle">设置模型、审核流转与评分规则。</p>
         </div>
         <Link to={RoutePath.OWNER_TASKS} className="lh-button">
           返回任务列表
@@ -227,7 +227,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
           </Select>
         </label>
         {!taskListLoading && tasks.length === 0 ? (
-          <p className="page-subtitle">请先创建任务草稿，再为该任务配置 AI 预审规则。</p>
+          <p className="page-subtitle">请先创建任务，再配置 AI 预审。</p>
         ) : null}
       </Card>
 
@@ -261,14 +261,16 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
               </Select>
             </label>
             <label className="field-label">
-              检查结果如何进入审核流
+              审核流转
               <Select value={reviewFlowMode} onChange={(event) => setReviewFlowMode(event.target.value as typeof reviewFlowMode)} disabled={!enabled}>
                 <option value="AI_THEN_HUMAN">AI 预审后进入人工复核</option>
                 <option value="AUTO_PASS_RETURN">高分自动通过，低分自动打回，中间转人工</option>
                 <option value="HUMAN_REVIEW_ONLY">只生成 AI 质检提示，由审核员决策</option>
               </Select>
-              <small className="field-hint">该策略会随 ReviewConfig 保存并由后端预审 worker 执行：仅「高分自动通过…」允许 AI 自动通过/打回，其余策略下 AI 结论仅作参考、一律转人工复核。</small>
             </label>
+            <HelpDisclosure summary="查看流转规则">
+              仅“高分自动通过，低分自动打回”会由 AI 自动流转；其他模式均由审核员最终决定。
+            </HelpDisclosure>
             {autoFlowEnabled ? (
               <>
                 <label className="field-label">
@@ -296,13 +298,9 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
                   />
                 </label>
               </>
-            ) : (
-              <p className="field-hint">
-                当前策略不启用自动通过/打回，AI 结果仅作为人工审核参考。
-              </p>
-            )}
+            ) : null}
             <label className="field-label">
-              失败重试次数
+              失败后重试
               <Input
                 type="number"
                 min="1"
@@ -314,7 +312,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
               />
             </label>
             <label className="field-label">
-              Prompt 模板
+              Prompt
               <textarea
                 className="owner-ai-prompt-input"
                 value={promptTemplate}
@@ -325,7 +323,7 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
             <section className="owner-ai-dimensions" aria-label="维度评分">
               <div className="owner-ai-section-title">
                 <strong>维度评分</strong>
-                <span>拖动任一维度滑块，其余维度按原有比例自动缩放，权重之和始终为 1</span>
+                <span>总权重保持 1.00</span>
               </div>
               {dimensions.map((dimension, index) => (
                 <div className="owner-ai-dimension-row" key={dimension.key}>
@@ -354,13 +352,6 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
                 <strong>{weightSum.toFixed(2)}</strong>
               </div>
             </section>
-            <div className="owner-ai-flow">
-              <span>标注员提交</span>
-              <span>异步队列</span>
-              <span>AI 结构化评分</span>
-              <span>审核员复核 / 终审</span>
-              <span>通过入库 / 打回修改</span>
-            </div>
             <Button tone="primary" onClick={() => void saveSettings()} disabled={saving || loading || !selectedTaskId}>
               {saving ? "保存中..." : "保存配置"}
             </Button>
@@ -379,14 +370,12 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
           </div>
         </Card>
 
-        <AIReviewPanel title="规则预览" badge={<Badge tone="primary">AI 自动预审</Badge>}>
+        <AIReviewPanel title="预览" badge={<Badge tone="primary">AI 预审</Badge>}>
           <div className="form-stack">
-            <p>保存后，标注员每次提交都会进入异步预审队列，由 AI 按下方维度逐项评分。AI 只产出审核结论和评分，不会改写标注答案；重试耗尽或分数处于中间区间时，自动转人工审核兜底。</p>
+            <p className="owner-ai-preview-summary">AI 输出结论、评分和字段建议；不会改写标注答案。</p>
             <div className="owner-ai-output-list" aria-label="AI 预审产出内容">
               <div><span>审核结论</span><strong>自动通过 / 自动打回 / 转人工复核</strong></div>
-              <div><span>评分明细</span><strong>总分与各维度评分、评分理由</strong></div>
-              <div><span>字段提示</span><strong>指出存在问题的字段与改进建议</strong></div>
-              <div><span>审核摘要</span><strong>一句话结论与置信度</strong></div>
+              <div><span>评分与建议</span><strong>总分、维度评分和问题字段</strong></div>
             </div>
             <div className="owner-ai-policy-list">
               {autoFlowEnabled ? (
@@ -400,6 +389,9 @@ export default function OwnerAIPage({ role }: OwnerAIPageProps) {
               )}
               <div><span>失败兜底</span><strong>重试 {maxRetries} 次后转人工</strong></div>
             </div>
+            <HelpDisclosure summary="查看预审说明">
+              提交后进入异步预审队列。分数处于中间区间或重试耗尽时，系统转人工复核。
+            </HelpDisclosure>
           </div>
         </AIReviewPanel>
       </div>
