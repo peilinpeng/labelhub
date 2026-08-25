@@ -9,7 +9,7 @@ import type {
   ServerComponentRegistryItem,
 } from "@labelhub/contracts";
 import { Link } from "react-router";
-import { Badge, Button, Card } from "../../ui/primitives";
+import { Badge, Button, Card, HelpDisclosure } from "../../ui/primitives";
 import {
   FIELD_SECTIONS,
   collectSelectableNodeSummaries,
@@ -48,7 +48,6 @@ export function SchemaDataFieldPanel({
         <header className="owner-data-fields-drawer__head">
           <div>
             <h3>数据字段</h3>
-            <p>来自当前任务已导入数据，可一键添加为展示文本。</p>
           </div>
           <button type="button" className="owner-data-fields-drawer__close" aria-label="关闭数据字段面板" onClick={onClose}>×</button>
         </header>
@@ -63,7 +62,6 @@ export function SchemaDataFieldPanel({
               <section className="owner-data-fields-section" key={section.role}>
                 <div className="owner-data-fields-section__head">
                   <h4>{section.title}</h4>
-                  <p>{section.desc}</p>
                 </div>
                 {sectionFields.map((field) => (
                   <div className={`owner-data-field-card${isAnswer ? " owner-data-field-card--answer" : ""}`} key={field.name}>
@@ -134,7 +132,9 @@ export function SchemaGenerationDialog({
           <div>
             <span>AI Schema Draft Beta</span>
             <h3 id="ai-schema-draft-title">AI 生成模板草稿 Beta</h3>
-            <p>先生成预览，确认后才应用到当前草稿。不会自动保存，也不会自动发布。</p>
+            <HelpDisclosure summary="查看草稿使用规则">
+              生成结果需手动应用；不会自动保存或发布。
+            </HelpDisclosure>
           </div>
           <button type="button" aria-label="关闭 AI 生成模板草稿" disabled={generating} onClick={onClose}>×</button>
         </header>
@@ -295,13 +295,13 @@ export function SchemaRuleEditors({
   return (
     <section className="schema-visual-config">
       <Card className="schema-config-card">
-        <div className="schema-config-heading"><div><h3>字段配置</h3><p>当前模板中可参与条件和校验的字段。</p></div><Badge tone="default">{fieldNodes.length} 个字段</Badge></div>
+        <div className="schema-config-heading"><div><h3>字段配置</h3></div><Badge tone="default">{fieldNodes.length} 个字段</Badge></div>
         {fieldNodes.length > 0 ? <div className="schema-field-config-list">{fieldNodes.map((field) => (
           <div className="schema-field-config-row" key={field.id}><strong>{field.title}</strong><span>{field.name}</span><Badge tone={field.required ? "warning" : "default"}>{field.required ? "必填" : "可选"}</Badge></div>
         ))}</div> : <p className="schema-config-empty">暂无可配置字段。请先从物料区添加输入或选择类字段。</p>}
       </Card>
       <Card className="schema-config-card">
-        <div className="schema-config-heading"><div><h3>条件显示</h3><p>用表单规则控制字段显示、隐藏或禁用。</p></div><Button type="button" onClick={onAddCondition} disabled={fieldNodes.length === 0}>新增规则</Button></div>
+        <div className="schema-config-heading"><div><h3>条件显示</h3></div><Button type="button" onClick={onAddCondition} disabled={fieldNodes.length === 0}>新增规则</Button></div>
         {conditionRules.length > 0 ? <div className="schema-rule-list">{conditionRules.map((rule, index) => (
           <div className="schema-rule-card" key={rule.id}>
             <div className="schema-rule-card__title"><strong>条件规则 {index + 1}</strong><button type="button" onClick={() => setConditionRules((current) => current.filter((item) => item.id !== rule.id))}>删除</button></div>
@@ -313,10 +313,10 @@ export function SchemaRuleEditors({
               <label>动作<select value={rule.action} onChange={(event) => updateConditionRule(setConditionRules, rule.id, { action: event.target.value as ConditionAction })}>{Object.entries(conditionActionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             </div>
           </div>
-        ))}</div> : <p className="schema-config-empty">暂无条件规则。可以添加规则，例如“当质量判断等于需要修改时，显示修改建议”。</p>}
+        ))}</div> : <p className="schema-config-empty">暂无条件规则。</p>}
       </Card>
       <Card className="schema-config-card">
-        <div className="schema-config-heading"><div><h3>校验规则</h3><p>用清晰的控件配置必填、长度和格式要求。</p></div><Button type="button" onClick={onAddValidation} disabled={fieldNodes.length === 0}>新增规则</Button></div>
+        <div className="schema-config-heading"><div><h3>校验规则</h3></div><Button type="button" onClick={onAddValidation} disabled={fieldNodes.length === 0}>新增规则</Button></div>
         {validationRules.length > 0 ? <div className="schema-rule-list">{validationRules.map((rule, index) => (
           <div className="schema-rule-card" key={rule.id}>
             <div className="schema-rule-card__title"><strong>校验规则 {index + 1}</strong><button type="button" onClick={() => setValidationRules((current) => current.filter((item) => item.id !== rule.id))}>删除</button></div>
@@ -327,21 +327,21 @@ export function SchemaRuleEditors({
               <label>错误提示文案<input value={rule.message} onChange={(event) => updateValidationRule(setValidationRules, rule.id, { message: event.target.value })} placeholder="请输入错误提示" /></label>
             </div>
           </div>
-        ))}</div> : <p className="schema-config-empty">暂无校验规则。可以添加规则，例如“摘要最少 10 个字”。</p>}
+        ))}</div> : <p className="schema-config-empty">暂无校验规则。</p>}
       </Card>
       <Card className="schema-config-card">
-        <div className="schema-config-heading"><div><h3>表单预览</h3><p>右侧实时预览会使用同一份 SchemaRenderer 渲染当前模板。</p></div><Button type="button" onClick={onExpandPreview}>放大预览</Button></div>
+        <div className="schema-config-heading"><div><h3>表单预览</h3></div><Button type="button" onClick={onExpandPreview}>放大预览</Button></div>
         <div className="schema-preview-summary"><div><strong>{schema.root.children.length}</strong><span>画布节点</span></div><div><strong>{conditionRules.length}</strong><span>条件规则</span></div><div><strong>{validationRules.length}</strong><span>校验规则</span></div></div>
       </Card>
       <Card className="schema-config-card owner-schema-validation">
-        <div className="schema-config-heading"><div><h3>校验结果</h3><p>发布前的模板自检：标题、选项、字段配置是否完整。</p></div><Badge tone={validationSummary.tone}>{validationSummary.badge}</Badge></div>
+        <div className="schema-config-heading"><div><h3>校验结果</h3></div><Badge tone={validationSummary.tone}>{validationSummary.badge}</Badge></div>
         {validationSummary.errors.length === 0 && validationSummary.warnings.length === 0 ? <p className="schema-config-empty">未发现模板配置问题，可进入发布前检查。</p> : (
           <div className="owner-schema-issue-list">
             {validationSummary.errors.map((issue, index) => <div className="owner-schema-issue owner-schema-issue--error" key={`error-${index}`}><span className="owner-schema-issue-tag">必须修复</span><p>{issue}</p></div>)}
             {validationSummary.warnings.map((issue, index) => <div className="owner-schema-issue owner-schema-issue--warning" key={`warning-${index}`}><span className="owner-schema-issue-tag">建议检查</span><p>{issue}</p></div>)}
           </div>
         )}
-        {templateReady ? <div className="owner-template-next-step"><span>当前模板已通过发布前检查，下一步配置本任务的 AI 预审规则。</span><Link to={`/owner/tasks/${taskId}/ai-precheck`} className="lh-button lh-button--primary">继续配置 AI 预审</Link></div> : null}
+        {templateReady ? <div className="owner-template-next-step"><span>已通过发布前检查</span><Link to={`/owner/tasks/${taskId}/ai-precheck`} className="lh-button lh-button--primary">继续配置 AI 预审</Link></div> : null}
       </Card>
       <Card className="schema-config-card schema-config-card--wide">
         <details open={advancedOpen} onToggle={(event) => onAdvancedOpenChange(event.currentTarget.open)}>

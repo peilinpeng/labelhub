@@ -157,7 +157,6 @@ export function AiAssistPanel({ submissionId, onActionApplied }: AiAssistPanelPr
         <div>
           <span className="review-ai-assist__eyebrow">AI Assist</span>
           <h3>AI 建议一键采纳</h3>
-          <p>审核员可一键采纳、编辑后采纳或忽略 AI 给出的字段级修订建议。</p>
         </div>
         <Badge tone={pendingCount > 0 ? "primary" : "default"}>待处理 {pendingCount}</Badge>
       </div>

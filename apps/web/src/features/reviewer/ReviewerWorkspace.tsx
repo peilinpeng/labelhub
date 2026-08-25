@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { Role } from "../../app/routes";
 import { batchDecideReview, claimReview, fetchReviewQueueCount, getReviewDetail, listReviewQueue, type ReviewQueueItem } from "../../api/reviewer";
 import type { AIPrecheckDecision, ReviewDecisionRequest } from "@labelhub/contracts";
-import { Badge, Button, Card, Textarea } from "../../ui/primitives";
+import { Badge, Button, Card, HelpDisclosure, Textarea } from "../../ui/primitives";
 import { formatBeijingClock } from "../../utils/formatTime";
 import { getQueueDisplay } from "./review-display";
 
@@ -313,12 +313,10 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
       <section className="review-ai-header">
         <div>
           <h1>AI 自动预审队列</h1>
-          <p>这里展示任务负责人配置后的 AI 预审结果。审核员负责人工审核验收：复审 / 终审、查看第 1 / 2 轮差异、参考 AI 评语、批量处理和审计追踪。</p>
+          <p>处理 AI 预审结果与人工决策。</p>
         </div>
         <div className="review-ai-header__meta">
           <Badge tone="success">服务在线</Badge>
-          <span>预审规则由任务负责人维护</span>
-          <span>当前角色：审核员，只提交人工决策</span>
         </div>
       </section>
 
@@ -330,9 +328,8 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
       ) : null}
 
       <section className="reviewer-overview" aria-label="我的审核概览">
-        <div className="reviewer-overview__head">
-          <h2>我的审核概览</h2>
-          <span>仅展示与你审核任务相关的真实队列数据</span>
+          <div className="reviewer-overview__head">
+            <h2>我的审核概览</h2>
         </div>
         {counts.pending + counts.passed + counts.returned === 0 ? (
           <div className="empty-state">
@@ -354,7 +351,7 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
             </div>
             <div className="reviewer-overview__item">
               <span>AI 预审辅助</span>
-              <em>进入审核详情可查看 AI 评语与维度评分，作为人工决策参考。</em>
+              <em>详情可查看评分与建议</em>
             </div>
           </div>
         )}
@@ -363,7 +360,7 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
       <div className="review-ai-layout">
         <Card className="review-ai-queue">
           <div className="review-ai-queue__toolbar">
-            <span>AI 预审为异步处理，提交后稍候可刷新查看最新结果。</span>
+            <span>预审结果异步更新</span>
             <Button
               type="button"
               tone="default"
@@ -513,12 +510,9 @@ export default function ReviewerWorkspace({ role }: ReviewerWorkspaceProps) {
               </div>
             </section>
 
-            <div className="review-flow-strip">
-              <span>AI 预审结果</span>
-              <strong>{selected.submission.status === "FINAL_REVIEWING" ? "终审视图" : "复审视图"}</strong>
-              <span>第 {selected.submission.attemptNo} 轮 diff</span>
-              <span>人工决策写入审计</span>
-            </div>
+            <HelpDisclosure summary={`查看${selected.submission.status === "FINAL_REVIEWING" ? "终审" : "复审"}流程`}>
+              AI 评分仅供参考；人工决策会写入审计记录。
+            </HelpDisclosure>
 
             <div className="review-ai-insight-grid">
               <Card className="review-ai-block">
