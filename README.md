@@ -241,7 +241,7 @@ Vite 开发服务器。MySQL 与 Redis 默认只在 Compose 内网开放。
 
 ### 方式二：前端 + 共享库本地开发
 
-本项目统一使用 Node `24.19.0` 与 npm `11.17.0`。安装了 nvm 时，可先执行 `nvm use` 读取根目录 `.nvmrc`。
+本项目统一使用 Node `26.7.0` 与 npm `11.19.0`。安装了 nvm 时，可先执行 `nvm use` 读取根目录 `.nvmrc`。
 
 ```bash
 # 切换到项目约定的 Node 版本

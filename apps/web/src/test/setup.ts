@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { server } from "./server";
 
-// Node 22 在 coverage worker 中可能暴露一个未配置 --localstorage-file 的空
+// Node 22+ 在 coverage worker 中可能暴露一个未配置 --localstorage-file 的空
 // localStorage 对象，覆盖 jsdom 的 Storage。测试启动时校正为确定性的内存实现，
 // 保证普通运行与 coverage 运行使用同一套浏览器存储语义。
 if (typeof globalThis.localStorage?.getItem !== "function") {

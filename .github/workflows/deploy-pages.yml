@@ -6,6 +6,9 @@ on:
     paths:
       - "apps/web/**"
       - "packages/**"
+      - ".nvmrc"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -28,7 +31,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: "24.19.0"
+          node-version: "26.7.0"
           cache: npm
           cache-dependency-path: |
             package-lock.json
