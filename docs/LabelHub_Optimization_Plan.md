@@ -453,6 +453,10 @@ npm --prefix apps/web run typecheck
   Docker builder、CI、真实后端 E2E、Pages 与 Dependabot。Node 24 下共享包 375 项、
   Web 44 项覆盖率测试、生产 / Demo 构建、生产审计、隔离 Compose 迁移与真实 Playwright
   6 项场景均通过。
+- Node 26 兼容性工作包将正式基线升至 Node `26.7.0`（npm `11.19.0`）：`.nvmrc`、根与
+  Web engines、package manager、Web `@types/node`、Shared/Web CI、真实后端 E2E、Pages 与
+  本地开发/部署说明必须保持一致；Docker builder 已使用同一 Node 版本。该升级需在干净
+  Node 26 安装、共享包与 Web 测试/构建/审计、Docker Compose E2E 及 GitHub 工作流中完整验收。
 
 ### OPT-12 拆分 Owner Schema 页面
 
