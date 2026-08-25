@@ -1,15 +1,15 @@
 # 生产运行时直接依赖。修改后执行：
 # uv pip compile --python-version 3.11 --universal --generate-hashes requirements.in -o requirements.txt
 fastapi==0.141.1
-uvicorn[standard]==0.52.1
+uvicorn[standard]==0.52.4
 sqlalchemy==2.0.51
-alembic==1.18.5
+alembic==1.19.1
 celery[redis]==5.6.3
 redis==6.4.0
 pymysql==1.2.0
-openai==2.52.1
+openai==3.3.1
 pyjwt[crypto]==2.13.0
-pwdlib[argon2,bcrypt]==0.3.0
+pwdlib[argon2,bcrypt]==0.3.1
 bcrypt==5.0.0
 pandas==3.0.5
 openpyxl==3.1.5
