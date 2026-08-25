@@ -20,6 +20,10 @@
   accent-color: #2563eb;
 }
 
+.owner-ai-page .lh-help-disclosure {
+  margin-top: -6px;
+}
+
 /* 异步预审流程步骤条：标注员提交 → 异步队列 → AI 评分 → 人工复核 → 入库/打回 */
 .owner-ai-flow {
   display: flex;
@@ -92,6 +96,13 @@
 .owner-ai-policy-list > div:last-child {
   border-left: 3px solid rgba(217, 119, 6, 0.55);
   background: rgba(245, 158, 11, 0.05);
+}
+
+.owner-ai-preview-summary {
+  margin: 0;
+  color: var(--lh-muted);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .review-ai-page,

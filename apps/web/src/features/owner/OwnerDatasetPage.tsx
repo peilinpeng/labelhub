@@ -175,7 +175,7 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
       <div className="page-header">
         <div>
           <h2 className="page-title">数据管理</h2>
-          <p className="page-subtitle">导入标注数据。请先导入本任务需要标注的数据，再继续配置标注模板。</p>
+          <p className="page-subtitle">导入标注数据后继续配置模板。</p>
         </div>
         <div className="page-actions">
           <Link to={`/owner/tasks/${taskId}`} className="lh-button">返回任务详情</Link>
@@ -189,7 +189,7 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
         <div className="owner-section-heading">
           <div>
             <h3>{task?.title ?? "当前任务"}</h3>
-            <p>数据会作为标注员领取的题目来源，发布任务前至少需要 1 条可领取数据。</p>
+            <p>发布前需至少 1 条可领取数据。</p>
           </div>
           <Badge tone={hasData ? "success" : "warning"}>{hasData ? `已导入 ${total} 条` : "待导入"}</Badge>
         </div>
@@ -214,7 +214,6 @@ export default function OwnerDatasetPage({ role: _role }: OwnerDatasetPageProps)
           <section className="owner-dataset-field-preview" aria-label="数据字段预览">
             <div className="owner-dataset-field-preview__head">
               <h4>数据字段预览</h4>
-              <p>根据已导入样本自动识别字段、类型和示例值。</p>
             </div>
             <div className="owner-dataset-field-grid">
               {fieldSamples.map((field) => (
