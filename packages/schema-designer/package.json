@@ -25,7 +25,7 @@
     "@labelhub/schema-renderer": "file:../schema-renderer"
   },
   "devDependencies": {
-    "@testing-library/react": "^16.0.0",
+    "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.5",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
