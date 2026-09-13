@@ -72,12 +72,18 @@ test.describe("Owner 真后端任务生命周期", () => {
     });
     const createdBody = await created.json() as { exportJob: { id: string } };
     const exportId = createdBody.exportJob.id;
+    const accessToken = await page.evaluate(() => localStorage.getItem("labelhub_token"));
+    expect(accessToken).toBeTruthy();
 
     await expect.poll(async () => {
-      const response = await page.request.get(`/api/v1/tasks/${taskId}/exports`);
+      const response = await page.request.get(`/api/v1/tasks/${taskId}/exports`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
       if (!response.ok()) return "HTTP_ERROR";
-      const body = await response.json() as Array<{ id: string; status: string }> | { items?: Array<{ id: string; status: string }> };
-      const jobs = Array.isArray(body) ? body : body.items ?? [];
+      const body = await response.json() as Array<{ id: string; status: string }> | {
+        exportJobs?: Array<{ id: string; status: string }>;
+      };
+      const jobs = Array.isArray(body) ? body : body.exportJobs ?? [];
       return jobs.find((job) => job.id === exportId)?.status ?? "MISSING";
     }, { timeout: 30_000 }).toBe("SUCCEEDED");
 
