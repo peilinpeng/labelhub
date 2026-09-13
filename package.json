@@ -26,8 +26,8 @@
     "test:workflow-core": "npm run -w @labelhub/workflow-core test"
   },
   "devDependencies": {
-    "@types/node": "26.2.0",
-    "tsx": "4.23.12",
+    "@types/node": "26.4.1",
+    "tsx": "4.23.13",
     "typescript": "^7.0.2"
   }
 }
