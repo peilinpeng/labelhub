@@ -24,4 +24,27 @@ test.describe("Reviewer 真后端审核链路", () => {
     await expect(page.getByRole("tab", { name: "通过" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "打回" })).toBeVisible();
   });
+
+  test("领取待审提交 → 确认通过 → 状态进入已通过", async ({ page }) => {
+    await login(page, "REVIEWER");
+    await page.goto("/reviewer/items/sub_demo_review_01");
+    await expect(page.getByRole("heading", { name: "原始数据" })).toBeVisible();
+
+    const decisionResponse = page.waitForResponse(
+      (response) => response.url().endsWith("/api/v1/review/submissions/sub_demo_review_01/decision") && response.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: /通过入库/ }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "通过" }).click();
+
+    const response = await decisionResponse;
+    expect(response.ok()).toBe(true);
+    expect(response.request().postDataJSON()).toMatchObject({
+      submissionId: "sub_demo_review_01",
+      stage: "HUMAN_REVIEW",
+      decision: "PASS",
+    });
+    const body = await response.json() as { submission?: { status?: string } };
+    expect(body.submission?.status).toBe("ACCEPTED");
+    await expect(page.getByText("审核通过，结果已进入可导出数据。")).toBeVisible();
+  });
 });

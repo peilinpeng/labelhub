@@ -48,4 +48,51 @@ test.describe("Owner 真后端任务生命周期", () => {
     await page.getByRole("dialog").getByRole("button", { name: "确认删除" }).click();
     await expect(taskRow).toHaveCount(0);
   });
+
+  test("创建导出 → 等待完成 → 下载制品", async ({ page }) => {
+    await login(page, "OWNER");
+    const taskId = "task_demo_news_quality";
+    await page.goto(`/owner/tasks/${taskId}/export`);
+    await expect(page.getByRole("heading", { name: "导出中心" })).toBeVisible();
+
+    const createResponse = page.waitForResponse(
+      (response) => response.url().endsWith(`/api/v1/tasks/${taskId}/exports`) && response.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "开始导出" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "导出" }).click();
+    const created = await createResponse;
+    expect(created.ok()).toBe(true);
+    expect(created.request().postDataJSON()).toMatchObject({
+      mapping: {
+        schemaVersionId: "sv_demo_news_quality_v1",
+        answerSource: "PATCHED_ANSWERS",
+        allowPatchedAnswers: true,
+        filters: { acceptedOnly: true },
+      },
+    });
+    const createdBody = await created.json() as { exportJob: { id: string } };
+    const exportId = createdBody.exportJob.id;
+    const accessToken = await page.evaluate(() => localStorage.getItem("labelhub_token"));
+    expect(accessToken).toBeTruthy();
+
+    await expect.poll(async () => {
+      const response = await page.request.get(`/api/v1/tasks/${taskId}/exports`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok()) return "HTTP_ERROR";
+      const body = await response.json() as Array<{ id: string; status: string }> | {
+        exportJobs?: Array<{ id: string; status: string }>;
+      };
+      const jobs = Array.isArray(body) ? body : body.exportJobs ?? [];
+      return jobs.find((job) => job.id === exportId)?.status ?? "MISSING";
+    }, { timeout: 30_000 }).toBe("SUCCEEDED");
+
+    await page.reload();
+    const completedJob = page.locator(".owner-export-job").filter({ hasText: "已完成" }).first();
+    await expect(completedJob).toBeVisible();
+    const downloadPromise = page.waitForEvent("download");
+    await completedJob.getByRole("button", { name: "下载", exact: true }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename().length).toBeGreaterThan(0);
+  });
 });
