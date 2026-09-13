@@ -1,7 +1,7 @@
 name: Web E2E (real backend)
 
 # 真后端端到端：用 docker compose 起全栈（mysql/redis/api/worker/web + seed 播种），
-# 再用 Playwright 打 :5173（web 经 proxy 到 api，即真后端）。
+# 再用 Playwright 打 :5173（web 经 proxy 到 api，即真后端），并验证导出后重复 seed。
 # 这是唯一能拦「mock 与真后端契约漂移」的门禁——审核详情页白屏正是这一类。
 # 较重，仅在涉及前后端契约面的改动、PR 与手动触发时跑。
 

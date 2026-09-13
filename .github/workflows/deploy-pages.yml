@@ -1,6 +1,7 @@
 name: Deploy Mock demo to GitHub Pages
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:

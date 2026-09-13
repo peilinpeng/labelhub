@@ -4,6 +4,7 @@ name: API CI
 # 行锁/并发等 @pytest.mark.integration 测试需真实 MySQL，CI 默认跳过。
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "apps/api/**"

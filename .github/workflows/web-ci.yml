@@ -6,6 +6,7 @@ name: Shared packages and Web CI
 # 真后端 E2E 见 web-e2e.yml。
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "apps/web/**"
