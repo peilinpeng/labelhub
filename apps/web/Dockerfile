@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:26.7.0-alpine AS builder
+FROM node:26.8.1-alpine AS builder
 
 WORKDIR /workspace
 
@@ -22,7 +22,7 @@ ENV VITE_ENABLE_MSW=${VITE_ENABLE_MSW}
 RUN npm run build --prefix apps/web \
     && rm -f apps/web/dist/mockServiceWorker.js
 
-FROM nginxinc/nginx-unprivileged:1.31.4-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.31.5-alpine AS runtime
 
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder --chown=101:101 /workspace/apps/web/dist/ /usr/share/nginx/html/
