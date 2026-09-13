@@ -10,8 +10,9 @@
 | 默认分支 | `main` |
 | 状态基线 | `a88979f8c2f7ab73a6aacf6888b1148905d1e039` |
 | 最近产品合并 | PR #77：Reviewer 与 Schema 信息密度优化 |
+| 本轮交付栈验证点 | `c6c7063e5b55c692f12cd6d2e7a76fb4f1026344`（待按 PR 顺序合并） |
 | 最近核验日期 | 2026-09-13 |
-| 工作流状态 | Shared packages/Web、API、真实后端 E2E、GitHub Pages 最近对应运行均成功 |
+| 工作流状态 | `main` 最近对应工作流成功；本轮分支已完成本地全门禁，待 PR CI 复核 |
 
 ## 验证基线
 
@@ -19,11 +20,11 @@
 
 | 范围 | 最近结果 | 核验来源 |
 | --- | --- | --- |
-| API 常规测试 | 276 passed，2 deselected | 2026-08-25 API CI |
-| 共享包 | 375 passed | 2026-08-25 Node 26 全量验证 |
-| Web 组件测试 | 44 passed | 2026-09-13 本地 coverage 复核 |
-| Web 覆盖率 | statements 44.61%、branches 36.91%、functions 43.92%、lines 47.33% | 2026-09-13 `npm --prefix apps/web run test:coverage` |
-| 真实后端 E2E | 6 个场景通过 | 2026-08-25 main CI |
+| API 常规测试 | 276 passed，2 deselected | 2026-09-13 Python 3.11 哈希锁环境 |
+| 共享包 | 375 passed | 2026-09-13 全量 typecheck/test |
+| Web 组件测试 | 56 passed | 2026-09-13 本地 coverage 复核 |
+| Web 覆盖率 | statements 66.03%、branches 54.23%、functions 67.79%、lines 69.45% | 2026-09-13 `npm run test:coverage --prefix apps/web` |
+| 真实后端 E2E | 9 个场景通过 | 2026-09-13 全新隔离 Compose 数据卷 |
 
 ## 已完成能力
 
@@ -42,9 +43,10 @@
 
 ## 当前维护待办
 
-1. 整合并验证 2026-08-30 至 2026-09-06 产生的 Dependabot 更新。
-2. 将 Web 四项覆盖率门禁提升至 50%，优先覆盖导出、数据导入、AI 配置和任务详情。
-3. 在测试保护下拆分 `mock-db.ts`、`useSchemaDraft.ts` 和大型工作台页面。
+1. 按文档治理 → 依赖 → 覆盖率 → 安全拆分的顺序合并本轮 4 个 PR，并观察 `main` 工作流。
+2. 依赖整合 PR 合并后关闭被替代的 Dependabot PR，并附替代提交说明。
+3. 后续由 API 负责人修正 E2E seed 在已生成 `export_records` 后的清理顺序；当前从全新数据卷执行不受影响。
+4. 本轮 PR 全部合并后，把状态基线更新为最终 `main` SHA。
 
 ## 版本语义
 
