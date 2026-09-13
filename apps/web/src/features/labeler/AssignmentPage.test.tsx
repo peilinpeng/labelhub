@@ -130,4 +130,65 @@ describe("AssignmentPage 标注闭环", () => {
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "提交当前数据" })).toBeDisabled();
   });
+
+  it("自动保存失败保留输入，用户可手动重试恢复", async () => {
+    const base = structuredClone(getAssignmentContext("asn_1001")!);
+    const assignmentId = "asn_autosave_recovery";
+    const context: AssignmentContextResponse = {
+      ...base,
+      assignment: { ...base.assignment, id: assignmentId as ID, status: "CLAIMED" },
+      schema: {
+        ...base.schema,
+        root: {
+          ...base.schema.root,
+          children: [{
+            id: "note_recovery" as ID,
+            kind: "FIELD",
+            type: "input.text",
+            name: "note",
+            title: "备注",
+            required: false,
+          }],
+        },
+      },
+    };
+    let attempts = 0;
+    let recoveredAnswers: Record<string, unknown> | undefined;
+    server.use(
+      http.get(`*/api/v1/assignments/${assignmentId}`, () => HttpResponse.json(context)),
+      http.get(`*/api/v1/assignments/${assignmentId}/items`, () => HttpResponse.json({ items: [context.item] })),
+      http.put(`*/api/v1/assignments/${assignmentId}/draft`, async ({ request }) => {
+        attempts += 1;
+        const body = await request.json() as { answers: Record<string, unknown> };
+        if (attempts === 1) {
+          return HttpResponse.json({ code: "TEMPORARY", message: "保存服务暂不可用", traceId: "trace-test" }, { status: 503 });
+        }
+        recoveredAnswers = body.answers;
+        return HttpResponse.json({
+          draft: {
+            assignmentId,
+            schemaVersionId: context.schemaVersionId,
+            answers: body.answers,
+            clientRevision: 0,
+            serverRevision: 1,
+            savedAt: new Date().toISOString(),
+          },
+          assignment: { ...context.assignment, status: "DRAFTING" },
+          validation: { valid: true, errors: [], warnings: [] },
+          auditLog: { id: "audit_recovery", action: "DRAFT_SAVED", createdAt: new Date().toISOString() },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderAssignment(assignmentId);
+    const input = await screen.findByRole("textbox", { name: /备注/ });
+    await user.type(input, "本地内容不能丢");
+    expect(await screen.findByText(/自动保存暂时失败，内容已保留/, undefined, { timeout: 3_000 })).toBeInTheDocument();
+    expect(input).toHaveValue("本地内容不能丢");
+
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(recoveredAnswers).toEqual({ note: "本地内容不能丢" }));
+    expect(screen.getByText(/草稿已自动保存/)).toBeInTheDocument();
+  });
 });
