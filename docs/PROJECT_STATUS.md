@@ -8,11 +8,11 @@
 | 项目 | 状态 |
 | --- | --- |
 | 默认分支 | `main` |
-| 状态基线 | `77b7fe01f9becadcab7ed17dc77cf0c69fada2d8` |
+| 已验证主线基线 | `9308fb6cd8adebcdf4b37f9a23428a2598fc3fa7` |
 | 最近产品合并 | PR #97：修复导出后重复 seed 的外键清理 |
-| 本轮稳定性收口 | PR #93、#94、#95、#96、#97 已按依赖顺序进入 `main` |
+| 本轮稳定性收口 | PR #93～#99 的代码与治理变更已按依赖顺序进入 `main` |
 | 最近核验日期 | 2026-09-13 |
-| 工作流状态 | PR #97 的 API、依赖审计和增强真实后端 E2E 成功；最终 `main` 工作流复核中 |
+| 工作流状态 | 该基线的 API CI、共享包/Web CI、增强真实后端 E2E 和 GitHub Pages 部署全部成功 |
 
 ## 验证基线
 
@@ -24,8 +24,8 @@
 | 共享包 | 375 passed | 2026-09-13 全量 typecheck/test |
 | Web 组件测试 | 56 passed | 2026-09-13 本地 coverage 复核 |
 | Web 覆盖率 | statements 66.03%、branches 54.23%、functions 67.79%、lines 69.45% | 2026-09-13 `npm run test:coverage --prefix apps/web` |
-| 真实后端 E2E | 9 个场景通过；非空导出后重复 seed 通过 | 2026-09-13 全新隔离 Compose 数据卷与 PR #97 CI |
-| GitHub Pages | 首页、Owner 导出、Labeler 我的提交、Reviewer 审核详情深链接通过 | 2026-09-13 线上人工验收 |
+| 真实后端 E2E | 9 个场景通过；非空导出后重复 seed 通过 | 2026-09-13 全新隔离 Compose 数据卷、PR #97 CI 与最终 `main` CI |
+| GitHub Pages | 首页、三角色登录、Owner 导出、Labeler 我的提交、Reviewer 审核详情深链接通过 | 2026-09-13 最终 `main` 部署线上人工验收 |
 
 ## 已完成能力
 
