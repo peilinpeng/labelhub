@@ -2,9 +2,13 @@
 
 **LabelHub 是一个 Schema-driven 的 AI 数据标注与质量治理平台。**
 
+[![Shared packages and Web CI](https://github.com/peilinpeng/labelhub/actions/workflows/web-ci.yml/badge.svg?branch=main)](https://github.com/peilinpeng/labelhub/actions/workflows/web-ci.yml)
+[![API CI](https://github.com/peilinpeng/labelhub/actions/workflows/api-ci.yml/badge.svg?branch=main)](https://github.com/peilinpeng/labelhub/actions/workflows/api-ci.yml)
+[![Web E2E](https://github.com/peilinpeng/labelhub/actions/workflows/web-e2e.yml/badge.svg?branch=main)](https://github.com/peilinpeng/labelhub/actions/workflows/web-e2e.yml)
+
 它支持任务负责人（Owner）、标注员（Labeler）和审核员（Reviewer）三类角色，覆盖任务配置、Schema 模板搭建、动态标注、AI 辅助质量检查、人工审核、审计追踪和质量导出等流程。整个系统围绕同一套共享契约协作：标注结构由版本化 Schema 驱动，AI 以受校验约束的方式介入，质量决策全程留痕。
 
-> Monorepo 结构：`apps/web`（前端）、`apps/api`（后端 API + Celery worker）、`packages/*`（contracts / schema-core / schema-compiler / schema-renderer / schema-designer / workflow-core 共享库）。
+> Monorepo 结构：`apps/web`（前端）、`apps/api`（后端 API + Celery worker）、`packages/*`（contracts / schema-core / schema-compiler / schema-renderer / schema-designer / workflow-core 共享库）。当前主线、验证快照和维护待办见 [`docs/PROJECT_STATUS.md`](./docs/PROJECT_STATUS.md)。
 
 ---
 
@@ -22,7 +26,7 @@
 | **4.4 AI 预审 Agent**（核心难点）：可配置 Prompt + 评分维度、异步入队、Function Calling 结构化输出、失败重试 + 幂等、结果可见可追溯 | ✅ 维度/阈值/权重可配置；Celery 异步队列；`FUNCTION_CALLING` 结构化输出（非裸文本解析）；`retry_count` 重试 + 幂等键；AI 评语与原始 Prompt 可在审核台查看 | `apps/api/app/services/review_domain.py`、`worker/ai_review_worker.py`；`/owner/ai-config` |
 | **4.5 多角色审核流转**：`PASS/RETURN/REVISE` 状态机、迁移可追溯（审计）、批量操作、打回附理由 + 上一轮意见可见、第 1/2 轮 diff | ✅ 结构化决策流；批量审核 `BatchReviewRequest`；`RETURN` 必填理由、Labeler 可见上轮意见；`REVIEW_DIFF_GENERATED` 字段级 diff 审计 | `apps/api/app/routers/review.py`、`services/review_domain.py`；`/reviewer/items` |
 | **4.6 多格式导出**：JSON / JSONL / CSV / Excel、异步导出 + 下载历史、字段映射可配置 | ✅ 四格式真实生成；Celery 异步导出；字段映射（选字段 / 重命名 / 是否含审核记录） | `apps/api/app/worker/export_worker.py`、`services/export_domain.py`；`/owner/tasks/:id/export` |
-| **工程质量（25%）**：TypeScript 全栈类型、单测/集成测试、README + 部署文档 | ✅ `@labelhub/contracts` 单一类型来源（无大量 any）；**API 常规测试 264 passed、MySQL 集成测试 2 个、共享库 375 passed、Web 组件测试 41 passed、Playwright 6 个场景（4 个真实链路 + 2 个响应式）**；`docs/deployment.md` 部署文档 | `npm run test`、`pytest -m "not integration"`、`npm --prefix apps/web run e2e` |
+| **工程质量（25%）**：TypeScript 全栈类型、单测/集成测试、README + 部署文档 | ✅ `@labelhub/contracts` 单一类型来源（无大量 any）；共享包、API、Web 与真实后端 E2E 均纳入 GitHub Actions；带日期的测试数量与覆盖率见项目状态页 | [`docs/PROJECT_STATUS.md`](./docs/PROJECT_STATUS.md)、`docs/deployment.md` |
 | **产品体验（15%）**：视觉统一、错误友好、操作可逆、1280×800 & 1920×1080 | ✅ 草稿自动保存 + 可逆操作；人话错误提示（不暴露工程词）；响应式（70+ 媒体查询，移动端适配为加分项） | — |
 
 > 答辩**提交物清单**（源码 Monorepo / 演示视频 / 架构图 / AI Coding 过程记录 / Demo 截图 / 可访问演示环境说明 / API 文档）见 [`submission/README.md`](./submission/README.md)。
@@ -413,6 +417,7 @@ Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追�
 
 | 文档 | 用途 |
 | --- | --- |
+| [docs/PROJECT_STATUS.md](./docs/PROJECT_STATUS.md) | 当前主线、验证快照、能力边界与维护待办 |
 | [labelhub-architecture-contract.md](./labelhub-architecture-contract.md) | 顶层架构契约（v1.1），各层共同依据 |
 | [AI_CODING_RULES.md](./AI_CODING_RULES.md) | AI Coding 统一规则（contract-driven、禁止事项、验证要求） |
 | [docs/LabelHub_Final_Delivery.md](./docs/LabelHub_Final_Delivery.md) | 最终交付说明 |
@@ -437,6 +442,6 @@ Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追�
 
 ## 13. 最终交付说明
 
-- 建议最终交付分支：PR 合并后的 `dev` 或 `main`。
-- 当前稳定集成分支：`integration/joint-test`。
-- 交付固定点 tag：`final-delivery-0610`（含 2026-06-10 全部真机关键修复）；历史阶段 tag：`stable-after-owner-ai-config-polish-0610`。
+- 当前稳定交付分支为 `main`；禁止直接在 `main` 开发或 push。
+- Git tag 或主线 commit 表示可复现的产品交付快照；历史答辩固定点 `final-delivery-0610` 继续保留。
+- 私有 npm workspace 版本与 OpenAPI 服务版本属于不同命名空间，当前值与解释见项目状态页。
