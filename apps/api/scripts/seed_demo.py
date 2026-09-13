@@ -36,8 +36,11 @@ from app.models.task import Task
 from app.models.schema import SchemaDraft, SchemaVersion
 from app.models.dataset import DatasetItem
 from app.models.review import ReviewConfig, AIReviewJob, ReviewResult
+from app.models.ai_assist import AiAssistAction
 from app.models.assignment import Assignment, Draft
 from app.models.submission import Submission
+from app.models.export import ExportJob
+from app.models.export_record import ExportRecord
 from app.passwords import hash_password
 
 _PASSWORD = "password123"
@@ -138,10 +141,17 @@ def _wipe_demo(db) -> None:
     from app.models.llm import LLMCallLog
     sub_ids = [s.id for s in db.query(Submission).filter_by(task_id=TASK_ID).all()]
     asn_ids = [a.id for a in db.query(Assignment).filter_by(task_id=TASK_ID).all()]
+    job_ids = [j.id for j in db.query(ExportJob).filter_by(task_id=TASK_ID).all()]
     if sub_ids:
         db.query(ReviewResult).filter(ReviewResult.submission_id.in_(sub_ids)).delete(synchronize_session=False)
         db.query(AIReviewJob).filter(AIReviewJob.submission_id.in_(sub_ids)).delete(synchronize_session=False)
+        db.query(AiAssistAction).filter(AiAssistAction.submission_id.in_(sub_ids)).delete(synchronize_session=False)
+        db.query(ExportRecord).filter(ExportRecord.submission_id.in_(sub_ids)).delete(synchronize_session=False)
         db.query(LLMCallLog).filter(LLMCallLog.submission_id.in_(sub_ids)).delete(synchronize_session=False)
+    if job_ids:
+        # export_records 同时依赖 export_jobs 与 submissions，必须先于两侧父记录删除。
+        db.query(ExportRecord).filter(ExportRecord.export_job_id.in_(job_ids)).delete(synchronize_session=False)
+        db.query(ExportJob).filter(ExportJob.id.in_(job_ids)).delete(synchronize_session=False)
     if asn_ids:
         db.query(LLMCallLog).filter(LLMCallLog.assignment_id.in_(asn_ids)).delete(synchronize_session=False)
         # 断开 assignments↔submissions 循环外键：删 submissions 前清空 latest_submission_id

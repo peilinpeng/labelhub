@@ -94,6 +94,18 @@ jobs:
           PLAYWRIGHT_BASE_URL: http://localhost:5173
         run: npm run e2e
 
+      - name: Create a non-empty export after reviewer acceptance
+        working-directory: apps/web
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+        run: npx playwright test e2e/owner.spec.ts --grep "创建导出"
+
+      - name: Verify repeat-seed export precondition
+        run: docker compose exec -T api python scripts/verify_seed_repeat_precondition.py
+
+      - name: Verify seed remains idempotent after export workflows
+        run: docker compose --profile tools run --rm seed
+
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
