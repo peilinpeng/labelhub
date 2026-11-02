@@ -120,6 +120,7 @@ jobs:
         run: |
           docker compose run --rm --no-deps --user 0 --entrypoint sh \
             -e E2E_BASE=http://api:3000/api/v1 \
+            -e E2E_EMAIL_DOMAIN=labelhub.com -e E2E_PASSWORD=password123 \
             -v "$PWD/apps/api/tests:/app/tests:ro" \
             -v "$PWD/apps/api/pytest.ini:/app/pytest.ini:ro" \
             -v "$PWD/apps/api/requirements-dev.txt:/app/requirements-dev.txt:ro" \
