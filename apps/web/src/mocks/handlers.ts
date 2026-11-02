@@ -787,7 +787,7 @@ async function handleAppRouteRequest(request: Request): Promise<Response | undef
   }
 
   const url = new URL(request.url);
-  const response = await fetch(`${url.origin}/`);
+  const response = await fetch(new URL(import.meta.env.BASE_URL, url.origin));
   const html = await response.text();
   return new HttpResponse(html, {
     status: response.status,
