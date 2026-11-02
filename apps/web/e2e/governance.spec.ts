@@ -38,8 +38,8 @@ test("历史迁移：选择范围、独立审批、真实 worker 与不可变产
   expect(granted.status()).toBe(201);
   await login(page, "OWNER");
   await page.goto(`/owner/governance?taskId=${task.id}`);
-  await page.getByLabel("源版本", { exact: true }).selectOption(task.activeSchemaVersionId!);
-  await page.getByLabel("目标版本", { exact: true }).selectOption(target);
+  await page.getByRole("combobox", { name: "源版本", exact: true }).selectOption(task.activeSchemaVersionId!);
+  await page.getByRole("combobox", { name: "目标版本", exact: true }).selectOption(target);
   await page.getByRole("checkbox", { name: new RegExp(submission.id) }).check();
   await page.getByLabel("新增字段默认值（JSON）").fill('{"migrationCheck":"迁移核验"}');
   await page.getByRole("button", { name: "创建计划", exact: true }).click();
