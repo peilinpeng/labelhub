@@ -16,6 +16,9 @@ on:
       - "package-lock.json"
       - ".nvmrc"
       - "docker-compose.yml"
+      - "docker-compose.monitoring.yml"
+      - "monitoring/**"
+      - "scripts/**"
       - "apps/api/Dockerfile"
       - "apps/api/requirements.txt"
       - "apps/web/Dockerfile"
@@ -31,6 +34,9 @@ on:
       - "package-lock.json"
       - ".nvmrc"
       - "docker-compose.yml"
+      - "docker-compose.monitoring.yml"
+      - "monitoring/**"
+      - "scripts/**"
       - "apps/api/Dockerfile"
       - "apps/api/requirements.txt"
       - "apps/web/Dockerfile"
@@ -45,7 +51,9 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    env:
+      COMPOSE_FILE: docker-compose.yml:docker-compose.monitoring.yml
     steps:
       - uses: actions/checkout@v7
 
@@ -69,11 +77,31 @@ jobs:
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
+      - name: Prepare isolated monitoring credentials
+        run: |
+          python - <<'PYCODE'
+          import os, secrets
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"])
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              for name, filename in [("METRICS_TOKEN_FILE", "metrics-token"), ("GRAFANA_PASSWORD_FILE", "grafana-password")]:
+                  path = root / filename
+                  path.write_text(secrets.token_urlsafe(40))
+                  path.chmod(0o444)
+                  env.write(f"{name}={path}\n")
+          PYCODE
+
       - name: Bring up full stack and wait for healthchecks
         run: docker compose up -d --build --wait
 
       - name: Migrate and seed deterministic E2E data
         run: docker compose --profile tools run --rm seed
+
+      - name: Verify monitoring deployment
+        run: |
+          docker compose exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
+          docker compose exec -T prometheus promtool check rules /etc/prometheus/alerts.yml
+          python scripts/verify-monitoring.py
 
       - name: Verify API and Web
         run: |
@@ -88,6 +116,15 @@ jobs:
           test "$(docker inspect --format '{{len .HostConfig.PortBindings}}' "$(docker compose ps -q mysql)")" = "0"
           test "$(docker inspect --format '{{len .HostConfig.PortBindings}}' "$(docker compose ps -q redis)")" = "0"
 
+      - name: Run MySQL concurrency checks
+        run: |
+          docker compose run --rm --no-deps --user 0 --entrypoint sh \
+            -e E2E_BASE=http://api:3000/api/v1 \
+            -v "$PWD/apps/api/tests:/app/tests:ro" \
+            -v "$PWD/apps/api/pytest.ini:/app/pytest.ini:ro" \
+            -v "$PWD/apps/api/requirements-dev.txt:/app/requirements-dev.txt:ro" \
+            api -ec 'python -m pip install --require-hashes -r requirements-dev.txt >/tmp/test-install.log && python -m pytest -m integration -v'
+
       - name: Run Playwright e2e
         working-directory: apps/web
         env:
@@ -101,7 +138,7 @@ jobs:
         run: npx playwright test e2e/owner.spec.ts --grep "创建导出"
 
       - name: Verify repeat-seed export precondition
-        run: docker compose exec -T api python scripts/verify_seed_repeat_precondition.py
+        run: docker compose exec -T -e REQUIRE_MIGRATION_RECORDS=true api python scripts/verify_seed_repeat_precondition.py
 
       - name: Verify seed remains idempotent after export workflows
         run: docker compose --profile tools run --rm seed

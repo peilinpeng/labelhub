@@ -1,0 +1,35 @@
+groups:
+  - name: labelhub
+    rules:
+      - alert: LabelHubUnavailable
+        expr: up{job="labelhub"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: LabelHub 指标不可达
+          description: 检查 API 健康、监控凭据与网络；参见 docs/OBSERVABILITY.md。
+      - alert: LabelHubDependencyUnavailable
+        expr: labelhub_dependency_up == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: 数据库或 Redis 不可用}
+      - alert: LabelHubHighErrorRate
+        expr: sum(rate(labelhub_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(labelhub_http_requests_total[5m])), 0.01) > 0.05
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: API 五分钟错误率超过百分之五}
+      - alert: LabelHubSlowRequests
+        expr: histogram_quantile(0.95, sum by (le) (rate(labelhub_http_request_duration_seconds_bucket[5m]))) > 2
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: API P95 延迟持续超过两秒}
+      - alert: LabelHubQueueStalled
+        expr: labelhub_oldest_pending_job_age_seconds > 600
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: 后台任务等待超过十分钟，请检查 worker 和 scheduler}
+      - alert: LabelHubMigrationFailed
+        expr: labelhub_jobs{kind="migration",status="FAILED"} > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: 存在失败迁移，检查审批和授权后在治理界面重试}
