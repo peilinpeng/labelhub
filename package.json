@@ -24,11 +24,13 @@
     "test:schema-renderer": "npm run -w @labelhub/schema-renderer test",
     "test:schema-designer": "npm run -w @labelhub/schema-designer test",
     "test:workflow-core": "npm run -w @labelhub/workflow-core test",
-    "check:toolchain": "node scripts/check-toolchain.mjs"
+    "check:toolchain": "node scripts/check-toolchain.mjs",
+    "build:migration-engine": "tsc -p scripts/tsconfig.json && node scripts/build-migration-engine.mjs"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
     "tsx": "4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "esbuild": "0.28.1"
   }
 }

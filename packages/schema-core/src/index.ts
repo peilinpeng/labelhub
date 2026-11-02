@@ -11,3 +11,4 @@ export * from "./stable-hash.ts";
 export * from "./traverse.ts";
 export * from "./validation.ts";
 export * from "./visibility.ts";
+export * from "./migration-preview.ts";

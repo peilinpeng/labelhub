@@ -1,0 +1,1 @@
+{"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"Bundler","strict":true,"noEmit":true,"skipLibCheck":true,"allowImportingTsExtensions":true,"types":["node"],"paths":{"@labelhub/contracts":["../packages/contracts/src/index.ts"],"@labelhub/schema-core":["../packages/schema-core/src/index.ts"]}},"include":["migration-engine.ts"]}

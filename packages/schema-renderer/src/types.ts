@@ -1,5 +1,6 @@
 import type {
   AnswerPayload,
+  RuntimeTraceEvent,
   FieldNode,
   LabelHubRuntimeContext,
   LabelHubSchema,
@@ -13,6 +14,8 @@ import type {
 } from "@labelhub/contracts";
 
 export interface SchemaRendererProps {
+  compiledSchema?: import("@labelhub/schema-compiler").CompiledSchema;
+  onTrace?(event: RuntimeTraceEvent): void;
   schema: LabelHubSchema;
   context: LabelHubRuntimeContext;
   answers: AnswerPayload;

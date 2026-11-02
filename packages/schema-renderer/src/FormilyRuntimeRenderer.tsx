@@ -4,6 +4,7 @@ import { Field, FormProvider, useField } from "@formily/react";
 import { useEffect, useMemo, useRef } from "react";
 import type {
   AnswerPayload,
+  RuntimeTraceEvent,
   ChoiceFieldNode,
   ContainerNode,
   FieldLinkageEffect,
@@ -13,7 +14,7 @@ import type {
   ShowItemNode,
   UploadFieldNode,
 } from "@labelhub/contracts";
-import { buildReactionPlan } from "@labelhub/schema-compiler";
+import { compileSchema } from "@labelhub/schema-compiler";
 import type { ReactionPlan } from "@labelhub/schema-compiler";
 import { evaluateExpression, resolveNodeVisibility } from "@labelhub/schema-core";
 import type { RuntimeContextWithOutput } from "@labelhub/schema-core";
@@ -77,7 +78,15 @@ export function FormilyRuntimeRenderer({
   patchedAnswers: patchedAnswersProp,
   onUnsupportedNode,
   registry,
+  compiledSchema,
+  onTrace,
 }: FormilyRuntimeRendererProps) {
+  const traceRef = useRef(onTrace);
+  traceRef.current = onTrace;
+  const sequenceRef = useRef(0);
+  const emitTrace = (event: Omit<RuntimeTraceEvent, "sequence" | "timestamp">) => {
+    traceRef.current?.({ ...event, sequence: ++sequenceRef.current, timestamp: Date.now() });
+  };
   const isReadonly = (readonlyProp === true) || mode === "REVIEW_READONLY" || mode === "REVIEW_DIFF";
 
   const form = useMemo(
@@ -97,7 +106,7 @@ export function FormilyRuntimeRenderer({
   onAnswersChangeRef.current = onAnswersChange;
 
   // 编译 reaction plan，只在 schema 变化时重新计算
-  const reactionPlan = useMemo(() => buildReactionPlan(schema), [schema]);
+  const reactionPlan = useMemo(() => compiledSchema?.reactionPlan ?? compileSchema(schema).reactionPlan, [schema, compiledSchema]);
 
   useEffect(() => {
     function runReactions(currentAnswers: AnswerPayload): void {
@@ -105,12 +114,13 @@ export function FormilyRuntimeRenderer({
         ...contextRef.current,
         answers: currentAnswers,
       };
-      applyReactionPlan(form, reactionPlan, runtimeCtx);
+      applyReactionPlan(form, reactionPlan, runtimeCtx, emitTrace);
     }
 
     // 初始化：基于初始 answers 立刻求值所有 reaction（guard 保护，防止 clearValue 引发递归）
     applyingReactionsRef.current = true;
     try {
+      emitTrace({ kind: "INITIALIZE", fieldNames: [], actions: [] });
       runReactions(form.values as AnswerPayload);
     } finally {
       applyingReactionsRef.current = false;
@@ -119,8 +129,12 @@ export function FormilyRuntimeRenderer({
     const id = form.subscribe(({ type }) => {
       if (type !== LifeCycleTypes.ON_FORM_VALUES_CHANGE) return;
       // guard：reaction 执行期间 clearValue/setValue 会再次触发此回调，直接跳过
-      if (applyingReactionsRef.current) return;
+      if (applyingReactionsRef.current) {
+        emitTrace({ kind: "LOOP_GUARD", fieldNames: [], actions: [] });
+        return;
+      }
 
+      emitTrace({ kind: "FIELD_CHANGE", fieldNames: [], actions: [] });
       applyingReactionsRef.current = true;
       try {
         runReactions(form.values as AnswerPayload);
@@ -160,6 +174,7 @@ export function FormilyRuntimeRenderer({
       onLLMAssist,
       onAssistOutcome,
       onApplySuggestedPatch: (nextAnswers: AnswerPayload) => {
+        emitTrace({ kind: "AI_PATCH", fieldNames: Object.keys(nextAnswers), actions: [] });
         // 屏蔽中间 reaction，整批完成后再统一触发
         applyingReactionsRef.current = true;
         try {
@@ -183,7 +198,7 @@ export function FormilyRuntimeRenderer({
           ...contextRef.current,
           answers: form.values as AnswerPayload,
         };
-        applyReactionPlan(form, reactionPlan, runtimeCtx);
+        applyReactionPlan(form, reactionPlan, runtimeCtx, emitTrace);
         // 同理：spread 成新 plain object，确保上层 setAnswers 触发 re-render
         onAnswersChangeRef.current({ ...(form.values as AnswerPayload) });
       },
@@ -280,10 +295,13 @@ function applyReactionPlan(
   form: Form,
   plan: ReactionPlan,
   runtimeCtx: RuntimeContextWithOutput,
+  trace?: (event: Omit<RuntimeTraceEvent, "sequence" | "timestamp">) => void,
 ): void {
   for (const reaction of plan.reactions) {
     const matched = evaluateExpression(reaction.when, runtimeCtx);
-    applyEffects(form, matched ? reaction.effects : reaction.otherwise);
+    const effects = matched ? reaction.effects : reaction.otherwise;
+    trace?.({ kind: "RULE_EVALUATED", ruleId: reaction.ruleId, fieldNames: [...new Set(effects.map((effect) => effect.target))], matched, actions: effects.map((effect) => effect.action) });
+    applyEffects(form, effects);
   }
 }
 
