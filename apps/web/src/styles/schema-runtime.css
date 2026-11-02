@@ -722,3 +722,16 @@
 .owner-version-item--active {
   box-shadow: inset 3px 0 0 var(--lh-secondary);
 }
+
+.runtime-diagnostics { padding: 20px; }
+.runtime-trace-list, .dependency-graph { overflow: auto; max-height: 360px; }
+.dependency-edge { padding: 8px; border-bottom: 1px solid var(--border-color, #d8dee8); }
+.runtime-trace-list table { width: 100%; text-align: left; font-size: 12px; }
+.runtime-trace-list td, .runtime-trace-list th { padding: 6px; }
+
+.governance-page .card { padding: 24px; overflow: auto; }
+.governance-page label { display: block; margin: 8px 0; }
+.governance-page input:not([type=checkbox]), .governance-page textarea, .governance-page select { display: block; width: min(100%, 640px); padding: 8px; }
+.governance-page pre { max-height: 360px; overflow: auto; font-size: 12px; background: #f5f7fa; padding: 12px; }
+.governance-page .checksum { overflow-wrap: anywhere; }
+.governance-job { border-bottom: 1px solid #d8dee8; padding: 16px 0; }

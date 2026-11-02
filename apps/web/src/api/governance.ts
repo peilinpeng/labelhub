@@ -1,0 +1,13 @@
+import type { CreateMigrationJobRequest, CreateTaskPermissionRequest, EffectiveTaskPermissions, MigrationDecisionRequest, MigrationJob, MigrationRecord, PageResult, Task, TaskPermissionGrant } from "@labelhub/contracts";
+import { apiGet, apiPost } from "./client";
+const base = (taskId: string) => `/api/v1/tasks/${encodeURIComponent(taskId)}`;
+export const governanceTasks = () => apiGet<{ items: Task[] }>("/api/v1/governance/tasks");
+export const effectivePermissions = (taskId: string) => apiGet<EffectiveTaskPermissions>(`${base(taskId)}/permissions/me`);
+export const listGrants = (taskId: string) => apiGet<{ grants: TaskPermissionGrant[] }>(`${base(taskId)}/permissions`);
+export const createGrants = (taskId: string, request: CreateTaskPermissionRequest) => apiPost<{ grants: TaskPermissionGrant[] }>(`${base(taskId)}/permissions`, request);
+export const revokeGrant = (taskId: string, id: string) => apiPost<TaskPermissionGrant>(`${base(taskId)}/permissions/${encodeURIComponent(id)}/revoke`, {});
+export const listMigrations = (taskId: string, page = 1) => apiGet<PageResult<MigrationJob>>(`${base(taskId)}/migrations?page=${page}&pageSize=20`);
+export const createMigration = (taskId: string, request: CreateMigrationJobRequest) => apiPost<MigrationJob>(`${base(taskId)}/migrations`, request);
+export const migrationCommand = (taskId: string, id: string, command: "dry-run" | "submit" | "approve" | "reject" | "execute" | "retry" | "cancel", decision?: MigrationDecisionRequest) => apiPost<MigrationJob>(`${base(taskId)}/migrations/${encodeURIComponent(id)}/${command}`, decision ?? {});
+export const migrationRecords = (taskId: string, id: string, page = 1) => apiGet<PageResult<MigrationRecord>>(`${base(taskId)}/migrations/${encodeURIComponent(id)}/records?page=${page}&pageSize=20`);
+export const migrationCandidates = (taskId: string, version: string, page = 1) => apiGet<PageResult<import("@labelhub/contracts").MigrationCandidate>>(`${base(taskId)}/migration-candidates?schemaVersionId=${encodeURIComponent(version)}&page=${page}&pageSize=20`);
