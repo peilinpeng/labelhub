@@ -1,6 +1,10 @@
 import type { Actor, ID, ISODateTime, Role } from "./global";
 
 export type AuditAction =
+  | "MIGRATION_CREATED" | "MIGRATION_PREVIEWED" | "MIGRATION_SUBMITTED"
+  | "MIGRATION_APPROVED" | "MIGRATION_REJECTED" | "MIGRATION_QUEUED" | "MIGRATION_STARTED"
+  | "MIGRATION_COMPLETED" | "MIGRATION_FAILED" | "MIGRATION_CANCELED"
+  | "PERMISSION_GRANTED" | "PERMISSION_REVOKED"
   | "TASK_CREATED"
   | "TASK_PUBLISHED"
   | "TASK_PAUSED"
@@ -38,6 +42,8 @@ export type AuditAction =
 export interface AuditLog {
   id: ID;
   entityType:
+    | "MIGRATION"
+    | "PERMISSION_GRANT"
     | "TASK"
     | "SCHEMA"
     | "ITEM"
