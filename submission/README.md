@@ -1,7 +1,7 @@
 # LabelHub · 答辩提交物索引（submission/）
 
 > 本目录是课题《LabelHub 数据标注平台 · AI 全栈课题实现要求》**§八 提交物清单**的统一入口。
-> 交付固定点：tag **`final-delivery-0610`**；代码与文档均在本 monorepo 内，凭证已屏蔽（无明文 key / 接入点，`.env` 未入库）。
+> 原始答辩交付快照：tag **`final-delivery-0610`**；最新主线、维护进展和验证结果以 [`docs/PROJECT_STATUS.md`](../docs/PROJECT_STATUS.md) 为准。代码与文档均在本 monorepo 内，凭证已屏蔽（无明文 key / 接入点，`.env` 未入库）。
 
 **一句话**：LabelHub 是一套覆盖「数据生产 → AI 预审 → 人工审核 → 多格式导出」全生命周期的 Web 标注平台，含 Owner / Labeler / Reviewer 三角色 + AI 审核 Agent。逐条功能完备性对照见根 [`README.md`](../README.md) §0「课题要求对照」。
 
@@ -14,7 +14,7 @@
 | 3 | 演示视频（5–10 分钟，三角色全链路） | 百度网盘（见 §3） | ✅ |
 | 4 | 相关文档（架构图 / 技术点 / 截图 / AI Coding 记录） | 本目录 + `docs/` | ✅ |
 | 5 | 可访问演示环境说明 | 本地 Docker 复现 + [`docs/deployment.md`](../docs/deployment.md) | ✅ |
-| 6 | API 文档 | [`apps/api/openapi.json`](../apps/api/openapi.json)（45 路径）+ Swagger `/docs` | ✅ |
+| 6 | API 文档 | [`apps/api/openapi.json`](../apps/api/openapi.json)（47 路径）+ Swagger `/docs` | ✅ |
 
 ---
 
@@ -58,11 +58,12 @@
 - **本地 Docker 全栈一键复现**（无需云账号，评委可本地起栈，含真实后端 + Celery + MySQL + Redis）：见 [`docs/LabelHub_Delivery_Runbook.md`](../docs/LabelHub_Delivery_Runbook.md) 与下方「答辩前一键自查」。
 - **云部署说明**：[`docs/deployment.md`](../docs/deployment.md) →§10（系统已 Docker 化，可部署到任意容器云平台）。
 - **演示账号**：owner / labeler / reviewer `@labelhub.com` / `password123`（真实后端，端口 5173）。
-- 说明：本次交付以「本地 Docker 可复现环境 + 云部署说明文档」为准，未提供长期公网托管地址。
+- **在线 Mock 演示**：[GitHub Pages](https://peilinpeng.github.io/labelhub/)，支持三角色交互；它不连接生产后端。
+- **真实后端环境**：通过本地 Docker 复现，未提供长期公网托管的 API。
 
 ## 6. API 文档
 
-- 静态 OpenAPI（45 路径）：[`apps/api/openapi.json`](../apps/api/openapi.json) —— 可直接导入 Postman / Apifox。
+- 静态 OpenAPI（47 路径）：[`apps/api/openapi.json`](../apps/api/openapi.json) —— 可直接导入 Postman / Apifox。
 - 在线 Swagger UI：服务启动后访问 `http://<host>:3000/docs`。
 
 ---
@@ -74,11 +75,12 @@ docker compose build --pull
 docker compose up -d mysql redis --wait
 docker compose --profile tools run --rm seed
 docker compose up -d --wait
-npm --prefix apps/web run e2e                  # 6 个 Playwright 场景
+npm --prefix apps/web run e2e                  # 9 个 Playwright 场景
 ```
 
-当前自动化基线：共享包 375 passed、Web 41 passed、API 常规测试 264 passed / 2
-deselected；API 测试按 `apps/api/requirements-dev.txt` 在 Python 3.11 环境执行。
+带日期的测试数量、覆盖率、依赖审计和 E2E 结果统一见
+[`docs/PROJECT_STATUS.md`](../docs/PROJECT_STATUS.md)。API 测试按
+`apps/api/requirements-dev.txt` 在 Python 3.11 环境执行。
 
 ## 交付完成确认
 
@@ -88,6 +90,6 @@ deselected；API 测试按 `apps/api/requirements-dev.txt` 在 Python 3.11 环�
 - ✅ README：根 `README.md`（含课题要求对照表）+ 交付/运行手册
 - ✅ 演示视频：百度网盘，提取码 `9eev`（§3）
 - ✅ 相关文档：架构图 2 张 + AI Coding 过程记录 + Demo 截图 6 张 + 关键技术设计
-- ✅ 可访问演示环境说明：本地 Docker 一键复现 + 云部署说明（未提供长期公网托管）
-- ✅ API 文档：`openapi.json`（45 路径）+ 在线 Swagger
+- ✅ 可访问演示环境说明：本地 Docker 一键复现 + 云部署说明 + GitHub Pages Mock 演示（未提供长期公网 API）
+- ✅ API 文档：`openapi.json`（47 路径）+ 在线 Swagger
 - ✅ 凭证屏蔽：无明文 key / 接入点，`.env` 未入库

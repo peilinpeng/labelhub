@@ -5,12 +5,13 @@
 
 ## 1. 快速入口
 
-- [README.md](../README.md)：项目总览、架构、启动、模块、完成状态。
+- [docs/PROJECT_STATUS.md](PROJECT_STATUS.md)：当前主线、维护进展、带日期验证快照和能力边界。
+- [README.md](../README.md)：项目总览、架构、启动和模块。
 - [submission/README.md](../submission/README.md)：答辩提交物索引（对照课题 §八）。
 - [docs/LabelHub_Final_Delivery.md](LabelHub_Final_Delivery.md)：最终交付说明（稳定状态、交付范围、验收点、已知边界）。
 - [docs/LabelHub_Delivery_Runbook.md](LabelHub_Delivery_Runbook.md)：本地运行与现场演示手册。
 - [docs/environment-variables.md](environment-variables.md)：统一环境变量、默认值与敏感等级清单。
-- [docs/LabelHub_Optimization_Plan.md](LabelHub_Optimization_Plan.md)：基于 2026-07-31 实测基线的当前优化路线图、工作包与验收标准。
+- [docs/LabelHub_Optimization_Plan.md](LabelHub_Optimization_Plan.md)：基于 2026-07-31 实测基线的阶段优化路线图、工作包与验收标准。
 
 ## 2. 演示与 QA
 
@@ -40,7 +41,7 @@
 
 ## 6. 历史计划
 
-> 反映特定阶段的上下文，作为历史记录保留；阅读时请以 README 与 Final Delivery 中的当前状态为准。
+> 反映特定阶段的上下文，作为历史记录保留；阅读时请以 PROJECT_STATUS 中的当前状态为准。
 
 - [docs/optimization-checklist.md](optimization-checklist.md)：2026-06-07 课题验收阶段优化清单。
 - [docs/backend-optimization-plan.md](backend-optimization-plan.md)：早期后端接口补齐与测试建设计划。
@@ -52,4 +53,4 @@
 - 评委 / 第一次看项目：README → Final Delivery → Final Demo Guide。
 - 本地复现：README → Delivery Runbook → deployment.md。
 - 技术评审：Architecture Contract → Schema Runtime Engine → Schema Version Management → Quality Layer。
-- 接手开发：AI_CODING_RULES → git-workflow → CONTRIBUTING。
+- 接手开发：AGENTS → PROJECT_STATUS → AI_CODING_RULES → CONTRIBUTING；历史流程与稳定规则冲突时以 AGENTS 为准。
