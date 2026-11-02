@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -159,6 +160,21 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                     "相同的 Idempotency-Key 已与不同的请求体关联",
                 )
             if existing.response_snapshot_json is not None:
+                if request.url.path == "/api/v1/review/batch-decision":
+                    from app.models.submission import Submission
+                    from app.services.permission_domain import require_permission
+                    from app.middleware.error_handler import LabelHubException
+                    try:
+                        data = json.loads(body_bytes)
+                        with SessionLocal() as db:
+                            for item in data.get("items", []):
+                                submission = db.get(Submission, item.get("submissionId"))
+                                if submission:
+                                    require_permission(db, submission.task_id, actor, "review.work")
+                    except LabelHubException as error:
+                        return _error_response(error.status_code, error.code, error.message)
+                    except (ValueError, TypeError, AttributeError):
+                        return _error_response(422, "VALIDATION_FAILED", "批量请求格式不正确")
                 return _replay_response(existing)
             return _error_response(
                 409,

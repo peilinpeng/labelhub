@@ -9,6 +9,9 @@ from sqlalchemy.engine import make_url
 
 class Settings(BaseSettings):
     # 运行环境。production 会启用启动期安全校验，禁止弱密钥、默认数据库密码和 Demo 模式。
+    METRICS_TOKEN: str = ""
+    METRICS_TOKEN_FILE: str = ""
+
     APP_ENV: Literal["development", "test", "demo", "production"] = "development"
     DEMO_MODE: bool = False
 

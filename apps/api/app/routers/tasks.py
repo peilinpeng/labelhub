@@ -696,7 +696,9 @@ def list_tasks(
     actor: Actor = Depends(require_roles("OWNER", "ADMIN")),
 ):
     from app.models.task import Task
-    query = db.query(Task).filter(Task.owner_id == actor.id)
+    from sqlalchemy import or_
+    from app.services.permission_domain import permission_filter
+    query = db.query(Task).filter(or_(*(permission_filter(actor, action) for action in ("task.manage", "schema.write", "dataset.manage", "export.create", "analytics.read"))))
     total = query.count()
     tasks = query.order_by(Task.created_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
     response = {

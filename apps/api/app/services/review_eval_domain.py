@@ -27,12 +27,15 @@ def _normalize_human(decision: str) -> str:
     return "PASS" if decision == "PASS" else "RETURN"
 
 
-def compute_agreement(db: Session, task_id: str | None = None) -> dict[str, Any]:
+def compute_agreement(db: Session, task_id: str | None = None, allowed_ids: list[str] | None = None) -> dict[str, Any]:
     """计算 AI 预审 vs 人工最终决策的一致性指标。
 
     task_id 为空则跨全部任务统计；否则只统计该任务。
     """
     query = db.query(ReviewResult)
+    if allowed_ids is not None:
+        subquery = db.query(Submission.id).filter(Submission.task_id.in_(allowed_ids))
+        query = query.filter(ReviewResult.submission_id.in_(subquery))
     if task_id is not None:
         # 按任务过滤：ReviewResult 无 task_id，经 Submission 关联。
         sub_ids = [s.id for s in db.query(Submission.id).filter(Submission.task_id == task_id).all()]

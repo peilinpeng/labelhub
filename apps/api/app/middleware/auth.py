@@ -9,6 +9,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 from fastapi import Depends
+from starlette.responses import JSONResponse
+from app.database import SessionLocal
+from app.models.user import User
+from app.middleware.error_handler import LabelHubException
 
 from app.config import settings
 from app.middleware.error_handler import UnauthorizedException, PermissionDeniedException
@@ -39,7 +43,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        request.state.actor = self._parse_actor(request)
+        actor = self._parse_actor(request)
+        request.state.actor = None
+        if actor is not None:
+            from app.middleware.task_permissions import check_request_permission
+            with SessionLocal() as db:
+                user = db.get(User, actor.id)
+                if user is None or user.status != "ACTIVE":
+                    return JSONResponse({"code": "PERMISSION_DENIED", "message": "用户已失效", "traceId": "auth"}, status_code=401)
+                actor = Actor(user.id, user.role, user.display_name)
+                try:
+                    check_request_permission(request, db, actor)
+                except LabelHubException as error:
+                    return JSONResponse({"code": error.code, "message": error.message, "traceId": "permission"}, status_code=error.status_code)
+                request.state.actor = actor
         return await call_next(request)
 
     @staticmethod
@@ -98,7 +115,7 @@ def require_roles(*roles: str):
     - 角色合法 → 返回 Actor 供路由使用
     """
     def _check(actor: Actor = Depends(get_current_actor)) -> Actor:
-        if actor.role not in roles:
+        if actor.role not in roles and not (actor.role == "ADMIN" and "OWNER" in roles):
             raise PermissionDeniedException(
                 f"当前角色 {actor.role} 无权访问，需要 {list(roles)} 之一"
             )

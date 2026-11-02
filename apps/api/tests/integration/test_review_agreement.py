@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from app.models.review import ReviewResult
 from app.models.submission import Submission
+from app.models.task import Task
 
 _TASK = "task_agreement_test"
 
@@ -42,6 +43,10 @@ def _add_result(db_session, sub_id, stage, decision):
 
 
 def _seed(db_session, combos):
+    # 权限查询必须关联真实任务；不再依赖 SQLite 容忍的孤立外键。
+    db_session.add(Task(id=_TASK, title="一致率测试", owner_id="usr_owner_1", quota_json={"total": 10},
+                        distribution_strategy_json={"type": "FIRST_COME_FIRST_SERVED"}, review_policy_json={"type": "SINGLE_REVIEW"}))
+    db_session.commit()
     for idx, (ai_dec, human_dec) in enumerate(combos):
         sub_id = _mk_submission(db_session, idx)
         _add_result(db_session, sub_id, "AI_PRECHECK", ai_dec)

@@ -59,13 +59,17 @@ def _assignment_ids_for_task(db: Session, task_id: str) -> set[str]:
     return {r[0] for r in rows}
 
 
-def _build_ai_cost(db: Session, task_id: str | None) -> dict:
+def _build_ai_cost(db: Session, task_id: str | None, allowed_ids: list[str] | None = None) -> dict:
     logs = db.query(LLMCallLog).all()
 
     sub_ids = _submission_ids_for_task(db, task_id) if task_id else None
     asn_ids = _assignment_ids_for_task(db, task_id) if task_id else None
 
+    allowed_subs = {row.id for row in db.query(Submission.id).filter(Submission.task_id.in_(allowed_ids)).all()} if allowed_ids is not None else None
+    allowed_assignments = {row.id for row in db.query(Assignment.id).filter(Assignment.task_id.in_(allowed_ids)).all()} if allowed_ids is not None else None
     def in_scope(log: LLMCallLog) -> bool:
+        if allowed_subs is not None and log.submission_id not in allowed_subs and log.assignment_id not in allowed_assignments:
+            return False
         # 无 taskId：全局；有 taskId：按归属过滤，SCHEMA_GENERATION 始终算全局。
         if task_id is None:
             return True
@@ -115,8 +119,10 @@ def _build_ai_cost(db: Session, task_id: str | None) -> dict:
 # Labeler 效能
 # ---------------------------------------------------------------------------
 
-def _build_labelers(db: Session, task_id: str | None) -> list[dict]:
+def _build_labelers(db: Session, task_id: str | None, allowed_ids: list[str] | None = None) -> list[dict]:
     q = db.query(Submission)
+    if allowed_ids is not None:
+        q = q.filter(Submission.task_id.in_(allowed_ids))
     if task_id:
         q = q.filter(Submission.task_id == task_id)
     submissions = q.all()
@@ -196,8 +202,10 @@ def _build_labelers(db: Session, task_id: str | None) -> list[dict]:
 # AI-人工一致率
 # ---------------------------------------------------------------------------
 
-def _build_ai_quality(db: Session, task_id: str | None) -> dict:
+def _build_ai_quality(db: Session, task_id: str | None, allowed_ids: list[str] | None = None) -> dict:
     q = db.query(Submission)
+    if allowed_ids is not None:
+        q = q.filter(Submission.task_id.in_(allowed_ids))
     if task_id:
         q = q.filter(Submission.task_id == task_id)
     sub_ids = [s.id for s in q.all()]
@@ -262,7 +270,7 @@ def _build_ai_quality(db: Session, task_id: str | None) -> dict:
 # 组合
 # ---------------------------------------------------------------------------
 
-def get_dashboard(db: Session, task_id: str | None) -> dict:
+def get_dashboard(db: Session, task_id: str | None, allowed_ids: list[str] | None = None) -> dict:
     task_title = None
     if task_id:
         task = db.query(Task).filter_by(id=task_id).first()
@@ -270,7 +278,7 @@ def get_dashboard(db: Session, task_id: str | None) -> dict:
 
     return {
         "scope": {"taskId": task_id, "taskTitle": task_title},
-        "aiCost": _build_ai_cost(db, task_id),
-        "labelers": _build_labelers(db, task_id),
-        "aiQuality": _build_ai_quality(db, task_id),
+        "aiCost": _build_ai_cost(db, task_id, allowed_ids),
+        "labelers": _build_labelers(db, task_id, allowed_ids),
+        "aiQuality": _build_ai_quality(db, task_id, allowed_ids),
     }

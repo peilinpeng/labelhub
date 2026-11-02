@@ -18,3 +18,4 @@ from app.models.export_record import ExportRecord  # noqa: F401
 from app.models.file import FileObject  # noqa: F401
 from app.models.llm import LLMCallLog  # noqa: F401
 from app.models.idempotency import IdempotencyRecord  # noqa: F401
+from app.models.governance import TaskPermissionGrant, MigrationJob, MigrationRecord  # noqa: F401

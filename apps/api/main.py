@@ -15,6 +15,7 @@ from app.middleware.idempotency import IdempotencyMiddleware
 from app.middleware.error_handler import register_error_handlers
 from app.security import SecurityHeadersMiddleware
 from app.routers import auth as auth_router
+from app.observability import router as operations_router, ObservabilityMiddleware
 
 # 其余路由暂未实现，导入后按需解注释
 from app.routers import tasks
@@ -24,7 +25,7 @@ from app.routers import ai_assist
 from app.routers import exports
 from app.routers import files
 from app.routers import audit_events
-from app.routers import analytics
+from app.routers import analytics, governance
 # from app.routers import ai_review
 
 app = FastAPI(
@@ -40,12 +41,14 @@ app.add_middleware(IdempotencyMiddleware)  # 内层，需要 actor 已被注入
 app.add_middleware(AuthMiddleware)          # 外层，先于 IdempotencyMiddleware 执行
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(ObservabilityMiddleware)
 
 # ② 注册全局异常处理器
 register_error_handlers(app)
 
 # ③ 注册路由
 app.include_router(auth_router.router, prefix="/api/v1")
+app.include_router(operations_router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(dataset.router, prefix="/api/v1")
 app.include_router(marketplace.router, prefix="/api/v1")
@@ -56,6 +59,8 @@ app.include_router(exports.router, prefix="/api/v1")
 app.include_router(files.router, prefix="/api/v1")
 app.include_router(audit_events.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
+app.include_router(governance.router, prefix="/api/v1")
+app.include_router(governance.discovery_router, prefix="/api/v1")
 # app.include_router(ai_review.router, prefix="/api/v1")
 
 

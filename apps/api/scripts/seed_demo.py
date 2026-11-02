@@ -139,6 +139,12 @@ def _load_items() -> list[dict]:
 def _wipe_demo(db) -> None:
     """按 task_id 清理本演示任务的全部关联数据（FK 安全顺序）。"""
     from app.models.llm import LLMCallLog
+    from app.models.governance import MigrationJob, MigrationRecord, TaskPermissionGrant
+    migration_ids = [row.id for row in db.query(MigrationJob.id).filter_by(task_id=TASK_ID).all()]
+    if migration_ids:
+        db.query(MigrationRecord).filter(MigrationRecord.job_id.in_(migration_ids)).delete(synchronize_session=False)
+        db.query(MigrationJob).filter(MigrationJob.id.in_(migration_ids)).delete(synchronize_session=False)
+    db.query(TaskPermissionGrant).filter_by(task_id=TASK_ID).delete(synchronize_session=False)
     sub_ids = [s.id for s in db.query(Submission).filter_by(task_id=TASK_ID).all()]
     asn_ids = [a.id for a in db.query(Assignment).filter_by(task_id=TASK_ID).all()]
     job_ids = [j.id for j in db.query(ExportJob).filter_by(task_id=TASK_ID).all()]
