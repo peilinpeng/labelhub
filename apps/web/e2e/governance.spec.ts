@@ -13,11 +13,12 @@ test("历史迁移：选择范围、独立审批、真实 worker 与不可变产
   const headers = { Authorization: `Bearer ${owner.token}` };
   const tasksResponse = await request.get("/api/v1/tasks", { headers });
   const tasks = (await tasksResponse.json()).tasks as Array<{ id: string; activeSchemaVersionId?: string }>;
-  const task = tasks.find((item) => item.activeSchemaVersionId)!;
+  const task = tasks.find((item) => item.id === "task_demo_news_quality")!;
   expect(task).toBeTruthy();
   const base = `/api/v1/tasks/${task.id}`;
   const sourceResponse = await request.get(`/api/v1/schema-versions/${task.activeSchemaVersionId}`, { headers });
-  const snapshot = (await sourceResponse.json()).schemaVersion.schema as LabelHubSchema;
+  expect(sourceResponse.ok(), await sourceResponse.text()).toBeTruthy();
+  const snapshot = (await sourceResponse.json()).schema as LabelHubSchema;
   const schema = structuredClone(snapshot);
   schema.root.children.push({ id: "migration_check", kind: "FIELD", type: "input.text", name: "migrationCheck", title: "迁移校验", required: false });
   const save = await request.put(`${base}/schema/draft`, { headers, data: { schema } });
@@ -26,10 +27,13 @@ test("历史迁移：选择范围、独立审批、真实 worker 与不可变产
   expect(published.ok(), await published.text()).toBeTruthy();
   const target = (await published.json()).schemaVersion.id as string;
   const candidates = await request.get(`${base}/migration-candidates?schemaVersionId=${task.activeSchemaVersionId}`, { headers });
+  expect(candidates.ok(), await candidates.text()).toBeTruthy();
   const submission = (await candidates.json()).items[0] as { id: string };
   expect(submission).toBeTruthy();
   const before = await request.get(`/api/v1/review/submissions/${submission.id}`, { headers: { Authorization: `Bearer ${reviewer.token}` } });
+  expect(before.ok(), await before.text()).toBeTruthy();
   const original = (await before.json()).submission;
+  expect(original).toBeTruthy();
   const granted = await request.post(`${base}/permissions`, { headers, data: { userId: reviewer.actor.id, actions: ["migration.read", "migration.approve"], effect: "ALLOW" } });
   expect(granted.status()).toBe(201);
   await login(page, "OWNER");
