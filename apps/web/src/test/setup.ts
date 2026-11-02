@@ -34,9 +34,9 @@ globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
 }) as typeof fetch;
 
 // ── MSW 生命周期 ───────────────────────────────────────────────────────────
-// onUnhandledRequest "error"：测试若打到未 mock 的 /api 端点会立刻失败，
+// onUnhandledFrame "error"：测试若打到未 mock 的 /api 端点会立刻失败，
 // 避免静默落到真实网络或返回 undefined 造成误判。
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 
 afterEach(() => {
   cleanup();

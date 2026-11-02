@@ -13,15 +13,18 @@ async function bootstrap() {
   if (import.meta.env.VITE_ENABLE_MSW === "true") {
     installMockWorkerUpgradeReload();
     const { worker } = await import("./mocks/browser");
+    const { HttpNetworkFrame } = await import("msw/experimental");
     await worker.start({
       serviceWorker: {
         url: `${baseUrl}mockServiceWorker.js`,
         options: { scope: baseUrl },
       },
-      onUnhandledRequest(request, print) {
-        const url = new URL(request.url);
-        if (url.pathname.startsWith("/api/")) {
-          print.error();
+      onUnhandledFrame({ frame, defaults }) {
+        if (frame instanceof HttpNetworkFrame) {
+          const url = new URL(frame.data.request.url);
+          if (url.pathname.startsWith("/api/")) {
+            defaults.error();
+          }
         }
       },
     });

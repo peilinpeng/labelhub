@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "npm@11.19.0",
+  "packageManager": "npm@11.20.0",
   "engines": {
-    "node": ">=26.7.0 <27",
-    "npm": ">=11.19.0 <12"
+    "node": ">=26.13.0 <27",
+    "npm": ">=11.20.0 <12"
   },
   "scripts": {
     "dev": "vite",
@@ -30,25 +30,25 @@
     "@labelhub/schema-compiler": "file:../../packages/schema-compiler",
     "@labelhub/schema-core": "file:../../packages/schema-core",
     "@labelhub/schema-renderer": "file:../../packages/schema-renderer",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-router": "8.3.1"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "8.4.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.64.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/node": "26.2.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.1.1",
-    "@vitest/coverage-v8": "^4.1.11",
-    "jsdom": "^30.0.1",
-    "msw": "2.15.0",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/node": "26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/coverage-v8": "5.0.3",
+    "jsdom": "^30.1.0",
+    "msw": "3.0.3",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2",
-    "vitest": "^4.1.11"
+    "vite": "^8.3.3",
+    "vitest": "5.0.3"
   },
   "msw": {
     "workerDirectory": [

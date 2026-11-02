@@ -36,10 +36,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Node.js 26.7.0
+      - name: Set up Node.js 26.13.0
         uses: actions/setup-node@v7
         with:
-          node-version: "26.7.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -65,10 +65,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Node.js 26.7.0
+      - name: Set up Node.js 26.13.0
         uses: actions/setup-node@v7
         with:
-          node-version: "26.7.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -85,10 +85,10 @@ jobs:
         run: npm run typecheck
 
       - name: Test Web (Vitest + MSW)
-        run: npm run test:run
+        run: npm run test:coverage
 
-      - name: Build Web
-        run: npm run build
+      - name: Build production Web
+        run: npm run build:production
 
       - name: Audit Web production dependencies
         run: npm run audit:production

@@ -10,7 +10,7 @@ Worker / Scheduler、MySQL 8 和 Redis 7。前端 Mock 与真实后端是两种�
 ## 1. 前置条件
 
 - Docker Engine 24+ 与 Docker Compose v2；或 Docker Desktop。
-- 仅做前端开发时：Node `26.7.0`、npm `11.19.0`。
+- 仅做前端开发时：Node `26.13.0`、npm `11.20.0`。
 - 直接运行 API / pytest 时：Python 3.11。
 
 仓库根目录的 `.nvmrc`、`package-lock.json`、`apps/web/package-lock.json` 与
@@ -220,6 +220,9 @@ docker compose down -v
 docker compose build api web
 docker compose up -d api worker scheduler web --wait
 ```
+
+若只替换 API 容器后 Web 返回 502，而 API 健康检查正常，Nginx 可能仍缓存旧的容器地址；
+执行 `docker compose restart web` 后，再检查 Web 代理的 `/api/v1/health`。
 
 查看状态与日志：
 
