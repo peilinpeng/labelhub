@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse } from "msw/http";
 import type { AssignmentContextResponse, ID } from "@labelhub/contracts";
 import AssignmentPage from "./AssignmentPage";
 import { getAssignmentContext } from "../../mocks/mock-db";

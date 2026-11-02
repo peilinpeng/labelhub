@@ -1,21 +1,10 @@
 version: 2
 updates:
+  # 两棵 npm 锁文件共同更新，避免 Vitest 与 coverage 插件跨目录版本错配。
   - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    groups:
-      react-test-runtime:
-        patterns:
-          - react
-          - react-dom
-          - "@types/react"
-          - "@types/react-dom"
-          - jsdom
-          - vitest
-  - package-ecosystem: npm
-    directory: /apps/web
+    directories:
+      - /
+      - /apps/web
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -32,7 +21,7 @@ updates:
           - vite
           - "@vitejs/plugin-react"
           - vitest
-          - "@vitest/coverage-v8"
+          - "@vitest/*"
           - jsdom
           - "@testing-library/jest-dom"
   - package-ecosystem: pip

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse } from "msw/http";
 import { apiGet, ApiRequestError } from "./client";
 import { importDataset, inferFormat, listItems, updateItem } from "./dataset";
 import { createExportJob, downloadExportFile, listExportJobs } from "./owner";

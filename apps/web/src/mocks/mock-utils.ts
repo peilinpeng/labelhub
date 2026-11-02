@@ -1,4 +1,4 @@
-import { HttpResponse } from "msw";
+import { HttpResponse } from "msw/http";
 import type { ApiError, ErrorCode, ID, ISODateTime } from "@labelhub/contracts";
 
 export type MockParams = Record<string, string | readonly string[]>;
