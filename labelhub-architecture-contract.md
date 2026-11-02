@@ -1961,3 +1961,11 @@ Worker 协议使用 requestId、schema、result/error，处理并发、超时、
 `GET /api/v1/metrics` 需要专用监控 Bearer token 或有效 ADMIN；默认未配置 token 时拒绝匿名访问。
 HTTP 指标只使用路由模板、方法和状态码，禁止 userId/taskId/URL 参数作标签；日志只记录请求 ID、模板、方法、状态、耗时。
 监控不得暴露答案、认证 token、数据库连接串；告警配置与面板随仓库提供，可在隔离环境验收。
+
+### 30.5 治理入口发现与迁移范围选择
+
+- GET `/api/v1/governance/tasks`：返回当前用户具有 migration.read 或 permissions.manage 的任务列表 `{items: Task[]}`，不暴露其他任务。
+- GET `/api/v1/tasks/:taskId/migration-candidates?schemaVersionId=...&page=1&pageSize=20`：需要 migration.read；
+  源版本必须属于当前任务，返回分页 `{items: MigrationCandidate[],total,page,pageSize}`，只含 ID、版本、标注员、状态和提交时间，不含答案。
+- 后端调用共享内核的 migration-preview；兼容已有简化 Schema 时先使用既有 normalize_schema_payload。
+- 权限同时应用于列表/统计/批量入口，不能通过全局聚合查询或幂等批量回放绕过任务动作拒绝。

@@ -24,7 +24,7 @@ export type MigrationJobStatus = typeof MIGRATION_JOB_STATUSES[number];
 export interface CreateMigrationJobRequest {
   fromSchemaVersionId: ID; toSchemaVersionId: ID; submissionIds: ID[];
   renameMap?: Record<string, string>; defaults?: Record<string, unknown>;
-  optionValueMap?: Record<string, Record<string, string>>; archiveRemovedFields?: string[];
+  optionValueMap?: Record<string, Record<string, string>>; archiveRemovedFields?: boolean;
 }
 export interface MigrationDecisionRequest { checksum: string; reason: string }
 export interface MigrationJob {
@@ -50,3 +50,6 @@ export const MIGRATION_TRANSITIONS: Readonly<Record<MigrationJobStatus, readonly
   APPROVED: ["QUEUED", "CANCELED"], QUEUED: ["RUNNING"], RUNNING: ["SUCCEEDED", "PARTIAL", "FAILED"],
   FAILED: ["QUEUED"], SUCCEEDED: [], PARTIAL: [], REJECTED: [], CANCELED: [],
 };
+export interface MigrationCandidate {
+  id: ID; schemaVersionId: ID; labelerId: ID; status: string; createdAt: ISODateTime;
+}
