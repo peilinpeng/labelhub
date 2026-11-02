@@ -23,7 +23,8 @@
     "test:schema-compiler": "npm run -w @labelhub/schema-compiler test",
     "test:schema-renderer": "npm run -w @labelhub/schema-renderer test",
     "test:schema-designer": "npm run -w @labelhub/schema-designer test",
-    "test:workflow-core": "npm run -w @labelhub/workflow-core test"
+    "test:workflow-core": "npm run -w @labelhub/workflow-core test",
+    "check:toolchain": "node scripts/check-toolchain.mjs"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
