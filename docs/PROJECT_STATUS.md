@@ -28,14 +28,18 @@
 | API | 本地 293 passed、2 deselected，包含审批、篡改、撤权、冲突、重试与 UTC 时间回归 |
 | 共享包 | 380 passed；全量 typecheck/test |
 | Web | 60 passed；typecheck、coverage、生产与 Demo 构建通过 |
-| Web 覆盖率 | statements 66.49%、branches 54.87%、functions 67.40%、lines 70.03%；四项门槛 50% |
+| Web 覆盖率 | 本次本地复验 statements 66.56%、branches 54.92%、functions 67.40%、lines 70.03%；四项门槛 50% |
 | 依赖审计 | 根/Web npm 与 Python 哈希锁无已知漏洞 |
 | 浏览器 | 本地子路径部署，治理桌面/390px 窄屏、Worker、实际运行追踪、深链接刷新通过；Demo 新建/预演/提交审批通过 |
 | 远端集成 | [主线隔离全栈验收](https://github.com/peilinpeng/labelhub/actions/runs/41550975096)：11 项 E2E + 额外导出 1 项、MySQL 并发 2 项、监控、非 root 与内网服务约束、非空导出及迁移产物存在时重复 seed 均通过 |
+| Docker 本地复验 | 2026-11-03 修复存储 I/O 与失效构建缓存后，从空构建缓存构建 API/Web；隔离栈 11 项 E2E + 额外导出 1 项、MySQL 并发 2 项、监控、非 root、内网端口及重复 seed 均通过 |
 | Pages 线上验收 | 三角色登录与深链接刷新、治理桌面/390px 窄屏、Worker、实际运行追踪通过；控制台与页面无异常 |
 
-本机曾因磁盘不足出现 Docker 镜像存储 I/O 错误；已释放可重建下载缓存，未重置 Docker 或修改原有数据卷。
-本轮完整容器验收使用 GitHub Actions 的全新隔离环境；不把本机 Docker 描述为已修复。
+本机 Docker 存储故障已完成恢复与本地完整验收：停机备份虚拟磁盘，重启恢复存储读取，
+清除失效的未使用构建缓存，并回收已释放磁盘空间。原有 12 个容器和 7 个卷保留；
+7 份卷备份均实际恢复到临时卷并逐文件对比通过，数据库逻辑备份已保存。
+本地验收临时容器、卷及网络已清理，原有容器配置、挂载与运行/停止状态核对一致。
+恢复方法、证据边界与容量检查见 [本机 Docker 恢复记录](LOCAL_DOCKER_RECOVERY.md)。
 
 ## 依赖与历史维护
 
