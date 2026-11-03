@@ -51,20 +51,12 @@
 
 ## 下次构建前的容量检查
 
-先检查承载 `Docker.raw` 的宿主卷空间，同时检查 Docker 存储是否可读：
+临时验收脚本中的容量检查现已纳入仓库常用入口：`npm run check:storage` 与
+`npm run compose -- build api web`。启动前要求至少 10 GiB，执行中低于 3 GiB 取消本次操作；
+不会自动删除容器或卷。实际可用空间会随系统交换文件及其他应用变化，不能沿用收尾时的空间快照。
 
-```bash
-df -h "$HOME/Library/Containers/com.docker.docker/Data/vms/0/data"
-docker system df
-```
-
-本次隔离构建设置了宿主可用空间低于 10 GiB 则不启动的检查。10 GiB 是本次工作量的最低检查值，
-不是任意构建都足够的保证；较大构建应额外预留空间。构建中持续观察空间，接近耗尽时停止本次构建，
-优先清理可重建缓存和本次临时资源。APFS 快照/克隆可能使逻辑删除不能立即释放物理空间。
-
-不要使用 `docker system prune --volumes` 清理未知项目；不要缩小 Docker 虚拟磁盘容量来缓解磁盘压力。
-Docker 官方说明缩容会删除当前虚拟磁盘中的容器和镜像。
-需要长期扩大容量时，先准备异盘备份，再通过 Docker Desktop 设置迁移存储位置。
+自定义 Docker.raw 位置、低空间处理、备份范围、异盘核验与恢复演练见
+[本地存储维护](LOCAL_STORAGE_MAINTENANCE.md)。同盘恢复验证不等于异盘备份已完成。
 
 ## 恢复顺序
 

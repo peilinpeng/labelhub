@@ -1,5 +1,7 @@
 # LabelHub 答辩演示交接（搭档专用）
 
+> 文档定位：历史记录：正文中的分支、测试数量、待办和命令仅反映当时阶段，不作为当前操作指引。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
 > 你全权负责答辩当天的演示。照这份文档走即可，**它已针对"AI 审核策略 + 新闻任务"这套演示做过校准**，与 `LabelHub_Delivery_Runbook.md` / `LabelHub_Final_Demo_Guide.md` 里的旧演示方案不同——以本文为准。
 >
 > 分支：`integration/joint-test`。本机访问地址：**http://localhost:5173**。

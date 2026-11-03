@@ -1,4 +1,6 @@
-# 三人 Git 协作流程
+# 早期三人 Git 协作流程
+
+> 文档定位：历史记录，正文的 dev / integration 分支策略只反映早期阶段，不作为当前操作指引。当前从最新 origin/main 建立任务分支，通过 PR 合并 main；稳定规则见 [AGENTS](../AGENTS.md)、[贡献指南](../CONTRIBUTING.md) 和 [项目状态](PROJECT_STATUS.md)。
 
 本文档说明三个人如何基于 `main`、`dev` 和 feature 分支协作。
 

@@ -12,9 +12,9 @@
 export METRICS_TOKEN_FILE=/absolute/private/metrics-token
 export GRAFANA_PASSWORD_FILE=/absolute/private/grafana-password
 export COMPOSE_FILE=docker-compose.yml:docker-compose.monitoring.yml
-docker compose up -d --build --wait
+python3 scripts/local-compose.py up -d --build --wait
 # 新数据库或版本升级必须执行迁移；生产环境不要运行 demo seed。
-docker compose exec -T api alembic upgrade head
+python3 scripts/local-compose.py exec -T api alembic upgrade head
 python scripts/verify-monitoring.py
 ```
 

@@ -94,3 +94,10 @@ ENABLE_HSTS=true
 DOUBAO_API_KEY=<secret>
 DOUBAO_MODEL=<model-id>
 ```
+
+## 本机容量保护
+
+`LABELHUB_DOCKER_DISK_PATH` 仅由宿主 `scripts/local-compose.py` 读取，用于 macOS Docker Desktop
+自定义磁盘路径；默认检查用户目录下 Docker Desktop 标准 `Docker.raw`。它不注入业务容器，不包含凭据。
+启动门槛 10 GiB、运行取消门槛 3 GiB 固定在维护脚本中，不提供调低阈值绕过保护的环境变量。
+详见 [本地存储维护](LOCAL_STORAGE_MAINTENANCE.md)。

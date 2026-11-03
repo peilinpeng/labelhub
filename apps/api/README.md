@@ -43,15 +43,15 @@ apps/api/
 
 ```bash
 # 仓库根目录
-docker compose build api
-docker compose up -d mysql redis --wait
-docker compose --profile tools run --rm seed
-docker compose up -d api worker scheduler web --wait
+python3 scripts/local-compose.py build api
+python3 scripts/local-compose.py up -d mysql redis --wait
+python3 scripts/local-compose.py --profile tools run --rm seed
+python3 scripts/local-compose.py up -d api worker scheduler web --wait
 ```
 
 > **改动后端代码后需重建镜像**：服务运行自镜像内 `/app`（无源码挂载、无
 > `--reload`）。API、Worker、Scheduler 复用同一镜像：
-> `docker compose build api && docker compose up -d api worker scheduler`。
+> `python3 scripts/local-compose.py build api && python3 scripts/local-compose.py up -d api worker scheduler`。
 
 健康检查：`curl http://localhost:3000/api/v1/health`
 

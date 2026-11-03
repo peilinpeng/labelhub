@@ -1,5 +1,7 @@
 # LabelHub Quality Layer：动态表单审计与数据质量治理方案
 
+> 文档定位：设计与验收参考：正文包含目标态及早期实施快照，不代表所有条目均已实现或仍未实现。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
 ## 1. 模块定位
 
 LabelHub 的核心目标不是简单地完成标注、审核和导出，而是持续生产高质量、可追溯、可评估、可交付给 AI 训练链路的数据。
@@ -136,9 +138,9 @@ Quality Ledger
   → Reviewer Diff 纠错数据、AI Reviewer 训练样本、数据筛选
 ```
 
-## 3.1 当前实现状态说明
+## 3.1 第一阶段历史实现快照
 
-当前代码中，Quality Layer 的第一阶段已经通过现有 AuditEvent 体系落地在 Owner Schema Governance 场景中。
+本节记录的早期代码中，Quality Layer 的第一阶段已经通过现有 AuditEvent 体系落地在 Owner Schema Governance 场景中。
 
 已实现：
 
@@ -150,7 +152,7 @@ Quality Ledger
 6. Owner Audit Timeline；
 7. Schema Governance demo data。
 
-未实现，属于未来规划：
+当时未实现的目标项（不可直接当作当前待办；Passport、telemetry、Reviewer diff 等已在后续迭代扩展）：
 
 1. 显式 `QualityLedgerDomain` 字段；
 2. `DataQualityPassport`；

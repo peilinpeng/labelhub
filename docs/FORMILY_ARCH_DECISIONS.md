@@ -1,5 +1,7 @@
 # FORMILY_ARCH_DECISIONS.md — Schema Runtime Engine v2 架构决策记录
 
+> 文档定位：设计与验收参考：正文包含目标态及早期实施快照，不代表所有条目均已实现或仍未实现。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
 > 日期：2026-06-06
 > 决策人：维护者（peilinpeng）
 > 依据：coder 技术审查报告 + 架构师判断

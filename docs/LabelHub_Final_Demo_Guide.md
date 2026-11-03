@@ -1,5 +1,7 @@
 # LabelHub Final Demo Guide
 
+> 文档定位：历史记录：正文中的分支、测试数量、待办和命令仅反映当时阶段，不作为当前操作指引。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
 > 版本：2026-06-10
 > 适用分支：`integration/joint-test`
 >

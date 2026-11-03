@@ -1,5 +1,7 @@
 # LabelHub AI Coding 过程与开发记录
 
+> 文档定位：历史记录：正文中的分支、测试数量、待办和命令仅反映当时阶段，不作为当前操作指引。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
 > 这是 LabelHub 这一 AI 辅助数据标注与质量治理平台的开发过程记录。
 
 **用途** — 本文档是一份交付 / 答辩材料，用于说明 LabelHub 如何通过 **AI 辅助编码 + 人工审查 + 小步验证** 的工作流完成开发：项目实际完成了什么，每项改动如何验证，以及哪些能力被明确界定为后续工作。
@@ -270,19 +272,19 @@ branch backup/stable-after-owner-ai-config-polish-0610
 * 不使用 `force push`；不对已有工作使用 `reset` / `restore` / `checkout`。
 * 最终阶段不做大文件重构。
 
-**明确属于后续工作，未作为已完成能力交付：**
+**以下是 2026-06 阶段的历史边界，已由 2026-11 的 PR #145 扩展：**
 
 * **Migration execution backend pipeline** — 持久化的、会修改数据库的执行阶段。
 * **Historical answers batch migration** — 跨 schema 版本批量升级旧提交。
 * **Migration approval workflow** — 管理员 Dry Run → Approval → Execute → immutable record 的状态机。
 
-`schema-core` 提供这些能力所需的确定性纯函数片段和共享 contract types，但可运行的端到端系统仍是后续工作。它们不能被描述为已经完成。
+在当时阶段，`schema-core` 仅提供纯函数与契约。当前持久化预演、独立审批、后台执行及不可变结果已交付，参见 [治理交付记录](GOVERNANCE_DELIVERY.md)。
 
 ---
 
 ## 6. 交付总结
 
-LabelHub 采用 **AI 辅助编码 + 人工审查 + 小步验证** 的方式完成开发。AI 被用于生成、定位、审查和文档整理；人类负责产品判断、工程边界、人工验收和合并决策。最终系统形成了 Owner / Labeler / Reviewer 三角色闭环，并围绕 **schema governance**、**确定性的 AI preflight checks** 和 **quality evidence chain**（Data Quality Passport）建立核心亮点。系统支持 history-preserving rollback；migration execution 被明确列为后续工作。
+LabelHub 采用 **AI 辅助编码 + 人工审查 + 小步验证** 的方式完成开发。AI 被用于生成、定位、审查和文档整理；人类负责产品判断、工程边界、人工验收和合并决策。最终系统形成了 Owner / Labeler / Reviewer 三角色闭环，并围绕 **schema governance**、**确定性的 AI preflight checks** 和 **quality evidence chain**（Data Quality Passport）建立核心亮点。系统支持 history-preserving rollback；当时将 migration execution 列为后续工作；该能力现已交付，且始终不覆盖原始答卷。
 
 ---
 

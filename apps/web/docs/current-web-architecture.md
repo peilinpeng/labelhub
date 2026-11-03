@@ -1,5 +1,7 @@
 # LabelHub Web Current Architecture
 
+> 文档定位：历史记录：正文中的分支、测试数量、待办和命令仅反映当时阶段，不作为当前操作指引。当前能力与验证见 [项目状态](../../../docs/PROJECT_STATUS.md)；运行命令见 [部署说明](../../../docs/deployment.md)。
+
 Last updated: 2026-06-03
 
 This document describes the current `apps/web` architecture for frontend and backend iteration. It focuses on the current runnable web shell, API integration points, fallback behavior, and the next backend alignment work.

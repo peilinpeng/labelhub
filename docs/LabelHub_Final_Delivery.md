@@ -1,5 +1,7 @@
 # LabelHub 最终交付说明
 
+> 文档定位：历史记录：正文中的分支、测试数量、待办和命令仅反映当时阶段，不作为当前操作指引。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
 > **历史快照：** 本文记录 2026-06-10 答辩交付状态，不再作为当前启动或测试命令的
 > 权威来源。当前状态请以根 `README.md`、`docs/LabelHub_Delivery_Runbook.md` 和
 > `docs/deployment.md` 为准。

@@ -14,7 +14,7 @@ Worker / Scheduler、MySQL 8 和 Redis 7。前端 Mock 与真实后端是两种�
 - 直接运行 API / pytest 时：Python 3.11。
 
 仓库根目录的 `.nvmrc`、`package-lock.json`、`apps/web/package-lock.json` 与
-`apps/api/requirements*.lock` 是可重复安装的依据。不要用 `npm install` 或未锁定的
+`apps/api/requirements.txt` / `apps/api/requirements-dev.txt` 是可重复安装的依据。不要用 `npm install` 或未锁定的
 Python requirements 更新 CI / 生产环境。
 
 ## 2. 从零启动真实后端全栈
@@ -23,10 +23,10 @@ Python requirements 更新 CI / 生产环境。
 cp .env.example .env
 # 本地演示可保留 demo 默认值；真实 AI 需要填写 DOUBAO_API_KEY / DOUBAO_MODEL。
 
-docker compose build --pull
-docker compose up -d mysql redis --wait
-docker compose --profile tools run --rm seed
-docker compose up -d --wait
+python3 scripts/local-compose.py build --pull
+python3 scripts/local-compose.py up -d mysql redis --wait
+python3 scripts/local-compose.py --profile tools run --rm seed
+python3 scripts/local-compose.py up -d --wait
 ```
 
 `seed` 会先执行 `alembic upgrade head`，再运行可重复的 E2E seed，并校验三角色账号、
@@ -56,22 +56,22 @@ docker compose up -d --wait
 只迁移、不写演示数据：
 
 ```bash
-docker compose up -d mysql redis --wait
-docker compose run --rm api alembic upgrade head
-docker compose run --rm api alembic current
+python3 scripts/local-compose.py up -d mysql redis --wait
+python3 scripts/local-compose.py run --rm api alembic upgrade head
+python3 scripts/local-compose.py run --rm api alembic current
 ```
 
 按需写入演示数据（只允许 `DEMO_MODE=true` 的非生产环境）：
 
 ```bash
-docker compose run --rm api python scripts/seed_demo.py
-docker compose run --rm api python scripts/seed_competition.py
+python3 scripts/local-compose.py run --rm api python scripts/seed_demo.py
+python3 scripts/local-compose.py run --rm api python scripts/seed_competition.py
 ```
 
 确定性 CI / E2E 数据统一使用：
 
 ```bash
-docker compose --profile tools run --rm seed
+python3 scripts/local-compose.py --profile tools run --rm seed
 ```
 
 生产部署必须先单独运行迁移，禁止运行任何 seed。
@@ -109,7 +109,7 @@ PLAYWRIGHT_USE_MSW=true \
 需要热更新前端、但 API 使用 Docker 时：
 
 ```bash
-docker compose up -d mysql redis api worker scheduler --build --wait
+python3 scripts/local-compose.py up -d mysql redis api worker scheduler --build --wait
 VITE_ENABLE_MSW=false VITE_PROXY_TARGET=http://127.0.0.1:3000 \
   npm --prefix apps/web run dev -- --host 127.0.0.1 --port 5180
 ```
@@ -132,7 +132,7 @@ VITE_ENABLE_MSW=false VITE_PROXY_TARGET=http://127.0.0.1:3000 \
 - MySQL / Redis 默认仅在 Compose 网络可达。如确需宿主直连，显式叠加：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d mysql redis
+python3 scripts/local-compose.py -f docker-compose.yml -f docker-compose.dev.yml up -d mysql redis
 ```
 
 ## 7. 测试与依赖验证
@@ -164,8 +164,8 @@ python3.11 -m venv .venv
 测试账号：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait
-docker compose run --rm api python scripts/seed.py
+python3 scripts/local-compose.py -f docker-compose.yml -f docker-compose.dev.yml up -d --wait
+python3 scripts/local-compose.py run --rm api python scripts/seed.py
 cd apps/api
 DATABASE_URL=mysql+pymysql://labelhub:labelhub@127.0.0.1:3306/labelhub \
 E2E_BASE=http://127.0.0.1:3000/api/v1 \
@@ -177,12 +177,12 @@ cd ../..
 
 ```bash
 npm --prefix apps/web exec playwright install chromium
-docker compose up -d --build --wait
-docker compose --profile tools run --rm seed
+python3 scripts/local-compose.py up -d --build --wait
+python3 scripts/local-compose.py --profile tools run --rm seed
 npm --prefix apps/web run e2e
 ```
 
-当前套件包含 4 个真实业务 E2E 与 2 个桌面 / 移动端响应式 E2E，共 6 个场景。
+当前套件包含三角色、迁移治理、运行诊断与响应式真实后端场景；带日期的测试数量与结果统一见 [项目状态](PROJECT_STATUS.md)。
 
 锁文件更新流程：
 
@@ -205,30 +205,30 @@ pip、Docker 与 Actions，并将必须同步升级的 React / Vite 测试工具
 保留数据库和文件：
 
 ```bash
-docker compose down
+python3 scripts/local-compose.py down
 ```
 
 删除 Compose 容器、数据库、Redis 和上传文件卷（不可恢复）：
 
 ```bash
-docker compose down -v
+python3 scripts/local-compose.py down -v
 ```
 
 仅重建应用镜像：
 
 ```bash
-docker compose build api web
-docker compose up -d api worker scheduler web --wait
+python3 scripts/local-compose.py build api web
+python3 scripts/local-compose.py up -d api worker scheduler web --wait
 ```
 
 若只替换 API 容器后 Web 返回 502，而 API 健康检查正常，Nginx 可能仍缓存旧的容器地址；
-执行 `docker compose restart web` 后，再检查 Web 代理的 `/api/v1/health`。
+执行 `python3 scripts/local-compose.py restart web` 后，再检查 Web 代理的 `/api/v1/health`。
 
 查看状态与日志：
 
 ```bash
-docker compose ps
-docker compose logs --tail=200 api worker scheduler web
+python3 scripts/local-compose.py ps
+python3 scripts/local-compose.py logs --tail=200 api worker scheduler web
 ```
 
 ## 9. 生产部署
@@ -263,11 +263,11 @@ docker history labelhub-web:local
 
 | 现象 | 检查与处理 |
 | --- | --- |
-| Web 502 | `docker compose ps api`，再查 `docker compose logs api` |
+| Web 502 | `python3 scripts/local-compose.py ps api`，再查 `python3 scripts/local-compose.py logs api` |
 | API unhealthy | 健康探针会同时检查 API、MySQL、Redis；按日志中的失败依赖排查 |
 | 页面 `/api` 404 | Mock 模式确认 `VITE_ENABLE_MSW=true`；真实模式确认 Nginx / Vite 代理 |
 | Pages 演示登录返回 405 | 确认 `mockServiceWorker.js` 与 `msw` 版本一致；已打开的旧页面应在 worker 更新后自动刷新一次 |
-| 数据表不存在 | 执行 `docker compose run --rm api alembic upgrade head` |
+| 数据表不存在 | 执行 `python3 scripts/local-compose.py run --rm api alembic upgrade head` |
 | Worker 不消费任务 | 检查 Worker health、Redis URL、队列名和 `DOUBAO_*` |
 | 宿主无法连 MySQL / Redis | 默认是安全行为；确有需要时叠加 `docker-compose.dev.yml` |
 | production 启动失败 | 按 `environment-variables.md` 检查弱 JWT、默认数据库密码、Demo 模式和 Trusted Hosts |
@@ -281,3 +281,9 @@ scheduler 每分钟重投尚未执行的任务。禁止通过删除迁移表或�
 任务授权、独立审批、结果检查与失败恢复见 [GOVERNANCE.md](GOVERNANCE.md)。
 Prometheus / Alertmanager / Grafana 使用独立 overlay 和凭据文件，启动及验收命令见
 [OBSERVABILITY.md](OBSERVABILITY.md)；默认只部署本机监控，不发送外部通知。
+
+## 12. 本机存储保护
+
+上述 Compose 命令从仓库根运行，经过容量保护入口。macOS 需 Python 3.9+；原生 Linux 需能够读取 Docker 数据目录。写入操作启动前要求至少 10 GiB 可用空间，执行中低于 3 GiB 时取消本次命令；只读与停止操作仍可使用。远程 Docker 不接受本地空间替代检查。
+
+详细边界、自定义磁盘位置和异盘备份见 [本地存储维护](LOCAL_STORAGE_MAINTENANCE.md)。

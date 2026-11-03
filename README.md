@@ -59,7 +59,7 @@ LabelHub 对应的三个回答：
 - **质量治理三件套**：Quality Center、Audit Trail、Export Passport（Data Quality Passport）。
 - **AI Review 配置**：可配置 Prompt、评分维度、阈值，权重通过滑动条自动归一化为 1。
 
-> **能力边界说明**：本仓库已实现兼容性检查、breaking change 阻断、migration required 预览和历史保留式回滚。但 **持久化的后端 migration execution pipeline、历史答卷批量迁移、migration approval workflow 属于后续计划，未作为已完成能力交付**（详见 §10）。
+> **能力边界说明**：历史迁移已实现固定输入、持久化预演、独立审批、后台执行和不可变产物；原始答卷保持不变。迁移仍受任务权限、发布校验及单批容量限制，详见 [治理说明](docs/GOVERNANCE.md)。
 
 ---
 
@@ -220,17 +220,18 @@ submission/
 cp .env.example .env          # 按需填 DOUBAO_API_KEY / DOUBAO_MODEL 等
 
 # 1) 确定性构建，并先启动基础设施
-docker compose build --pull
-docker compose up -d mysql redis --wait
+# 容量不足会阻断构建；不会自动删除容器或数据卷
+python3 scripts/local-compose.py build --pull
+python3 scripts/local-compose.py up -d mysql redis --wait
 
 # 2) 执行 Alembic 迁移并写入可重复的基础演示 / E2E 数据
-docker compose --profile tools run --rm seed
+python3 scripts/local-compose.py --profile tools run --rm seed
 
 # 3) 启动全部应用并等待真实健康检查
-docker compose up -d --wait
+python3 scripts/local-compose.py up -d --wait
 
 # 4) 可选：补充竞赛演示数据
-docker compose run --rm api python scripts/seed_competition.py
+python3 scripts/local-compose.py run --rm api python scripts/seed_competition.py
 ```
 
 Compose 包含以下服务：`web`、`api`、`worker`、`scheduler`、`mysql`、`redis`。`scheduler` 负责定时清理过期幂等记录。
@@ -295,8 +296,8 @@ cd ../..
 
 # 真实后端 E2E（首次执行需安装 Chromium）
 npm --prefix apps/web exec playwright install chromium
-docker compose up -d --build --wait
-docker compose --profile tools run --rm seed
+python3 scripts/local-compose.py up -d --build --wait
+python3 scripts/local-compose.py --profile tools run --rm seed
 npm --prefix apps/web run e2e
 
 # 构建 API 复用的共享迁移引擎（需 Node 26）
@@ -451,3 +452,5 @@ Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追�
 - 当前稳定交付分支为 `main`；禁止直接在 `main` 开发或 push。
 - Git tag 或主线 commit 表示可复现的产品交付快照；历史答辩固定点 `final-delivery-0610` 继续保留。
 - 私有 npm workspace 版本与 OpenAPI 服务版本属于不同命名空间，当前值与解释见项目状态页。
+
+本地容量保护、异盘备份与恢复验证见 [本地存储维护](docs/LOCAL_STORAGE_MAINTENANCE.md)。文档一致性检查：`npm run check:docs`。

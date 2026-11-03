@@ -1,5 +1,7 @@
 # LabelHub Schema Runtime Engine v2 技术设计文档
 
+> 文档定位：设计与验收参考：正文包含目标态及早期实施快照，不代表所有条目均已实现或仍未实现。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
 > 文档名称：`labelhub_schema_runtime_engine.md`  
 > 项目背景：字节跳动全栈挑战赛 LabelHub 项目  
 > 当前阶段：设计方案升级版，用于指导 Codex/开发同学实现  
