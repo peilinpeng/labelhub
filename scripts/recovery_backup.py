@@ -176,7 +176,9 @@ def physical_identity(path: Path) -> dict:
             whole = disk_info(parent)
             if whole.get('VirtualOrPhysical') == 'Virtual' or whole.get('BusProtocol') == 'Disk Image':
                 raise BackupError('目标底层为磁盘映像，不能认定为异盘。')
-        return {'kind': 'physical', 'devices': sorted(parents), 'filesystem': info.get('FilesystemType')}
+        return {'kind': 'physical', 'devices': sorted(parents), 'filesystem': info.get('FilesystemType'),
+                'volume_id': info.get('VolumeUUID', info.get('DiskUUID', info['DeviceIdentifier'])),
+                'filesystem_device': path.stat().st_dev}
     mount = path.resolve()
     while mount.parent != mount and mount.parent.stat().st_dev == mount.stat().st_dev:
         mount = mount.parent
@@ -193,7 +195,8 @@ def physical_identity(path: Path) -> dict:
         loopback = False
     if not host or host in local_names or loopback:
         raise BackupError('本机回环共享不能认定为异盘。')
-    return {'kind': 'network', 'filesystem': filesystem, 'host': host}
+    return {'kind': 'network', 'filesystem': filesystem, 'host': host,
+            'filesystem_device': path.stat().st_dev}
 
 
 def require_separate(source: Path, target: Path) -> tuple[dict, dict]:
