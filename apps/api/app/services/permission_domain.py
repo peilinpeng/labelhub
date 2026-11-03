@@ -53,11 +53,15 @@ def require_permission(db, task_id, actor, action):
     return task
 
 
+def utc_iso(value):
+    return value.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def serialize_grant(grant):
     return {"id": grant.id, "taskId": grant.task_id, "userId": grant.user_id, "action": grant.action,
-            "effect": grant.effect, "createdBy": grant.created_by, "createdAt": grant.created_at,
-            **({"expiresAt": grant.expires_at} if grant.expires_at else {}),
-            **({"revokedAt": grant.revoked_at} if grant.revoked_at else {})}
+            "effect": grant.effect, "createdBy": grant.created_by, "createdAt": utc_iso(grant.created_at),
+            **({"expiresAt": utc_iso(grant.expires_at)} if grant.expires_at else {}),
+            **({"revokedAt": utc_iso(grant.revoked_at)} if grant.revoked_at else {})}
 
 
 def create_grants(db, task_id, actor, req):

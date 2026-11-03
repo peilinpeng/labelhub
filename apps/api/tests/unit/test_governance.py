@@ -182,3 +182,20 @@ def test_candidate_list_never_returns_answers(client, auth, migration_case):
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert "保密答案" not in response.text
+
+
+def test_grant_timestamps_are_explicit_utc(client, auth, users, migration_case):
+    from datetime import datetime, timedelta, timezone
+    _, base = migration_case
+    expiry = datetime.now(timezone(timedelta(hours=2))) + timedelta(days=1)
+    response = client.post(base + "/permissions", headers=auth["OWNER"], json={
+        "userId": users["LABELER"].id, "actions": ["migration.read"], "effect": "ALLOW",
+        "expiresAt": expiry.isoformat(),
+    })
+    assert response.status_code == 201
+    grant = response.json()["grants"][0]
+    assert grant["createdAt"].endswith("Z") and grant["expiresAt"].endswith("Z")
+    assert abs((datetime.fromisoformat(grant["expiresAt"].replace("Z", "+00:00")) - expiry).total_seconds()) < 1
+    revoked = client.post(base + f"/permissions/{grant['id']}/revoke", headers=auth["OWNER"])
+    assert revoked.status_code == 200
+    assert revoked.json()["revokedAt"].endswith("Z")

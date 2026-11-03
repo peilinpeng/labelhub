@@ -4,6 +4,7 @@ import type { LabelHubSchema } from "@labelhub/contracts";
 
 test("历史迁移：选择范围、独立审批、真实 worker 与不可变产物", async ({ page, request }) => {
   test.setTimeout(120_000);
+  page.setDefaultTimeout(15_000);
   const auth = async (role: string) => {
     const response = await request.post("/api/v1/auth/login", { data: { email: `${role}@labelhub.com`, password: "password123" } });
     expect(response.ok()).toBeTruthy();
@@ -43,7 +44,11 @@ test("历史迁移：选择范围、独立审批、真实 worker 与不可变产
   await page.getByRole("checkbox", { name: new RegExp(submission.id) }).check();
   await page.getByLabel("新增字段默认值（JSON）").fill('{"migrationCheck":"迁移核验"}');
   await page.getByRole("button", { name: "创建计划", exact: true }).click();
+  const previewResponse = page.waitForResponse((response) => response.url().endsWith("/dry-run") && response.request().method() === "POST");
   await page.getByRole("button", { name: "执行预演", exact: true }).click();
+  const preview = await previewResponse;
+  expect(preview.ok(), await preview.text()).toBeTruthy();
+  expect((await preview.json()).status).toBe("READY");
   await page.getByRole("button", { name: "提交独立审批", exact: true }).click();
   await expect(page.getByRole("button", { name: "批准此摘要" })).toBeVisible();
   const jobs = await request.get(`${base}/migrations`, { headers });
