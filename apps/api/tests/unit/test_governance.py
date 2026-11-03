@@ -199,3 +199,25 @@ def test_grant_timestamps_are_explicit_utc(client, auth, users, migration_case):
     revoked = client.post(base + f"/permissions/{grant['id']}/revoke", headers=auth["OWNER"])
     assert revoked.status_code == 200
     assert revoked.json()["revokedAt"].endswith("Z")
+
+
+def test_labeling_deny_filters_marketplace_and_personal_history(client, db_session, auth, users):
+    from tests.helpers import publish_task
+    task_id = create_task(client, auth["OWNER"])["id"]
+    version = publish_schema(client, auth["OWNER"], task_id)
+    add_item(db_session, task_id)
+    publish_task(client, auth["OWNER"], task_id, version)
+    claim = client.post(f"/api/v1/tasks/{task_id}/claim", json={}, headers=auth["LABELER"])
+    assert claim.status_code == 201, claim.text
+    assignment_id = claim.json()["context"]["assignment"]["id"]
+    assert client.get("/api/v1/marketplace/tasks", headers=auth["LABELER"]).json()["total"] == 1
+    assert client.get("/api/v1/me/submissions", headers=auth["LABELER"]).json()["total"] == 1
+    grant = client.post(f"/api/v1/tasks/{task_id}/permissions", headers=auth["OWNER"], json={
+        "userId": users["LABELER"].id, "actions": ["labeling.work"], "effect": "DENY",
+    })
+    assert grant.status_code == 201
+    assert client.get(f"/api/v1/assignments/{assignment_id}", headers=auth["LABELER"]).status_code == 403
+    for path in ["/api/v1/marketplace/tasks", "/api/v1/me/submissions"]:
+        result = client.get(path, headers=auth["LABELER"])
+        assert result.status_code == 200
+        assert result.json()["items"] == [] and result.json()["total"] == 0

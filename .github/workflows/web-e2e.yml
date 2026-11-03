@@ -11,7 +11,7 @@ on:
     paths:
       - "apps/web/**"
       - "apps/api/**"
-      - "packages/contracts/**"
+      - "packages/**"
       - "package.json"
       - "package-lock.json"
       - ".nvmrc"
@@ -29,7 +29,7 @@ on:
     paths:
       - "apps/web/**"
       - "apps/api/**"
-      - "packages/contracts/**"
+      - "packages/**"
       - "package.json"
       - "package-lock.json"
       - ".nvmrc"

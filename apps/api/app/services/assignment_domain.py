@@ -244,7 +244,8 @@ def get_marketplace_tasks(
     status: str | None = None,
 ) -> MarketplaceResponse:
     # 任务广场默认只展示 PUBLISHED；status 传入时进一步收窄（仅 PUBLISHED 在广场可见）
-    base_q = db.query(Task).filter(Task.status == "PUBLISHED")
+    from app.services.permission_domain import permission_filter
+    base_q = db.query(Task).filter(Task.status == "PUBLISHED", permission_filter(actor, "task.read"), permission_filter(actor, "labeling.work"))
     if status:
         base_q = base_q.filter(Task.status == status)
     if keyword:

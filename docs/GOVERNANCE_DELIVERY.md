@@ -27,18 +27,21 @@ API 常规与 MySQL 集成测试；npm/Python 依赖审计；Alembic 升级与 O
 
 ## 完成证据
 
-实施后逐批填写；计划不代表已交付。
+本轮按独立提交实施；主线与部署基线以 [项目状态](PROJECT_STATUS.md) 为准。
 
 ## 当前验证进度
 
 - 依赖批次 `e890f6e`：6 个目标升级已整合；Vitest / coverage 5.0.5、React Router 8.5.1，安装前检查两棵锁。
 - 契约批次 `cd671f0`：独立定义新增端点、状态与权限，先通过 contracts typecheck/test。
-- 本地最新验证：API 292 passed、共享包 380 passed、Web 60 passed；类型检查、生产构建与三份依赖审计通过。
+- 本地最新验证：API 293 passed、共享包 380 passed、Web 60 passed；类型检查、生产构建与三份依赖审计通过。
   Web coverage 66.49% statements / 54.87% branches / 67.40% functions / 70.03% lines。
 - 本机磁盘不足曾导致 Docker 镜像存储 I/O 错误；清理可重建下载缓存后空间恢复，但镜像存储仍异常。
-  完整 Docker、MySQL、监控和真实浏览器验收转交本 PR 的 GitHub Actions 全新隔离 runner，结果待补齐。
+  完整 Docker、MySQL、监控和真实浏览器验收转交本 PR 的 GitHub Actions 全新隔离 runner，验收证据见下方。
 - 新增真实回归覆盖独立审批、原答卷不变、后台执行和运行诊断，并校验存在迁移产物时可重复 seed。
 
 - 远端逐项验收已通过 MySQL 并发、监控鉴权/抓取/规则/面板、非 root 与内网服务约束，以及原有 9 项 E2E 和运行诊断。
   新增迁移端到端暴露 API 精简镜像缺少 Node 的 `libatomic1` 运行库，已补齐并在镜像构建期加入 Node/引擎检查，完整链路继续复验。
 - 新页面桌面与 390px 窄屏验收通过，Demo 浏览器新建/预演/提交审批通过；授权时间统一为显式 UTC。
+
+- [真实后端完整验收](https://github.com/peilinpeng/labelhub/actions/runs/41550057632) 已通过：11 项 E2E + 额外导出 1 项，2 项 MySQL 并发测试，监控部署、非 root 和内网服务约束，以及非空导出/迁移产物存在时重复 seed。
+- 最终权限复核补齐任务广场与个人作答列表过滤，新增拒绝授权前后对照测试；API 293 项通过。E2E 触发范围扩展到全部共享包。
