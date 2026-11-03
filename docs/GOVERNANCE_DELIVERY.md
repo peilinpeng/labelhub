@@ -1,6 +1,8 @@
-# 治理与运行诊断交付计划
+# 治理与运行诊断交付记录
 
-日期：2026-11-02。分支：`feat/complete-governance-runtime`。范围来自本轮全部待办完成请求。
+实施日期：2026-11-02 至 2026-11-03。实现分支：`feat/complete-governance-runtime`。
+[PR #145](https://github.com/peilinpeng/labelhub/pull/145) 已合并；产品代码基线 `a793e5c5d7171db4073be8f8e6bab71d675e9570`。
+范围来自本轮全部待办完成请求，监控按用户确认限定为仓库内方案部署与验证。
 
 ## 批次与验收
 
@@ -29,7 +31,7 @@ API 常规与 MySQL 集成测试；npm/Python 依赖审计；Alembic 升级与 O
 
 本轮按独立提交实施；主线与部署基线以 [项目状态](PROJECT_STATUS.md) 为准。
 
-## 当前验证进度
+## 实施与验收记录
 
 - 依赖批次 `e890f6e`：6 个目标升级已整合；Vitest / coverage 5.0.5、React Router 8.5.1，安装前检查两棵锁。
 - 契约批次 `cd671f0`：独立定义新增端点、状态与权限，先通过 contracts typecheck/test。
@@ -40,8 +42,21 @@ API 常规与 MySQL 集成测试；npm/Python 依赖审计；Alembic 升级与 O
 - 新增真实回归覆盖独立审批、原答卷不变、后台执行和运行诊断，并校验存在迁移产物时可重复 seed。
 
 - 远端逐项验收已通过 MySQL 并发、监控鉴权/抓取/规则/面板、非 root 与内网服务约束，以及原有 9 项 E2E 和运行诊断。
-  新增迁移端到端暴露 API 精简镜像缺少 Node 的 `libatomic1` 运行库，已补齐并在镜像构建期加入 Node/引擎检查，完整链路继续复验。
+  新增迁移端到端暴露 API 精简镜像缺少 Node 的 `libatomic1` 运行库，已补齐并在镜像构建期加入 Node/引擎检查，随后完整链路已通过复验。
 - 新页面桌面与 390px 窄屏验收通过，Demo 浏览器新建/预演/提交审批通过；授权时间统一为显式 UTC。
 
-- [真实后端完整验收](https://github.com/peilinpeng/labelhub/actions/runs/41550057632) 已通过：11 项 E2E + 额外导出 1 项，2 项 MySQL 并发测试，监控部署、非 root 和内网服务约束，以及非空导出/迁移产物存在时重复 seed。
+- [真实后端完整验收](https://github.com/peilinpeng/labelhub/actions/runs/41550493012) 已通过：11 项 E2E + 额外导出 1 项，2 项 MySQL 并发测试，监控部署、非 root 和内网服务约束，以及非空导出/迁移产物存在时重复 seed。
 - 最终权限复核补齐任务广场与个人作答列表过滤，新增拒绝授权前后对照测试；API 293 项通过。E2E 触发范围扩展到全部共享包。
+
+## 合并后结项
+
+2026-11-03，PR #145 合并为 `a793e5c5d7171db4073be8f8e6bab71d675e9570`，
+被替代的 #137–142 全部关闭并保留来源分支。
+
+- [API 与依赖审计](https://github.com/peilinpeng/labelhub/actions/runs/41550975141)、
+  [共享包/Web](https://github.com/peilinpeng/labelhub/actions/runs/41550975072)、
+  [完整容器/E2E/监控](https://github.com/peilinpeng/labelhub/actions/runs/41550975096)、
+  [Pages](https://github.com/peilinpeng/labelhub/actions/runs/41550975261) 均成功。
+- 线上三角色登录、深链接刷新、治理桌面与 390px 窄屏、Worker、运行追踪通过，页面和控制台无异常。
+- 本轮临时静态服务器与监控凭据已清理，隔离测试未遗留容器、数据卷或网络；原有用户服务和数据未重置。
+- 仓库内监控方案已按用户确认部署验证，外部生产接入与通知渠道不在本轮范围。

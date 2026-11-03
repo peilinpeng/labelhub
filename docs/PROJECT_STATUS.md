@@ -5,8 +5,9 @@
 ## 本轮交付
 
 [PR #145](https://github.com/peilinpeng/labelhub/pull/145) 完成剩余治理、运行诊断与监控任务，
-并整合依赖 PR #137–142。当前处于最终验收阶段，合并及主线部署证据将在验收后补齐。
-此前主线产品基线为 `3aab8e19d3b50badb561826a7acecd594ad74add`（PR #143）。
+并整合依赖 PR #137–142，已于 2026-11-03 合并。
+产品代码基线：`a793e5c5d7171db4073be8f8e6bab71d675e9570`（PR #145；后续纯文档提交不改变此基线）。
+合并前全部 CI、合并后主线四套工作流与线上浏览器验收均已通过。
 
 ## 已实现能力
 
@@ -30,7 +31,8 @@
 | Web 覆盖率 | statements 66.49%、branches 54.87%、functions 67.40%、lines 70.03%；四项门槛 50% |
 | 依赖审计 | 根/Web npm 与 Python 哈希锁无已知漏洞 |
 | 浏览器 | 本地子路径部署，治理桌面/390px 窄屏、Worker、实际运行追踪、深链接刷新通过；Demo 新建/预演/提交审批通过 |
-| 远端集成 | [隔离全栈验收](https://github.com/peilinpeng/labelhub/actions/runs/41550057632)：11 项 E2E + 额外导出 1 项、MySQL 并发 2 项、监控、非 root 与内网服务约束、非空导出及迁移产物存在时重复 seed 均通过；列表权限补丁最终 CI 待确认 |
+| 远端集成 | [主线隔离全栈验收](https://github.com/peilinpeng/labelhub/actions/runs/41550975096)：11 项 E2E + 额外导出 1 项、MySQL 并发 2 项、监控、非 root 与内网服务约束、非空导出及迁移产物存在时重复 seed 均通过 |
+| Pages 线上验收 | 三角色登录与深链接刷新、治理桌面/390px 窄屏、Worker、实际运行追踪通过；控制台与页面无异常 |
 
 本机曾因磁盘不足出现 Docker 镜像存储 I/O 错误；已释放可重建下载缓存，未重置 Docker 或修改原有数据卷。
 本轮完整容器验收使用 GitHub Actions 的全新隔离环境；不把本机 Docker 描述为已修复。
@@ -41,7 +43,17 @@
   SQLAlchemy 2.1.6、PyMySQL 1.2.3；新增两棵 npm 锁文件的工具链一致性检查。
 - PR #136 已完成此前三批升级、Vitest / MSW 适配、Node 26.13.0 / npm 11.20.0 统一和安全修复。
 - PR #143 已修复 MSW 3 的 Pages 子路径刷新。此前被替代的 15 个依赖 PR 已关闭。
-- #137–142 在 #145 合并后关闭；不会将未合并的依赖分支逐个直接并入主线。
+- #137–142 已在 #145 合并后全部关闭；关闭时保留来源分支。
+
+## 当前待办
+
+本轮要求的功能、依赖、回归、文档与仓库内监控均已完成；无遗留开放依赖 PR。
+
+主线证据：[API 与审计](https://github.com/peilinpeng/labelhub/actions/runs/41550975141)、
+[共享包/Web](https://github.com/peilinpeng/labelhub/actions/runs/41550975072)、
+[真实后端/监控](https://github.com/peilinpeng/labelhub/actions/runs/41550975096)、
+[Pages 部署](https://github.com/peilinpeng/labelhub/actions/runs/41550975261)。
+[线上演示](https://peilinpeng.github.io/labelhub/) 仍采用 Mock，不代表真实生产后端上线。
 
 ## 明确边界
 
