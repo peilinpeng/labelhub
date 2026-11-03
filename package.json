@@ -25,7 +25,15 @@
     "test:schema-designer": "npm run -w @labelhub/schema-designer test",
     "test:workflow-core": "npm run -w @labelhub/workflow-core test",
     "check:toolchain": "node scripts/check-toolchain.mjs",
-    "build:migration-engine": "tsc -p scripts/tsconfig.json && node scripts/build-migration-engine.mjs"
+    "build:migration-engine": "tsc -p scripts/tsconfig.json && node scripts/build-migration-engine.mjs",
+    "check:docs": "python3 scripts/check-docs.py",
+    "check:storage": "python3 scripts/local-compose.py --check",
+    "compose": "python3 scripts/local-compose.py",
+    "test:ops": "python3 -m unittest discover -s scripts/tests -v",
+    "backup:prepare": "python3 scripts/recovery_backup.py prepare",
+    "backup:copy": "python3 scripts/recovery_backup.py copy",
+    "backup:verify": "python3 scripts/recovery_backup.py verify",
+    "backup:restore-check": "python3 scripts/recovery_backup.py restore-check"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
