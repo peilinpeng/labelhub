@@ -1,6 +1,7 @@
 .git
 .github
 .codex
+.cache
 .claude
 .idea
 .vscode

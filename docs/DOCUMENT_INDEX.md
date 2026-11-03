@@ -36,6 +36,7 @@
 ## 5. 运行 / 部署 / 协作参考
 
 - [docs/deployment.md](deployment.md)：本地与云部署说明。
+- [docs/WINDOWS_DEVELOPMENT.md](WINDOWS_DEVELOPMENT.md)：Windows 工具链、WSL2 Docker 容量保护、隔离验收与备份边界。
 - [docs/git-workflow.md](git-workflow.md)：早期协作流程归档；当前分支策略以 AGENTS / CONTRIBUTING 为准。
 - [CONTRIBUTING.md](../CONTRIBUTING.md)：贡献指南。
 
