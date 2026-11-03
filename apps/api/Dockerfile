@@ -2,6 +2,13 @@
 
 ARG PYTHON_VERSION=3.11.13
 
+FROM node:26.13.0-bookworm-slim AS migration-engine
+WORKDIR /build
+COPY package.json package-lock.json ./
+COPY packages ./packages
+COPY scripts ./scripts
+RUN npm ci && npm run build:migration-engine
+
 FROM python:${PYTHON_VERSION}-slim-bookworm AS dependencies
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -24,12 +31,18 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/usr/local/bin:${PATH}" \
     LOCAL_STORAGE_DIR=/data/files
 
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 libatomic1 && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 labelhub \
     && useradd --uid 10001 --gid labelhub --create-home --home-dir /home/labelhub labelhub \
     && mkdir -p /app /data/files \
     && chown -R labelhub:labelhub /app /data/files
 
 COPY --from=dependencies /install/ /usr/local/
+COPY --from=migration-engine /usr/local/bin/node /usr/local/bin/node
+COPY --from=migration-engine --chown=labelhub:labelhub /build/apps/api/generated/ /app/generated/
+
+RUN node --version && node --check /app/generated/migration-engine.cjs
 
 WORKDIR /app
 COPY --chown=labelhub:labelhub apps/api/app/ ./app/
@@ -45,4 +58,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 \
   CMD ["python", "scripts/container_healthcheck.py", "api"]
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000", "--timeout-graceful-shutdown", "30"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000", "--timeout-graceful-shutdown", "30", "--no-access-log"]

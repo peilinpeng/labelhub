@@ -1,3 +1,4 @@
+import { governanceHandlers } from "./governance";
 import { http, HttpResponse } from "msw/http";
 import type {
   AiAssistActionRequest,
@@ -129,6 +130,7 @@ function writeReviewConfig(taskId: string, payload: Record<string, unknown>): Re
 }
 
 export const handlers = [
+  ...governanceHandlers,
   http.post("*/api/v1/auth/login", async ({ request }) => {
     const body = await readJson<{ email?: unknown; password?: unknown }>(request);
     const email = typeof body.email === "string" ? body.email : "";

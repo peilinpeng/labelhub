@@ -299,6 +299,9 @@ docker compose up -d --build --wait
 docker compose --profile tools run --rm seed
 npm --prefix apps/web run e2e
 
+# 构建 API 复用的共享迁移引擎（需 Node 26）
+npm run build:migration-engine
+
 # 后端（生产镜像不包含测试依赖，在 Python 3.11 虚拟环境按哈希锁安装）
 cd apps/api
 python3.11 -m venv .venv
@@ -383,7 +386,7 @@ Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追�
 
 ### 9.7 No fake migration execution
 
-系统支持兼容性检查和 "migration required" 预览，`schema-core` 提供了 plan / dry-run / execute 的纯函数构建块。但 **持久化的后端 migration execution pipeline 属于后续计划，不被描述为已完成能力。**
+历史迁移复用 `schema-core` 的计划、预演与执行规则。后端保存固定输入与 SHA-256 摘要，经另一位授权用户审批后由 worker 生成独立、不可变的迁移产物；原始提交和已发布版本保持不变。源数据变化会记录为冲突，不能绕过审批或发布门禁。流程与限制见 [治理说明](./docs/GOVERNANCE.md)。
 
 ---
 
@@ -401,15 +404,16 @@ Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追�
 - Quality Center / Export Passport / Audit
 - AI Review 配置与自动归一化权重 slider
 
-### 后续计划
+- 历史答卷批量迁移：预演、独立审批、后台执行、冲突检测与不可变结果
+- 任务级动作授权：允许 / 拒绝、到期、撤销、服务端鉴权与审计
+- Runtime Trace Panel、字段依赖图、Worker 编译与有界缓存
+- 仓库内 Prometheus / Alertmanager / Grafana 部署方案与自动验收
 
-- 后端 migration execution pipeline（持久化、修改数据库的迁移执行）
-- 历史答卷批量迁移（historical answers batch migration）
-- migration approval workflow（Dry Run → 审批 → 执行 → 不可变记录）
-- 更完整的生产级权限管理
-- 更细粒度的质量分析
-- 部署监控
-- 当前系统已经记录完整审计事件；下一阶段可以基于这些审计事件接入 AI 审计摘要，让 Owner 不需要阅读原始 audit log，而是获得简洁的人类可读报告。
+### 部署边界与可选扩展
+
+- GitHub Pages 提供浏览器内 Mock 演示；持久化迁移需要部署真实 API、MySQL、Redis、worker 与 scheduler。
+- 监控默认使用本地告警接收器；外部生产地址和通知渠道由具体环境配置，本轮不接入未知生产环境。
+- 更深入的质量分析和 AI 审计摘要属于未来可选扩展，尚未作为产品能力交付。
 
 ---
 
@@ -417,6 +421,8 @@ Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追�
 
 | 文档 | 用途 |
 | --- | --- |
+| [docs/GOVERNANCE.md](./docs/GOVERNANCE.md) | 历史迁移、独立审批、任务权限与运行诊断 |
+| [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) | 监控部署、指标、告警与故障恢复 |
 | [docs/PROJECT_STATUS.md](./docs/PROJECT_STATUS.md) | 当前主线、验证快照、能力边界与维护待办 |
 | [labelhub-architecture-contract.md](./labelhub-architecture-contract.md) | 顶层架构契约（v1.1），各层共同依据 |
 | [AI_CODING_RULES.md](./AI_CODING_RULES.md) | AI Coding 统一规则（contract-driven、禁止事项、验证要求） |

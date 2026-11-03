@@ -26,5 +26,6 @@ def get_analytics_dashboard(
     db: Session = Depends(get_db),
     actor: Actor = Depends(require_roles("OWNER", "ADMIN")),
 ) -> AnalyticsDashboardResponse:
-    data = analytics_domain.get_dashboard(db, taskId)
+    from app.services.permission_domain import allowed_task_ids
+    data = analytics_domain.get_dashboard(db, taskId, allowed_task_ids(db, actor, "analytics.read"))
     return AnalyticsDashboardResponse(**data)

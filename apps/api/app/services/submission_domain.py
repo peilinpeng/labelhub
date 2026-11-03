@@ -121,7 +121,8 @@ def submit_assignment(db: Session, assignment_id: str, actor: object, req: objec
 
 
 def get_my_assignments(db: Session, actor: object, page: int, page_size: int) -> dict:
-    base_q = db.query(Assignment).filter(Assignment.labeler_id == actor.id)
+    from app.services.permission_domain import allowed_task_ids
+    base_q = db.query(Assignment).filter(Assignment.labeler_id == actor.id, Assignment.task_id.in_(allowed_task_ids(db, actor, "labeling.work")))
     total = base_q.count()
     items = (
         base_q.order_by(Assignment.created_at.desc())

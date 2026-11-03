@@ -10,12 +10,16 @@ export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
+      "@formily/react": path.resolve(import.meta.dirname, "node_modules/@formily/react/esm/index.js"),
+      "@formily/reactive-react": path.resolve(import.meta.dirname, "node_modules/@formily/reactive-react/esm/index.js"),
       "@": path.resolve(import.meta.dirname, "./src"),
       "@labelhub/contracts": path.resolve(import.meta.dirname, "../../packages/contracts/src/index.ts"),
       "@labelhub/schema-core": path.resolve(import.meta.dirname, "../../packages/schema-core/src/index.ts"),
     },
   },
   test: {
+    // 工作区 Formily 的 CJS 依赖需交由 Vite 解析，确保与 Web 共用 React 实例。
+    server: { deps: { inline: [/@formily\//] } },
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],

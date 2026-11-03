@@ -1891,3 +1891,81 @@ export interface AuditLogSummary {
 - `export-domain`：映射解析、文件生成。
 - `file-domain`：上传、确认、权限校验。
 - `audit-domain`：统一审计。
+
+## 30. 治理与运行诊断扩展（2026-11，向后兼容）
+
+本节是独立契约工作包，覆盖历史迁移、审批、细粒度任务授权与诊断；不改变 v1.1 Schema。
+
+### 30.1 历史迁移
+
+- `MigrationJob` 使用 `job_` ID，源/目标必须是同一任务不同的已发布版本。
+- 显式选择 1–500 个历史 submissionId；服务端读取快照，复用 schema-core 生成计划、预演、执行和校验。
+  通过 renameMap/defaults/optionValueMap/archiveRemovedFields 表达映射，禁止客户端提交可执行代码或伪造可执行标志。
+- 状态：DRAFT → READY/BLOCKED（dry-run）；READY → PENDING_APPROVAL；PENDING_APPROVAL → APPROVED/REJECTED；
+  APPROVED → QUEUED → RUNNING → SUCCEEDED/PARTIAL/FAILED；FAILED 可重试为 QUEUED；DRAFT/READY/BLOCKED/PENDING_APPROVAL/APPROVED 可取消。
+  BLOCKED 可再次 dry-run；修改映射需新建计划，不能篡改已提交审批的计划。
+- dry-run 固定源数据与摘要（canonical-json-v1 + SHA-256）、目标版本、计划和逐项结果。
+  审批必须携带精确摘要，审批人与发起人不同；执行与重试均重新校验批准摘要。
+- 执行只创建不可变迁移产物，原始 Submission 的 answers/schemaVersion/status、审核结果与既有导出完全不变。
+  迁移记录使用 `sub_` ID，唯一键 jobId+submissionId；源数据变化记 CONFLICT；目标校验失败不得产生成功记录。
+  答案只保存在受保护业务数据表，不写审计或日志；产物查询/下载必须经过 migration.read 授权。
+- 入队状态先落库，定时投递恢复丢失消息；重复投递不能重复写产物；失败可以重试，终态产物不可改。
+- 自定义验证器或 CUSTOM_TRANSFORM 未获服务端注册时必须阻断，禁止跳过验证并宣称可执行。
+
+端点（均在 `/api/v1` 下）：
+
+| 方法 | 路径 | 权限 |
+| --- | --- | --- |
+| GET/POST | /tasks/:taskId/migrations | migration.read / migration.plan |
+| GET | /tasks/:taskId/migrations/:jobId | migration.read |
+| POST | /tasks/:taskId/migrations/:jobId/dry-run | migration.plan |
+| POST | /tasks/:taskId/migrations/:jobId/submit | migration.plan |
+| POST | /tasks/:taskId/migrations/:jobId/approve | migration.approve，独立审批人 |
+| POST | /tasks/:taskId/migrations/:jobId/reject | migration.approve，独立审批人 |
+| POST | /tasks/:taskId/migrations/:jobId/execute | migration.execute |
+| POST | /tasks/:taskId/migrations/:jobId/retry | migration.execute |
+| POST | /tasks/:taskId/migrations/:jobId/cancel | migration.plan |
+| GET | /tasks/:taskId/migrations/:jobId/records | migration.read，分页 |
+
+写入仍使用既有幂等、错误码、审计规范。审批请求 `checksum` 和 `reason`（1–500 字）必填。
+审计实体增加 MIGRATION、PERMISSION_GRANT；动作增加 MIGRATION_CREATED、MIGRATION_PREVIEWED、
+MIGRATION_SUBMITTED、MIGRATION_APPROVED、MIGRATION_REJECTED、MIGRATION_QUEUED、MIGRATION_STARTED、
+MIGRATION_COMPLETED、MIGRATION_FAILED、MIGRATION_CANCELED、PERMISSION_GRANTED、PERMISSION_REVOKED。
+
+### 30.2 任务级授权
+
+`TaskPermission`：task.read、task.manage、schema.write、dataset.manage、export.create、analytics.read、
+migration.read、migration.plan、migration.approve、migration.execute、permissions.manage、review.work、labeling.work。
+授权记录使用 `cfg_` ID，精确 userId/taskId/action/effect(ALLOW|DENY)、可选 expiresAt、revokedAt。
+显式 DENY 优先；过期/撤销即时失效；无授权时保留原有角色/资源所有权规则。
+ALLOW 不赋予新的全局角色，不扩大至其他任务；迁移权限可明确授予任何有效人工用户。
+Owner 默认拥有自己任务管理权限，ADMIN 可管理全部任务；SYSTEM 不接受人工授权。
+`permissions.manage` 只能由任务所有者或 ADMIN 行使，不能通过普通 grant 转授。
+用户禁用和角色变化在每次认证请求重新读取数据库时生效，包括幂等回放。
+
+端点：GET `/tasks/:taskId/permissions/me`；GET/POST `/tasks/:taskId/permissions`；
+POST `/tasks/:taskId/permissions/:grantId/revoke`。列表/创建/撤销需要 permissions.manage；
+创建需有效 userId、动作列表、effect、可选 expiresAt；返回授权记录。撤销与创建均审计。
+
+### 30.3 诊断与编译
+
+RuntimeTraceEvent 只包含序号、时间、事件种类、ruleId、字段名、匹配布尔值和动作名；不得包含答案、提示词或模型输出。
+追踪由用户显式开启，仅保留页面内最近 200 条；重置 Schema/关闭面板清空；不上传后台。
+依赖图使用 schema-compiler 的权威 visitor，不在 UI 重新解析表达式。
+缓存以完整规范化 Schema 内容为键，容量/字节数受限；编译结果不可被调用方污染；不得缓存答案。
+Worker 协议使用 requestId、schema、result/error，处理并发、超时、取消、销毁和旧结果；不可用时安全回退同步编译。
+
+### 30.4 可观测性
+
+`GET /api/v1/health` 继续表示进程存活；`GET /api/v1/ready` 检查数据库与 Redis，失败返回 503，禁止泄露连接串。
+`GET /api/v1/metrics` 需要专用监控 Bearer token 或有效 ADMIN；默认未配置 token 时拒绝匿名访问。
+HTTP 指标只使用路由模板、方法和状态码，禁止 userId/taskId/URL 参数作标签；日志只记录请求 ID、模板、方法、状态、耗时。
+监控不得暴露答案、认证 token、数据库连接串；告警配置与面板随仓库提供，可在隔离环境验收。
+
+### 30.5 治理入口发现与迁移范围选择
+
+- GET `/api/v1/governance/tasks`：返回当前用户具有 migration.read 或 permissions.manage 的任务列表 `{items: Task[]}`，不暴露其他任务。
+- GET `/api/v1/tasks/:taskId/migration-candidates?schemaVersionId=...&page=1&pageSize=20`：需要 migration.read；
+  源版本必须属于当前任务，返回分页 `{items: MigrationCandidate[],total,page,pageSize}`，只含 ID、版本、标注员、状态和提交时间，不含答案。
+- 后端调用共享内核的 migration-preview；兼容已有简化 Schema 时先使用既有 normalize_schema_payload。
+- 权限同时应用于列表/统计/批量入口，不能通过全局聚合查询或幂等批量回放绕过任务动作拒绝。

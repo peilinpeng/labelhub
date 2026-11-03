@@ -11,6 +11,7 @@ on:
     paths:
       - "apps/web/**"
       - "packages/**"
+      - "scripts/check-toolchain.mjs"
       - "package.json"
       - "package-lock.json"
       - ".nvmrc"
@@ -19,6 +20,7 @@ on:
     paths:
       - "apps/web/**"
       - "packages/**"
+      - "scripts/check-toolchain.mjs"
       - "package.json"
       - "package-lock.json"
       - ".nvmrc"
@@ -42,6 +44,10 @@ jobs:
           node-version: "26.13.0"
           cache: npm
           cache-dependency-path: package-lock.json
+
+      - name: Check toolchain consistency
+        run: node scripts/check-toolchain.mjs
+        working-directory: ${{ github.workspace }}
 
       - name: Install shared package dependencies
         run: npm ci
@@ -73,6 +79,10 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             apps/web/package-lock.json
+
+      - name: Check toolchain consistency
+        run: node scripts/check-toolchain.mjs
+        working-directory: ${{ github.workspace }}
 
       - name: Install shared package dependencies
         run: npm ci

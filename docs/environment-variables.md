@@ -51,6 +51,22 @@
 | `MYSQL_PORT` | 否 | `3306` | 公开 | 仅显式叠加 `docker-compose.dev.yml` 时生效 |
 | `REDIS_PORT` | 否 | `6379` | 公开 | 仅显式叠加 `docker-compose.dev.yml` 时生效 |
 
+## 治理与监控
+
+| 变量 | 必填 | 默认值 | 敏感等级 | 使用方与说明 |
+| --- | --- | --- | --- | --- |
+| `NODE_BINARY` | 否 | `node` | 内部 | API / worker 的共享迁移引擎；需 Node 26，Docker 已内置 |
+| `METRICS_TOKEN` | 否 | 空 | 敏感 | API 指标专用 Bearer token；空值不开放匿名抓取 |
+| `METRICS_TOKEN_FILE` | 监控 overlay 必填 | 空 | 敏感文件路径 | Compose 读取宿主文件并挂载为 secret；API 读取容器路径，优先于 `METRICS_TOKEN` |
+| `GRAFANA_PASSWORD_FILE` | 监控 overlay 必填 | 空 | 敏感文件路径 | Grafana admin 密码来源，文件必须存在且可被容器用户读取 |
+| `PROMETHEUS_PORT` | 否 | `9090` | 公开 | 仅绑定 127.0.0.1 |
+| `ALERTMANAGER_PORT` | 否 | `9093` | 公开 | 仅绑定 127.0.0.1 |
+| `GRAFANA_PORT` | 否 | `3001` | 公开 | 仅绑定 127.0.0.1 |
+
+自定义监控端口后，验收脚本可使用 `MONITOR_API_URL`、`MONITOR_PROMETHEUS_URL`、
+`MONITOR_GRAFANA_URL`、`MONITOR_ALERTMANAGER_URL` 指定对应地址。凭据不写入命令输出。
+完整部署与故障处置见 [OBSERVABILITY.md](OBSERVABILITY.md)。
+
 ## Web 构建与本地开发
 
 | 变量 | 必填 | 默认值 | 敏感等级 | 使用方与说明 |

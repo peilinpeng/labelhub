@@ -1,3 +1,4 @@
+import GovernancePage from "../features/governance/GovernancePage";
 import { useEffect, useState, type FormEvent } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router";
 import { RoutePath, Role } from "./routes";
@@ -49,6 +50,7 @@ const shellCopy: Record<Role, { title: string; subtitle: string; navItems: Shell
       { label: "AI 预审规则", path: RoutePath.OWNER_AI_CONFIG },
       { label: "质量中心", path: "/owner/quality" },
       { label: "数据看板", path: RoutePath.OWNER_ANALYTICS },
+      { label: "迁移与权限", path: "/owner/governance" },
     ],
   },
   LABELER: {
@@ -57,12 +59,13 @@ const shellCopy: Record<Role, { title: string; subtitle: string; navItems: Shell
     navItems: [
       { label: "任务市场", path: RoutePath.LABELER_TASKS, end: true },
       { label: "我的提交", path: RoutePath.LABELER_SUBMISSIONS },
+      { label: "迁移工作台", path: "/labeler/governance" },
     ],
   },
   REVIEWER: {
     title: "审核与质检",
     subtitle: "AI 预审队列、人工复核与结果入库",
-    navItems: [{ label: "审核队列", path: RoutePath.REVIEWER_QUEUE, end: true }],
+    navItems: [{ label: "审核队列", path: RoutePath.REVIEWER_QUEUE, end: true }, { label: "迁移审批", path: "/reviewer/governance" }],
   },
 };
 
@@ -259,6 +262,9 @@ function AppRoutes({ role }: { role: Role }) {
       <Route path={RoutePath.OWNER_TASKS} element={<OwnerWorkspace role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_NEW} element={<OwnerNewTaskPage role={role} />} />
       <Route path={RoutePath.OWNER_AI_CONFIG} element={<OwnerAIPage role={role} />} />
+      <Route path="/owner/governance" element={<GovernancePage />} />
+      <Route path="/reviewer/governance" element={<GovernancePage />} />
+      <Route path="/labeler/governance" element={<GovernancePage />} />
       <Route path={RoutePath.OWNER_TASK_DETAIL} element={<OwnerTaskDetailPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_DATA} element={<OwnerDatasetPage role={role} />} />
       <Route path={RoutePath.OWNER_TASKS_DATASET} element={<OwnerDatasetPage role={role} />} />

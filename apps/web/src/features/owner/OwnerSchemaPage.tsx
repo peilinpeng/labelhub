@@ -1,3 +1,4 @@
+import { RuntimeDiagnostics } from "../runtime/RuntimeDiagnostics";
 import { Link } from "react-router";
 import { RoutePath, type Role } from "../../app/routes";
 import { AuditTimelinePanel } from "./AuditTimelinePanel";
@@ -301,6 +302,8 @@ export default function OwnerSchemaPage({ role }: OwnerSchemaPageProps) {
         onDragOver={handleCanvasDragOver}
         onDrop={handleCanvasDrop}
       />
+
+      <RuntimeDiagnostics schema={schema} context={sampleContext} />
 
       <SchemaVersionPanel
         taskId={resolvedAuditTaskId}

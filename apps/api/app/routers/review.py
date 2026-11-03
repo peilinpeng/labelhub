@@ -84,7 +84,8 @@ def get_review_agreement(
     db: Session = Depends(get_db),
     actor: Actor = Depends(require_roles("OWNER", "REVIEWER", "ADMIN")),
 ) -> ReviewAgreementResponse:
-    return ReviewAgreementResponse(**review_eval_domain.compute_agreement(db, taskId))
+    from app.services.permission_domain import allowed_task_ids
+    return ReviewAgreementResponse(**review_eval_domain.compute_agreement(db, taskId, allowed_task_ids(db, actor, "review.work")))
 
 
 @router.get(

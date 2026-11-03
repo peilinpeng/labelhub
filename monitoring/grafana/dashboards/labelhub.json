@@ -1,0 +1,145 @@
+{
+  "uid": "labelhub-operations",
+  "title": "LabelHub 运行状态",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "请求速率",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "labelhub-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (route) (rate(labelhub_http_requests_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{route}} {{kind}} {{status}} {{dependency}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "P95 请求耗时",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "labelhub-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(labelhub_http_request_duration_seconds_bucket[5m])))",
+          "refId": "A",
+          "legendFormat": "{{route}} {{kind}} {{status}} {{dependency}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "依赖可用性",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "labelhub-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "labelhub_dependency_up",
+          "refId": "A",
+          "legendFormat": "{{route}} {{kind}} {{status}} {{dependency}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "后台任务状态",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "labelhub-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "labelhub_jobs",
+          "refId": "A",
+          "legendFormat": "{{route}} {{kind}} {{status}} {{dependency}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "等待任务年龄",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "labelhub-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "labelhub_oldest_pending_job_age_seconds",
+          "refId": "A",
+          "legendFormat": "{{route}} {{kind}} {{status}} {{dependency}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "HTTP 错误",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "labelhub-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(labelhub_http_requests_total{status=~\"[45]..\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{route}} {{kind}} {{status}} {{dependency}}"
+        }
+      ]
+    }
+  ]
+}

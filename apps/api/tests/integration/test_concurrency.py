@@ -30,6 +30,8 @@ from app.models.task import Task
 pytestmark = pytest.mark.integration
 
 BASE = os.environ.get("E2E_BASE", "http://localhost:3000/api/v1")
+EMAIL_DOMAIN = os.environ.get("E2E_EMAIL_DOMAIN", "labelhub.test")
+PASSWORD = os.environ.get("E2E_PASSWORD", "Seed@1234")
 
 
 def _real_db():
@@ -42,7 +44,7 @@ def _real_db():
     return sessionmaker(bind=engine, autoflush=False, autocommit=False)()
 
 
-def _login(email, password="Seed@1234"):
+def _login(email, password=PASSWORD):
     r = httpx.post(f"{BASE}/auth/login", json={"email": email, "password": password}, timeout=10)
     r.raise_for_status()
     return r.json()["token"]
@@ -61,8 +63,8 @@ def live_api():
 
 
 def test_concurrent_claim_no_oversell(live_api):
-    owner = _login("owner@labelhub.test")
-    labeler = _login("labeler@labelhub.test")
+    owner = _login(f"owner@{EMAIL_DOMAIN}")
+    labeler = _login(f"labeler@{EMAIL_DOMAIN}")
 
     # 1) 建任务 + 发 Schema + 发布
     tid = httpx.post(f"{BASE}/tasks", headers=_h(owner), timeout=10, json={
@@ -105,7 +107,7 @@ def test_concurrent_claim_no_oversell(live_api):
 
 
 def test_concurrent_idempotent_create_executes_business_once(live_api):
-    owner = _login("owner@labelhub.test")
+    owner = _login(f"owner@{EMAIL_DOMAIN}")
     title = f"幂等并发_{uuid4().hex[:8]}"
     payload = {
         "title": title,

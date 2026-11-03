@@ -158,6 +158,17 @@ def test_wipe_demo_removes_export_dependencies_before_submission(foreign_key_db,
     )
     db_session.commit()
 
+    from app.models.governance import MigrationJob, MigrationRecord, TaskPermissionGrant
+    migration = MigrationJob(id="job_seed_migration", task_id=TASK_ID, from_schema_version_id=schema_version_id,
+                             to_schema_version_id=schema_version_id, created_by=owner.id, request_json={}, status="SUCCEEDED")
+    db_session.add(migration)
+    db_session.flush()
+    db_session.add(MigrationRecord(id="sub_seed_artifact", job_id=migration.id, submission_id=submission_id,
+                                   from_schema_version_id=schema_version_id, to_schema_version_id=schema_version_id,
+                                   status="SUCCEEDED", source_hash="a" * 64, answers_json={}))
+    db_session.add(TaskPermissionGrant(id="cfg_seed_grant", task_id=TASK_ID, user_id=labeler.id, action="migration.read",
+                                      effect="ALLOW", created_by=owner.id))
+    db_session.commit()
     _wipe_demo(db_session)
 
     assert db_session.get(ExportRecord, "erec_seed_repeat") is None

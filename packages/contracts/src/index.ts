@@ -13,3 +13,4 @@ export * from "./schema";
 export * from "./schema-versioning";
 export * from "./utils/contract-guards";
 export * from "./workflow";
+export * from "./governance";

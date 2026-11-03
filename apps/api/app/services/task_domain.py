@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import case, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.models.task import Task
 from app.models.audit import AuditLog
@@ -41,8 +41,8 @@ def _get_task_or_404(db: Session, task_id: str) -> Task:
 
 def _assert_owner(task: Task, actor: Actor) -> None:
     """校验 actor 是该任务的 owner，否则抛 403。"""
-    if task.owner_id != actor.id:
-        raise PermissionDeniedException("只有任务创建者（Owner）可以修改此任务")
+    from app.services.permission_domain import require_permission
+    require_permission(object_session(task), task.id, actor, "task.manage")
 
 
 # ─── createTask ───────────────────────────────────────────────────────────────

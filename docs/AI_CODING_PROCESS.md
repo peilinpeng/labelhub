@@ -81,7 +81,7 @@
 
 **验证方式** — `packages/schema-core` 的 typecheck 与测试套件，包括 compatibility、versioning、deprecation、migration；手动测试 Owner 发布预览。
 
-> **边界说明（后续工作）：** **migration execution backend pipeline**、**历史答卷批量迁移** 和 **migration approval workflow** 并未作为可运行的端到端系统交付。`schema-core` 提供了纯函数构建块，包括 plan / dry-run / execute drafts，以及契约类型；但持久化的、需要管理员审批的、会修改数据库的迁移 pipeline 仍属于后续工作。本文档不会声称它们已经完成。
+> **历史阶段边界（后续交付已扩展）：** 此阶段仅交付迁移纯函数，尚无持久化审批与后台执行。2026-11 的后续实现已增加完整管线，当前能力、边界与验证结果见 [项目状态](PROJECT_STATUS.md)；原始答卷始终保持不变。
 
 ---
 
@@ -289,3 +289,8 @@ LabelHub 采用 **AI 辅助编码 + 人工审查 + 小步验证** 的方式完�
 ## 7. 存放位置
 
 本文件最终落位于 `docs/AI_CODING_PROCESS.md`，作为仓库内的 AI Coding 过程记录；提交物索引 `submission/README.md` 指向此处。
+
+## 2026-11 治理能力扩展
+
+上述迁移未交付说明描述此前竞赛阶段。新一轮新增持久化迁移、独立审批、任务动作授权、运行诊断及监控部署；
+当前实现边界与验证证据统一见 [项目状态](PROJECT_STATUS.md) 和 [交付记录](GOVERNANCE_DELIVERY.md)。原始答卷始终保持不变。

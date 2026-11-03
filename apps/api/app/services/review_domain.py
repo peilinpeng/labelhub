@@ -21,6 +21,7 @@ from app.services.audit_event_domain import emit_audit_event
 from app.state_machines.submission_sm import apply_transition as sub_apply_transition
 from app.state_machines.assignment_sm import apply_transition as asn_apply_transition
 from app.utils.hashing import hash_canonical_json
+from app.services.permission_domain import require_permission, allowed_task_ids
 
 
 class ReviewDimensionInput(BaseModel):
@@ -162,6 +163,7 @@ def claim_review(db: Session, submission_id: str, actor: Any) -> tuple[Submissio
     submission = db.query(Submission).filter_by(id=submission_id).with_for_update().first()
     if not submission:
         raise ResourceNotFoundException(f"Submission {submission_id!r} 不存在")
+    require_permission(db, submission.task_id, actor, "review.work")
 
     new_status = sub_apply_transition(submission.status, "claimReview")
     submission.status = new_status
@@ -192,6 +194,7 @@ def submit_review_decision(
     submission = db.query(Submission).filter_by(id=submission_id).with_for_update().first()
     if not submission:
         raise ResourceNotFoundException(f"Submission {submission_id!r} 不存在")
+    require_permission(db, submission.task_id, actor, "review.work")
 
     assignment = db.query(Assignment).filter_by(id=submission.assignment_id).first()
     if not assignment:
@@ -387,6 +390,7 @@ def get_review_queue(
         query = db.query(Submission).filter(
             Submission.status.in_(_REVIEW_QUEUE_DEFAULT_STATUSES)
         )
+    query = query.filter(Submission.task_id.in_(allowed_task_ids(db, actor, "review.work")))
     total = query.count()
     offset = (page - 1) * page_size
     submissions = (
@@ -402,6 +406,7 @@ def get_review_detail(db: Session, submission_id: str, actor: Any) -> dict:
     submission = db.query(Submission).filter_by(id=submission_id).first()
     if not submission:
         raise ResourceNotFoundException(f"Submission {submission_id!r} 不存在")
+    require_permission(db, submission.task_id, actor, "review.work")
 
     from app.models.task import Task
     from app.models.schema import SchemaVersion

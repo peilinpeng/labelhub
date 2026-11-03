@@ -538,3 +538,57 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* 迁移治理与诊断沿用后台卡片、控件和颜色令牌。 */
+.governance-page, .runtime-diagnostics { min-width: 0; }
+.governance-page h1 { margin: 0; font-size: 28px; }
+.governance-page h2 { margin: 0 0 10px; font-size: 19px; }
+.governance-page p, .runtime-diagnostics p { margin: 6px 0 16px; color: var(--lh-muted); line-height: 1.65; }
+.governance-page .card, .runtime-diagnostics {
+  padding: 24px; border: 1px solid var(--lh-border); border-radius: 14px;
+  background: var(--lh-surface); box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04); min-width: 0;
+}
+.governance-page .card { overflow: auto; }
+.governance-page .page-stack, .runtime-diagnostics .page-stack { gap: 16px; }
+.governance-page .lh-button, .runtime-diagnostics .lh-button { align-self: flex-start; margin: 3px 4px 3px 0; max-width: 100%; overflow-wrap: anywhere; }
+.governance-page label, .runtime-diagnostics > .page-stack > label { display: block; margin: 12px 0; font-size: 13px; font-weight: 650; }
+.governance-page input:not([type=checkbox]), .governance-page textarea, .governance-page select,
+.runtime-diagnostics > .page-stack > label select {
+  display: block; width: min(100%, 640px); min-height: 42px; margin-top: 6px; padding: 10px 12px;
+  border: 1px solid var(--lh-border); border-radius: var(--lh-radius-control); background: var(--lh-surface); color: var(--lh-text); font: inherit;
+}
+.governance-page textarea { min-height: 76px; resize: vertical; font-family: ui-monospace, monospace; }
+.governance-page :is(input, textarea, select):focus-visible, .runtime-diagnostics select:focus-visible {
+  outline: 2px solid var(--lh-primary); outline-offset: 2px;
+}
+.governance-page fieldset { min-width: 0; margin: 16px 0; padding: 12px 16px; border: 1px solid var(--lh-border); border-radius: 10px; }
+.governance-page legend { padding: 0 6px; color: var(--lh-muted); font-size: 13px; }
+.governance-page input[type=checkbox] { accent-color: var(--lh-primary); margin-right: 8px; width: 16px; height: 16px; flex-shrink: 0; }
+.governance-page label:has(input[type=checkbox]) { display: flex; align-items: center; gap: 2px; line-height: 1.6; overflow-wrap: anywhere; }
+.governance-page .permission-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0 20px; }
+.governance-page table, .runtime-trace-list table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; margin-top: 12px; }
+.governance-page :is(th, td), .runtime-trace-list :is(th, td) { padding: 10px 12px; border-bottom: 1px solid var(--lh-border); overflow-wrap: anywhere; }
+.governance-page th, .runtime-trace-list th { color: var(--lh-muted); background: var(--lh-surface-soft); font-weight: 650; }
+.governance-page pre { max-height: 360px; overflow: auto; font-size: 12px; line-height: 1.6; background: var(--lh-surface-soft); padding: 16px; border-radius: 8px; }
+.governance-page .checksum { overflow-wrap: anywhere; }
+.governance-page details { padding: 12px; border: 1px solid var(--lh-border); border-radius: 10px; }
+.governance-page summary { cursor: pointer; font-weight: 650; }
+.governance-page [role=alert], .runtime-diagnostics [role=alert] { color: var(--lh-danger); background: #fef2f2; border-radius: 8px; padding: 12px; }
+.governance-job { border-bottom: 1px solid var(--lh-border); padding: 16px 0; }
+.governance-empty { padding: 12px; border-radius: 8px; background: var(--lh-surface-soft); }
+.runtime-diagnostics > .page-stack { margin-top: 16px; }
+.runtime-diagnostics h3 { margin: 0; }
+.runtime-preview { padding: 20px; border: 1px solid var(--lh-border); border-radius: 10px; }
+.runtime-trace-list, .dependency-graph { overflow: auto; max-height: 360px; border: 1px solid var(--lh-border); border-radius: 10px; }
+.dependency-edge { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 14px; border-bottom: 1px solid var(--lh-border); font-size: 12px; }
+.dependency-edge:last-child { border: 0; }
+.dependency-edge code { padding: 6px 10px; border-radius: 6px; background: var(--lh-surface-soft); color: var(--lh-primary); overflow-wrap: anywhere; }
+.dependency-edge > span:last-child { color: var(--lh-muted); }
+.dependency-graph > p { padding: 12px; margin: 0; }
+.runtime-trace-list table { margin: 0; }
+@media (max-width: 640px) {
+  .governance-page .card, .runtime-diagnostics { padding: 16px; }
+  .governance-page h1 { font-size: 24px; }
+  .runtime-preview { padding: 12px; }
+  .governance-page .permission-options { grid-template-columns: 1fr 1fr; }
+}
