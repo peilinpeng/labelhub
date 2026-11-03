@@ -1,5 +1,7 @@
 # Demo 截图索引
 
+> 文档定位：历史记录：正文中的分支、测试数量、待办和命令仅反映当时阶段，不作为当前操作指引。当前能力与验证见 [项目状态](../../docs/PROJECT_STATUS.md)；运行命令见 [部署说明](../../docs/deployment.md)。
+
 > 来源：前端 Mock 模式（`VITE_ENABLE_MSW=true`，端口 5180），账号 `*@labelhub.test`。
 > 覆盖 Owner / Labeler / Reviewer 三角色关键页面。
 

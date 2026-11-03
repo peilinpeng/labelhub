@@ -1,5 +1,7 @@
 # LabelHub Schema Version Management 实施规格文档
 
+> 文档定位：设计与验收参考：正文包含目标态及早期实施快照，不代表所有条目均已实现或仍未实现。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
 ## 1. 模块定位
 
 Schema Version Management 是 LabelHub 动态表单系统的核心可靠性模块。它解决的不是“如何给 Schema 存一个版本号”，而是动态表单模板在长期演化过程中如何保证历史数据安全、变更可控、迁移可追踪。

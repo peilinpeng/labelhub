@@ -1,0 +1,34 @@
+name: Documentation and storage tools
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '**/*.md'
+      - 'docs/document-policy.json'
+      - 'scripts/**'
+      - 'package.json'
+      - '.github/workflows/maintenance-ci.yml'
+  push:
+    paths:
+      - '**/*.md'
+      - 'docs/document-policy.json'
+      - 'scripts/**'
+      - 'package.json'
+      - '.github/workflows/maintenance-ci.yml'
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Check documentation consistency
+        run: python scripts/check-docs.py
+      - name: Test storage and backup failure boundaries
+        run: python -m unittest discover -s scripts/tests -v
+      - name: Check whitespace
+        run: git diff --check

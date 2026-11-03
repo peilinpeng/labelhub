@@ -11,7 +11,7 @@
 - [docs/LabelHub_Final_Delivery.md](LabelHub_Final_Delivery.md)：最终交付说明（稳定状态、交付范围、验收点、已知边界）。
 - [docs/LabelHub_Delivery_Runbook.md](LabelHub_Delivery_Runbook.md)：本地运行与现场演示手册。
 - [docs/environment-variables.md](environment-variables.md)：统一环境变量、默认值与敏感等级清单。
-- [docs/LabelHub_Optimization_Plan.md](LabelHub_Optimization_Plan.md)：基于 2026-07-31 实测基线的阶段优化路线图、工作包与验收标准。
+- [docs/LabelHub_Optimization_Plan.md](LabelHub_Optimization_Plan.md)：基于 2026-07-31 起的历史优化计划与完成记录，不代表当前待办。
 
 ## 2. 演示与 QA
 
@@ -36,7 +36,7 @@
 ## 5. 运行 / 部署 / 协作参考
 
 - [docs/deployment.md](deployment.md)：本地与云部署说明。
-- [docs/git-workflow.md](git-workflow.md)：Git 协作流程。
+- [docs/git-workflow.md](git-workflow.md)：早期协作流程归档；当前分支策略以 AGENTS / CONTRIBUTING 为准。
 - [CONTRIBUTING.md](../CONTRIBUTING.md)：贡献指南。
 
 ## 6. 历史计划
@@ -50,7 +50,15 @@
 
 ## 7. 阅读建议
 
-- 评委 / 第一次看项目：README → Final Delivery → Final Demo Guide。
+- 评委 / 第一次看项目：README → PROJECT_STATUS → GOVERNANCE → Delivery Runbook。
 - 本地复现：README → Delivery Runbook → deployment.md。
 - 技术评审：Architecture Contract → Schema Runtime Engine → Schema Version Management → Quality Layer。
 - 接手开发：AGENTS → PROJECT_STATUS → AI_CODING_RULES → CONTRIBUTING；历史流程与稳定规则冲突时以 AGENTS 为准。
+
+## 8. 本地维护与文档治理
+
+- [LOCAL_STORAGE_MAINTENANCE.md](LOCAL_STORAGE_MAINTENANCE.md)：容量门禁、备份转存、完整回读、恢复演练与保留策略。
+- [LOCAL_DOCKER_RECOVERY.md](LOCAL_DOCKER_RECOVERY.md)：2026-11-03 故障恢复记录。
+- [document-policy.json](document-policy.json)：全部 Git 管理 Markdown 的定位清单，由 `npm run check:docs` 检查遗漏、链接与关键陈旧描述。
+
+当前状态与测试证据统一引用 PROJECT_STATUS；历史文件保留当时数字与结论，但顶部明确标识。设计文档的目标态不自动构成已交付能力，也不自动成为当前待办。

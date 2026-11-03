@@ -1,6 +1,8 @@
-# LabelHub 当前优化计划
+# LabelHub 2026-07 优化计划与完成记录
 
-> 文档状态：执行中（M1“可信门禁”、M2“可靠运行”已完成）
+> 文档定位：历史记录：正文中的分支、测试数量、待办和命令仅反映当时阶段，不作为当前操作指引。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
+> 文档状态：已归档；OPT-01～OPT-16 完成情况见 §12，当前状态见 PROJECT_STATUS
 > 制定日期：2026-07-31
 > 评估基线：`integration/joint-test @ d4d45fc5e3a47dd271ea44012024879102d0d41c`
 > 当前实施分支：`feature/optimization-iteration`

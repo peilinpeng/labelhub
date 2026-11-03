@@ -1,5 +1,7 @@
 # LabelHub AI Coding 过程记录
 
+> 文档定位：历史记录：正文中的分支、测试数量、待办和命令仅反映当时阶段，不作为当前操作指引。当前能力与验证见 [项目状态](../docs/PROJECT_STATUS.md)；运行命令见 [部署说明](../docs/deployment.md)。
+
 > 对照课题《§八 提交物清单 · 相关文档》中的「AI Coding 过程记录」。
 > 本文记录开发过程中如何使用 AI Coding 工具、关键技术决策与协作约束。
 > 涉及的契约与规则见 [`AI_CODING_RULES.md`](../AI_CODING_RULES.md) 与 [`labelhub-architecture-contract.md`](../labelhub-architecture-contract.md)。

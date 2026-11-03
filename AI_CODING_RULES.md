@@ -156,15 +156,15 @@ npm run test
 
 ```bash
 cd apps/api
-npm run typecheck
-npm run test
+# 先按 requirements-dev.txt 在 Python 3.11 虚拟环境安装依赖
+.venv/bin/python -m pytest -m "not integration" -q
 ```
 
 Docker：
 
 ```bash
-docker compose config
-docker compose up --build
+python3 scripts/local-compose.py config
+python3 scripts/local-compose.py up --build
 ```
 
 如果当前仓库尚未提供对应 package 或脚本，AI 必须说明无法运行的原因，并尽量执行可替代的静态检查。

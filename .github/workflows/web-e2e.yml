@@ -92,7 +92,7 @@ jobs:
           PYCODE
 
       - name: Bring up full stack and wait for healthchecks
-        run: docker compose up -d --build --wait
+        run: python3 scripts/local-compose.py up -d --build --wait
 
       - name: Migrate and seed deterministic E2E data
         run: docker compose --profile tools run --rm seed

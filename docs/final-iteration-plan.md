@@ -1,5 +1,7 @@
 # LabelHub 最终迭代与优化规划（后端 + 合并负责人视角）
 
+> 文档定位：历史记录：正文中的分支、测试数量、待办和命令仅反映当时阶段，不作为当前操作指引。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
 > 日期：2026-06-07。作者角色：后端负责人 + 最终合并/优化负责人。
 > 输入：搭档 Schema Runtime Engine 交接（分支 `feature/schema-governance-upgrade` @ cf3317a，**未 final**）
 > + 三份目标架构文档（Quality Layer / Schema Runtime Engine v2 / Schema Version Management）。

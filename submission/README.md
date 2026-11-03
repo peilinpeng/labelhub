@@ -14,7 +14,7 @@
 | 3 | 演示视频（5–10 分钟，三角色全链路） | 百度网盘（见 §3） | ✅ |
 | 4 | 相关文档（架构图 / 技术点 / 截图 / AI Coding 记录） | 本目录 + `docs/` | ✅ |
 | 5 | 可访问演示环境说明 | 本地 Docker 复现 + [`docs/deployment.md`](../docs/deployment.md) | ✅ |
-| 6 | API 文档 | [`apps/api/openapi.json`](../apps/api/openapi.json)（47 路径）+ Swagger `/docs` | ✅ |
+| 6 | API 文档 | [`apps/api/openapi.json`](../apps/api/openapi.json)+ Swagger `/docs` | ✅ |
 
 ---
 
@@ -56,14 +56,14 @@
 ## 5. 可访问的演示环境说明
 
 - **本地 Docker 全栈一键复现**（无需云账号，评委可本地起栈，含真实后端 + Celery + MySQL + Redis）：见 [`docs/LabelHub_Delivery_Runbook.md`](../docs/LabelHub_Delivery_Runbook.md) 与下方「答辩前一键自查」。
-- **云部署说明**：[`docs/deployment.md`](../docs/deployment.md) →§10（系统已 Docker 化，可部署到任意容器云平台）。
+- **云部署说明**：[`docs/deployment.md`](../docs/deployment.md) →§9（系统已 Docker 化，可部署到任意容器云平台）。
 - **演示账号**：owner / labeler / reviewer `@labelhub.com` / `password123`（真实后端，端口 5173）。
 - **在线 Mock 演示**：[GitHub Pages](https://peilinpeng.github.io/labelhub/)，支持三角色交互；它不连接生产后端。
 - **真实后端环境**：通过本地 Docker 复现，未提供长期公网托管的 API。
 
 ## 6. API 文档
 
-- 静态 OpenAPI（47 路径）：[`apps/api/openapi.json`](../apps/api/openapi.json) —— 可直接导入 Postman / Apifox。
+- 静态 OpenAPI：[`apps/api/openapi.json`](../apps/api/openapi.json) —— 可直接导入 Postman / Apifox。
 - 在线 Swagger UI：服务启动后访问 `http://<host>:3000/docs`。
 
 ---
@@ -71,11 +71,11 @@
 ## 答辩前一键自查
 
 ```bash
-docker compose build --pull
-docker compose up -d mysql redis --wait
-docker compose --profile tools run --rm seed
-docker compose up -d --wait
-npm --prefix apps/web run e2e                  # 9 个 Playwright 场景
+python3 scripts/local-compose.py build --pull
+python3 scripts/local-compose.py up -d mysql redis --wait
+python3 scripts/local-compose.py --profile tools run --rm seed
+python3 scripts/local-compose.py up -d --wait
+npm --prefix apps/web run e2e                  # 场景数量与验证结果见 PROJECT_STATUS
 ```
 
 带日期的测试数量、覆盖率、依赖审计和 E2E 结果统一见
@@ -91,5 +91,5 @@ npm --prefix apps/web run e2e                  # 9 个 Playwright 场景
 - ✅ 演示视频：百度网盘，提取码 `9eev`（§3）
 - ✅ 相关文档：架构图 2 张 + AI Coding 过程记录 + Demo 截图 6 张 + 关键技术设计
 - ✅ 可访问演示环境说明：本地 Docker 一键复现 + 云部署说明 + GitHub Pages Mock 演示（未提供长期公网 API）
-- ✅ API 文档：`openapi.json`（47 路径）+ 在线 Swagger
+- ✅ API 文档：`openapi.json`+ 在线 Swagger
 - ✅ 凭证屏蔽：无明文 key / 接入点，`.env` 未入库

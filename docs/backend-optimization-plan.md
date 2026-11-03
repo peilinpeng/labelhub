@@ -1,5 +1,7 @@
 # LabelHub 后端优化计划 + 测试方案
 
+> 文档定位：历史记录：正文中的分支、测试数量、待办和命令仅反映当时阶段，不作为当前操作指引。当前能力与验证见 [项目状态](PROJECT_STATUS.md)；运行命令见 [部署说明](deployment.md)。
+
 ## Context
 
 前后端已在 `integration/joint-test` 分支完成首轮联调，E2E 主流程 16 步跑通。
