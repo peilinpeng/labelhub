@@ -271,3 +271,13 @@ docker history labelhub-web:local
 | Worker 不消费任务 | 检查 Worker health、Redis URL、队列名和 `DOUBAO_*` |
 | 宿主无法连 MySQL / Redis | 默认是安全行为；确有需要时叠加 `docker-compose.dev.yml` |
 | production 启动失败 | 按 `environment-variables.md` 检查弱 JWT、默认数据库密码、Demo 模式和 Trusted Hosts |
+
+## 11. 迁移治理与监控扩展
+
+本轮升级新增 Alembic revision `f6a7b8c9d0e1`，API 镜像内包含从共享包构建的 Node 迁移引擎。
+升级前备份数据库；先运行迁移，再启动新版 API、worker 和 scheduler。迁移执行使用 maintenance 队列，
+scheduler 每分钟重投尚未执行的任务。禁止通过删除迁移表或覆盖历史答卷回退业务状态。
+
+任务授权、独立审批、结果检查与失败恢复见 [GOVERNANCE.md](GOVERNANCE.md)。
+Prometheus / Alertmanager / Grafana 使用独立 overlay 和凭据文件，启动及验收命令见
+[OBSERVABILITY.md](OBSERVABILITY.md)；默认只部署本机监控，不发送外部通知。

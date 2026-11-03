@@ -72,6 +72,13 @@ docker compose up -d api worker scheduler web --wait
 - 未知邮箱仍执行一次 dummy Argon2 验证，降低通过响应耗时枚举账号的风险；未知或损坏的
   哈希统一按认证失败处理，不向客户端暴露存储状态。
 
+## 迁移治理与监控
+
+历史迁移需要新增 Alembic revision `f6a7b8c9d0e1`、共享迁移引擎和 maintenance worker 队列。
+Docker 镜像自动构建引擎；本地运行 API 前，在仓库根目录安装 npm 依赖并执行 `npm run build:migration-engine`，
+确保 Node 26 位于 PATH。审批与任务权限见 [治理说明](../../docs/GOVERNANCE.md)，
+就绪探针、受保护指标和 Compose 监控方案见 [监控运维](../../docs/OBSERVABILITY.md)。
+
 ## 运行测试
 
 ```bash
@@ -79,6 +86,7 @@ docker compose up -d api worker scheduler web --wait
 python3.11 -m venv .venv
 .venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
 
+# 先在仓库根目录运行 npm ci && npm run build:migration-engine，再返回 apps/api
 # 单元 + SQLite 集成测试（CI 同款）
 .venv/bin/python -m pytest -m "not integration" -v
 
@@ -90,6 +98,9 @@ E2E_BASE=http://127.0.0.1:3000/api/v1 \
 # 端到端冒烟（需后端 + DB 运行）
 bash scripts/e2e_test.sh
 ```
+
+使用 `seed_e2e.py` 的 `.com` 演示账号运行并发测试时，额外设置 `E2E_EMAIL_DOMAIN=labelhub.com` 和
+`E2E_PASSWORD=password123`；CI 已自动传入并验证真实 MySQL。
 
 CI 还会使用 `pip-audit` 扫描 `requirements.txt`，发现已知漏洞即失败。
 
