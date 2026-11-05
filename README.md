@@ -1,456 +1,525 @@
 # LabelHub
 
-**LabelHub 是一个 Schema-driven 的 AI 数据标注与质量治理平台。**
+**LabelHub is a schema-driven platform for AI data annotation and quality governance.**
 
 [![Shared packages and Web CI](https://github.com/peilinpeng/labelhub/actions/workflows/web-ci.yml/badge.svg?branch=main)](https://github.com/peilinpeng/labelhub/actions/workflows/web-ci.yml)
 [![API CI](https://github.com/peilinpeng/labelhub/actions/workflows/api-ci.yml/badge.svg?branch=main)](https://github.com/peilinpeng/labelhub/actions/workflows/api-ci.yml)
 [![Web E2E](https://github.com/peilinpeng/labelhub/actions/workflows/web-e2e.yml/badge.svg?branch=main)](https://github.com/peilinpeng/labelhub/actions/workflows/web-e2e.yml)
 
-它支持任务负责人（Owner）、标注员（Labeler）和审核员（Reviewer）三类角色，覆盖任务配置、Schema 模板搭建、动态标注、AI 辅助质量检查、人工审核、审计追踪和质量导出等流程。整个系统围绕同一套共享契约协作：标注结构由版本化 Schema 驱动，AI 以受校验约束的方式介入，质量决策全程留痕。
+LabelHub supports three roles—Owner, Labeler, and Reviewer—across task configuration, schema template design, dynamic annotation, AI-assisted quality checks, human review, audit trails, and quality-aware exports. The entire system follows shared contracts: versioned schemas define annotation structures, validation constrains AI assistance, and quality decisions remain traceable throughout the workflow.
 
-> Monorepo 结构：`apps/web`（前端）、`apps/api`（后端 API + Celery worker）、`packages/*`（contracts / schema-core / schema-compiler / schema-renderer / schema-designer / workflow-core 共享库）。当前主线、验证快照和维护待办见 [`docs/PROJECT_STATUS.md`](./docs/PROJECT_STATUS.md)。
+> Monorepo layout: `apps/web` (frontend), `apps/api` (backend API and Celery workers), and `packages/*` (shared contracts, schema-core, schema-compiler, schema-renderer, schema-designer, and workflow-core libraries). See [`docs/PROJECT_STATUS.md`](./docs/PROJECT_STATUS.md) for the current mainline baseline, validation snapshot, and maintenance backlog.
 
 ---
 
-## 0. 课题要求对照（4.1–4.6 + 验收标准）
+## 0. Requirements Coverage (4.1–4.6 and Acceptance Criteria)
 
-> 面向验收的功能完备性自检。每一行对应课题《核心功能需求》的一条，给出实现位置与演示入口。
+> A feature-completeness checklist for project evaluation. Each row maps a core requirement to its implementation and demo entry point.
 
-| 课题要求 | 实现情况 | 代码位置 / 演示入口 |
+| Requirement | Implementation | Code / Demo Entry Point |
 | --- | --- | --- |
-| **4.1 任务管理**：状态机（草稿/发布中/已暂停/已结束）、富文本说明、标签、奖励、配额、截止时间、分发策略 | ✅ 状态机 `DRAFT/PUBLISHED/PAUSED/ENDED/ARCHIVED`；**三种分发策略（先到先得 / 指派 / 配额抢单）全部实现**（课题仅要求任选其一） | `apps/api/app/models/task.py`、`schemas/task.py`；`/owner/tasks` |
-| 数据集导入 **JSON / JSONL / Excel**、预览 | ✅ 三格式导入 + 题目预览 | `apps/api/app/routers/dataset.py`；`/owner/tasks/:id/dataset` |
-| **4.2 动态表单 Designer/Renderer**（核心难点）：物料→画布→属性面板、可序列化 JSON Schema、Designer 与 Labeler 同源渲染 | ✅ Designer / Renderer 解耦；物料覆盖单行/多行/单选/多选/标签/富文本/文件图片上传/JSON 编辑器/LLM 交互组件/ShowItem | `packages/schema-designer`、`packages/schema-renderer`；`/owner/tasks/:id/designer` |
-| 进阶：字段联动、自定义校验、分组容器 + 多 Tab | ✅ `visibleWhen/disabledWhen/linkageRules` 编译为 Formily reactions；必填/长度/正则/自定义校验；多 Tab 容器布局 | `packages/schema-compiler`、`packages/schema-renderer` |
-| **4.3 标注员工作台**：任务广场、作答、草稿自动保存、提交校验、题目级 LLM 辅助、我的数据 | ✅ 任务广场（搜索/筛选/卡片）；**领取制队列**（一次领取一条数据，提交后回广场领下一条）；草稿真实防抖自动保存；运行时提交校验；题目级 LLM 辅助；「我的提交」状态统计 | `apps/web/src/features/labeler`；`/labeler/tasks`、`/labeler/workspace/:id`、`/labeler/submissions` |
-| **4.4 AI 预审 Agent**（核心难点）：可配置 Prompt + 评分维度、异步入队、Function Calling 结构化输出、失败重试 + 幂等、结果可见可追溯 | ✅ 维度/阈值/权重可配置；Celery 异步队列；`FUNCTION_CALLING` 结构化输出（非裸文本解析）；`retry_count` 重试 + 幂等键；AI 评语与原始 Prompt 可在审核台查看 | `apps/api/app/services/review_domain.py`、`worker/ai_review_worker.py`；`/owner/ai-config` |
-| **4.5 多角色审核流转**：`PASS/RETURN/REVISE` 状态机、迁移可追溯（审计）、批量操作、打回附理由 + 上一轮意见可见、第 1/2 轮 diff | ✅ 结构化决策流；批量审核 `BatchReviewRequest`；`RETURN` 必填理由、Labeler 可见上轮意见；`REVIEW_DIFF_GENERATED` 字段级 diff 审计 | `apps/api/app/routers/review.py`、`services/review_domain.py`；`/reviewer/items` |
-| **4.6 多格式导出**：JSON / JSONL / CSV / Excel、异步导出 + 下载历史、字段映射可配置 | ✅ 四格式真实生成；Celery 异步导出；字段映射（选字段 / 重命名 / 是否含审核记录） | `apps/api/app/worker/export_worker.py`、`services/export_domain.py`；`/owner/tasks/:id/export` |
-| **工程质量（25%）**：TypeScript 全栈类型、单测/集成测试、README + 部署文档 | ✅ `@labelhub/contracts` 单一类型来源（无大量 any）；共享包、API、Web 与真实后端 E2E 均纳入 GitHub Actions；带日期的测试数量与覆盖率见项目状态页 | [`docs/PROJECT_STATUS.md`](./docs/PROJECT_STATUS.md)、`docs/deployment.md` |
-| **产品体验（15%）**：视觉统一、错误友好、操作可逆、1280×800 & 1920×1080 | ✅ 草稿自动保存 + 可逆操作；人话错误提示（不暴露工程词）；响应式（70+ 媒体查询，移动端适配为加分项） | — |
+| **4.1 Task management**: lifecycle states (draft / published / paused / ended), rich-text instructions, tags, rewards, quotas, deadlines, and distribution policies | ✅ `DRAFT/PUBLISHED/PAUSED/ENDED/ARCHIVED` state machine; **all three distribution policies implemented: first come, first served / assignment / quota-based claiming** (the requirement only asks for one) | `apps/api/app/models/task.py`, `schemas/task.py`; `/owner/tasks` |
+| Dataset import and preview: **JSON / JSONL / Excel** | ✅ All three import formats, with item previews | `apps/api/app/routers/dataset.py`; `/owner/tasks/:id/dataset` |
+| **4.2 Dynamic form Designer/Renderer** (core challenge): component palette → canvas → property panel, serializable JSON schemas, and shared rendering between Designer and Labeler | ✅ Decoupled Designer / Renderer; components include single-line and multiline text, single and multiple choice, tags, rich text, file/image uploads, a JSON editor, LLM interaction, and ShowItem | `packages/schema-designer`, `packages/schema-renderer`; `/owner/tasks/:id/designer` |
+| Advanced features: field dependencies, custom validation, grouped containers, and multiple tabs | ✅ `visibleWhen/disabledWhen/linkageRules` compile into Formily reactions; required / length / regex / custom validation; tabbed container layouts | `packages/schema-compiler`, `packages/schema-renderer` |
+| **4.3 Labeler workspace**: task marketplace, annotation, draft autosave, submission validation, item-level LLM assistance, and personal submissions | ✅ Searchable and filterable task cards; **claim-based queue** (claim one item at a time, then return to the marketplace after submission); debounced draft autosave; runtime validation; item-level LLM assistance; submission status summaries | `apps/web/src/features/labeler`; `/labeler/tasks`, `/labeler/workspace/:id`, `/labeler/submissions` |
+| **4.4 AI pre-review agent** (core challenge): configurable prompts and scoring dimensions, asynchronous queues, structured Function Calling output, retries and idempotency, and visible, traceable results | ✅ Configurable dimensions / thresholds / weights; Celery queue; `FUNCTION_CALLING` structured output rather than raw-text parsing; `retry_count` and idempotency keys; AI feedback and the original prompt available in the review workspace | `apps/api/app/services/review_domain.py`, `worker/ai_review_worker.py`; `/owner/ai-config` |
+| **4.5 Multi-role review workflow**: `PASS/RETURN/REVISE` decisions, auditable transitions, batch operations, required return reasons, previous-round feedback, and round-to-round diffs | ✅ Structured decisions; batch review via `BatchReviewRequest`; required reasons for `RETURN`, with previous feedback visible to Labelers; field-level diff auditing via `REVIEW_DIFF_GENERATED` | `apps/api/app/routers/review.py`, `services/review_domain.py`; `/reviewer/items` |
+| **4.6 Multi-format export**: JSON / JSONL / CSV / Excel, asynchronous exports, download history, and configurable field mapping | ✅ All four formats generated; Celery export jobs; field selection / renaming / optional review records | `apps/api/app/worker/export_worker.py`, `services/export_domain.py`; `/owner/tasks/:id/export` |
+| **Engineering quality (25%)**: TypeScript typing, unit/integration tests, README, and deployment documentation | ✅ `@labelhub/contracts` as the single source of shared types, without widespread `any`; shared packages, API, Web, and real-backend E2E covered by GitHub Actions; dated test counts and coverage in the project status page | [`docs/PROJECT_STATUS.md`](./docs/PROJECT_STATUS.md), `docs/deployment.md` |
+| **Product experience (15%)**: consistent visuals, helpful errors, reversible actions, and support for 1280×800 and 1920×1080 | ✅ Draft autosave and reversible actions; plain-language errors; responsive layouts with 70+ media queries (mobile support is an additional feature) | — |
 
-> 答辩**提交物清单**（源码 Monorepo / 演示视频 / 架构图 / AI Coding 过程记录 / Demo 截图 / 可访问演示环境说明 / API 文档）见 [`submission/README.md`](./submission/README.md)。
-
----
-
-## 1. 项目解决的问题
-
-数据标注生产中有三个反复出现的难题：
-
-1. **如何配置不同任务的标注结构？** 不同任务的字段、选项、必填和联动规则各不相同，硬编码表单无法复用。
-2. **如何让 AI 参与质量检查，但不绕过校验规则？** AI 建议如果直接覆盖人工答案，会破坏数据的可信度和模板约束。
-3. **如何在数据交付前追踪质量决策和审核证据？** 交付的数据需要能回答"这条数据为什么通过、由谁审核、AI 给过什么意见"。
-
-LabelHub 对应的三个回答：
-
-1. **Schema Governance** —— 版本化、可治理的动态标注结构。
-2. **AI suggestedPatch + preflight** —— AI 只给字段级建议，应用前必须通过确定性预检查。
-3. **Quality Evidence Chain** —— 审计、AI 预审、审核决策、导出护照共同构成可追踪的质量证据链。
+> See [`submission/README.md`](./submission/README.md) for the **presentation deliverables checklist**: source monorepo, demo video, architecture diagram, AI coding log, screenshots, accessible demo environment details, and API documentation.
 
 ---
 
-## 2. 核心亮点
+## 1. Problems LabelHub Addresses
 
-- **三角色协作流程**：Owner / Labeler / Reviewer 围绕同一任务与同一提交对象形成闭环。
-- **Schema-driven 动态标注表单**：标注页面由版本化 Schema 在 runtime 动态渲染，而非硬编码。
-- **Schema Version Management**：已发布版本不可变快照、版本历史、兼容性检查（compatibility check）、破坏性变更阻断（breaking change blocking）、历史保留式回滚（history-preserving rollback）、"需要迁移"预览（migration required preview）。
-- **AI Assist**：字段级 `suggestedPatch` + 确定性 `preflight` 检查（`SAFE / WARNING / BLOCKED`）。
-- **Reviewer decision flow**：`PASS / RETURN / REVISE` 结构化决策；`RETURN` 必填理由，`REVISE` 记录字段级 patches。
-- **质量治理三件套**：Quality Center、Audit Trail、Export Passport（Data Quality Passport）。
-- **AI Review 配置**：可配置 Prompt、评分维度、阈值，权重通过滑动条自动归一化为 1。
+Data annotation workflows repeatedly encounter three challenges:
 
-> **能力边界说明**：历史迁移已实现固定输入、持久化预演、独立审批、后台执行和不可变产物；原始答卷保持不变。迁移仍受任务权限、发布校验及单批容量限制，详见 [治理说明](docs/GOVERNANCE.md)。
+1. **How can annotation structures be configured for different tasks?** Fields, choices, required values, and dependencies vary by task; hardcoded forms are difficult to reuse.
+2. **How can AI contribute to quality checks while respecting validation rules?** Allowing AI suggestions to overwrite human answers directly undermines data reliability and schema constraints.
+3. **How can quality decisions and review evidence be traced before delivery?** Delivered data should explain why an item passed, who reviewed it, and what the AI suggested.
+
+LabelHub addresses these challenges through:
+
+1. **Schema Governance** — versioned, governed dynamic annotation structures.
+2. **AI suggestedPatch + preflight** — field-level AI suggestions that must pass deterministic checks before application.
+3. **Quality Evidence Chain** — audit records, AI pre-review, human decisions, and export passports that make quality evidence traceable.
 
 ---
 
-## 3. 系统架构
+## 2. Key Features
 
-LabelHub 是 monorepo 全栈架构：浏览器端三角色工作台（`apps/web`）通过**契约化的 REST API** 访问后端（`apps/api`），后端把 AI 预审与导出这类耗时任务交给 **Celery worker** 异步处理；所有共享类型、Schema 内核与渲染能力沉淀在 `packages/*`，被前端、后端、Worker 与测试**共同引用同一份契约**。
+- **Three-role workflow**: Owners, Labelers, and Reviewers collaborate on the same tasks and submissions.
+- **Schema-driven dynamic forms**: annotation pages render from versioned schemas at runtime.
+- **Schema Version Management**: immutable published snapshots, version history, compatibility checks, breaking-change blocking, history-preserving rollback, and migration-required previews.
+- **AI Assist**: field-level `suggestedPatch` with deterministic `preflight` checks (`SAFE / WARNING / BLOCKED`).
+- **Reviewer decision flow**: structured `PASS / RETURN / REVISE` decisions; `RETURN` requires a reason, and `REVISE` records field-level patches.
+- **Quality governance tools**: Quality Center, Audit Trail, and Export Passport (Data Quality Passport).
+- **AI Review configuration**: configurable prompts, scoring dimensions, and thresholds, with sliders that automatically normalize weights to sum to 1.
 
-### 3.1 总览图
+> **Capability boundaries**: historical-data migration supports fixed inputs, persisted dry runs, independent approval, background execution, and immutable outputs. Original submissions remain unchanged. Task permissions, publication checks, and per-batch limits still apply; see the [governance guide](docs/GOVERNANCE.md).
 
-![LabelHub 系统架构](submission/architecture.png)
+---
 
-> 源文件（Mermaid，可在 <https://mermaid.live> 重新导出）：[`submission/architecture.mmd`](submission/architecture.mmd)。
+## 3. System Architecture
 
-### 3.2 分层职责
+LabelHub uses a full-stack monorepo architecture. Three browser workspaces (`apps/web`) access the backend (`apps/api`) through a **contract-defined REST API**. The backend delegates time-consuming AI pre-review and export jobs to **Celery workers**. Shared types, schema logic, and rendering capabilities live in `packages/*`, with the frontend, backend, workers, and tests aligned to **the same contracts**.
 
-| 层 | 模块 | 职责 |
-|---|---|---|
-| 前端 | `apps/web`（React 19 + TS + Vite） | 三角色工作台（Owner / Labeler / Reviewer）；标注页由版本化 Schema 运行时动态渲染 |
-| 后端 API | `apps/api`（FastAPI + SQLAlchemy） | REST 路由 → 业务服务 → **命令驱动状态机**；`canonical-json-v1 + SHA-256` 哈希 |
-| 异步 Worker | `apps/api/app/worker`（Celery） | `ai_review_worker` 结构化预审打分、`export_worker` 多格式导出 + Data Quality Passport；与 API 共用同一镜像 |
-| 共享契约 | `@labelhub/contracts` | 前端 / 后端 / Worker / Mock / 测试的**唯一类型来源**（状态、错误码、审计、API shape） |
-| Schema 内核 | `@labelhub/schema-core` | 遍历 / 表达式 / 校验 / 归一化 / 兼容性 / 版本冻结的确定性纯函数（不访问数据库） |
-| 渲染层 | `@labelhub/schema-renderer` | 动态表单 runtime + AI preflight；作答 / 只读 / Diff / 预览渲染 |
-| 设计器 | `@labelhub/schema-designer` | Owner 侧物料 / 拖拽 / 属性 · 校验 · 联动配置 |
-| 编译 / 工作流 | `@labelhub/schema-compiler`、`workflow-core` | Schema → Formily reactions 编译；状态 / 命令 |
-| 存储 | MySQL 8 / Redis 7 | 领域模型 + 不可变 Schema 快照 + `audit_logs/audit_events`；Celery broker/backend |
-| 大模型 | Doubao LLM | `function_calling` 结构化输出，`temperature=0` 提升评分稳定性 |
+### 3.1 Overview
 
-> **MSW Mock 层**（`apps/web/src/mocks`）：真实后端已经完整实现；MSW 仅用于前端隔离开发、组件测试和无 Docker 演示，复用契约类型而非重新定义。
+```mermaid
+flowchart TB
+    subgraph Client["Browser · apps/web (React + TS + Vite)"]
+        direction LR
+        Owner["Owner workspace<br/>Tasks / Schema Designer<br/>AI review configuration · Versions · Exports"]
+        Labeler["Labeler workspace<br/>Dynamic forms · Drafts · AI assistance"]
+        Reviewer["Reviewer workspace<br/>Queue · Field-level diffs · Final review"]
+    end
 
-### 3.3 技术栈
+    subgraph Shared["Shared libraries · packages/ (TypeScript, contract-driven)"]
+        direction LR
+        Contracts["@labelhub/contracts<br/>Types · Error codes · Audit · API"]
+        SchemaCore["schema-core<br/>Traversal · Expressions · Validation · Normalization"]
+        SchemaRenderer["schema-renderer<br/>Annotation / Read-only / Diff / Preview"]
+        SchemaDesigner["schema-designer<br/>Component palette · Drag and drop · Properties"]
+        Workflow["workflow-core<br/>States / Commands"]
+    end
 
-| 领域 | 选型 |
-|---|---|
-| 前端 | React 19、TypeScript 7、Vite 8、Formily 运行时 |
-| 后端 | Python 3.11、FastAPI、SQLAlchemy、Alembic、Pydantic |
-| 异步 / 队列 | Celery + Redis 7 |
-| 数据库 | MySQL 8 |
-| 大模型 | 豆包 Doubao（OpenAI 兼容，function calling） |
-| 测试 | `node:test`（共享库）、Vitest / RTL（web）、pytest（后端）、e2e 脚本 |
+    subgraph API["Backend · apps/api (FastAPI + SQLAlchemy)"]
+        direction TB
+        Routers["routers · REST API"]
+        Services["services · Business logic"]
+        StateMachines["state_machines<br/>task / assignment / submission / export"]
+        Hash["utils/hashing<br/>canonical-json-v1 + SHA-256"]
+        Routers --> Services --> StateMachines
+        Services --> Hash
+    end
 
-### 3.4 端到端数据质量主线
+    subgraph Async["Asynchronous jobs · Celery workers"]
+        direction LR
+        AIWorker["ai_review_worker<br/>Structured pre-review scoring"]
+        ExportWorker["export_worker<br/>JSON / JSONL / CSV / Excel<br/>+ Data Quality Passport"]
+    end
 
-设计主线：**结构先可信 → 运行时校验 → AI 不绕过规则 → 人工留痕 → 交付带证据链**。
+    MySQL[("MySQL 8<br/>Domain models + Immutable schema snapshots<br/>audit_logs / audit_events")]
+    Redis[("Redis 7<br/>Celery broker / result backend")]
+    LLM{{"Doubao LLM<br/>Structured function_calling output"}}
 
-![LabelHub 数据质量主线](submission/data-quality-flow.png)
+    Client -->|"/api · Contract types"| Routers
+    Client -.->|Imports| Shared
+    Services -->|Enqueues| Redis
+    Redis --> Async
+    AIWorker -->|temperature=0| LLM
+    Services <--> MySQL
+    Async <--> MySQL
+    Hash -. Same algorithm .- SchemaCore
+
+    classDef store fill:#eef2ff,stroke:#6366f1,color:#1e1b4b;
+    classDef ext fill:#fff7ed,stroke:#f97316,color:#7c2d12;
+    class MySQL,Redis store;
+    class LLM ext;
+```
+
+> This English diagram is rendered directly from the Mermaid source above. The original presentation assets remain available in [`submission/architecture.mmd`](submission/architecture.mmd) and [`submission/architecture.png`](submission/architecture.png).
+
+### 3.2 Layer Responsibilities
+
+| Layer | Module | Responsibilities |
+| --- | --- | --- |
+| Frontend | `apps/web` (React 19 + TS + Vite) | Owner / Labeler / Reviewer workspaces; annotation pages rendered from versioned schemas at runtime |
+| Backend API | `apps/api` (FastAPI + SQLAlchemy) | REST routes → domain services → **command-driven state machines**; `canonical-json-v1 + SHA-256` hashing |
+| Background workers | `apps/api/app/worker` (Celery) | Structured AI scoring via `ai_review_worker`; multi-format exports and Data Quality Passports via `export_worker`; shared image with the API |
+| Shared contracts | `@labelhub/contracts` | **Single source of shared types** for frontend / backend / workers / mocks / tests: states, error codes, audit events, and API shapes |
+| Schema core | `@labelhub/schema-core` | Deterministic pure functions for traversal, expressions, validation, normalization, compatibility, and version freezing; no database access |
+| Rendering | `@labelhub/schema-renderer` | Dynamic form runtime and AI preflight; annotation / read-only / diff / preview modes |
+| Designer | `@labelhub/schema-designer` | Owner-side component palette, drag and drop, properties, validation, and field dependency configuration |
+| Compilation / workflow | `@labelhub/schema-compiler`, `workflow-core` | Schema-to-Formily-reaction compilation; states and commands |
+| Storage | MySQL 8 / Redis 7 | Domain models, immutable schema snapshots, and `audit_logs/audit_events`; Celery broker and result backend |
+| LLM | Doubao LLM | Structured `function_calling` output; `temperature=0` for more stable scoring |
+
+> **MSW mock layer** (`apps/web/src/mocks`): the real backend is implemented. MSW supports isolated frontend development, component tests, and demos without Docker, reusing contract types rather than redefining them.
+
+### 3.3 Technology Stack
+
+| Area | Technologies |
+| --- | --- |
+| Frontend | React 19, TypeScript 7, Vite 8, Formily runtime |
+| Backend | Python 3.11, FastAPI, SQLAlchemy, Alembic, Pydantic |
+| Background jobs / queues | Celery + Redis 7 |
+| Database | MySQL 8 |
+| LLM | Doubao (OpenAI-compatible, with function calling) |
+| Testing | `node:test` (shared libraries), Vitest / RTL (Web), pytest (backend), E2E scripts |
+
+### 3.4 End-to-End Data Quality Flow
+
+The design follows this sequence: **trusted structures → runtime validation → AI constrained by rules → recorded human decisions → delivery with quality evidence**.
+
+```mermaid
+flowchart LR
+    A["Schema Governance<br/>Immutable version snapshots<br/>Pre-publication compatibility checks<br/>Breaking-change blocking"]
+    B["Labeler Runtime<br/>Dynamic forms · visibleWhen dependencies<br/>Required / Regex / Conditional validation<br/>(qualityScore=1/2 → factCheckNote)"]
+    C["AI Preflight<br/>Asynchronous structured pre-review<br/>Dimension scores + Thresholds<br/>BLOCKED suggestions cannot be applied directly"]
+    D["Human Review Diff<br/>PASS / RETURN / REVISE<br/>Field-level diffs<br/>Audit stores field names + Patch counts only"]
+    E["Export Passport<br/>JSON / JSONL / CSV / Excel<br/>Data Quality Passport<br/>Verified SHA-256 batch hash"]
+
+    A --> B --> C --> D --> E
+    Audit[("Audit trail<br/>audit_logs + audit_events<br/>Same transaction as business operations")]
+    A -.-> Audit
+    B -.-> Audit
+    C -.-> Audit
+    D -.-> Audit
+
+    classDef step fill:#eef2ff,stroke:#6366f1,color:#1e1b4b;
+    classDef audit fill:#f0fdf4,stroke:#22c55e,color:#14532d;
+    class A,B,C,D,E step;
+    class Audit audit;
+```
 
 ```txt
 Schema Governance → Labeler Runtime → AI Preflight → Human Review Diff → Export Passport
-       └──────────────── 全程写入 audit_logs / audit_events（与业务同事务）────────────────┘
+       └──── audit_logs / audit_events recorded throughout, in the same business transaction ────┘
 ```
 
-### 3.5 审核工作流状态机（对应 4.5 长链路状态流转）
+### 3.5 Review Workflow State Machine (Requirement 4.5)
 
-提交对象（Submission）的状态迁移全程可追溯，每一步与审计**同事务**写入：
+Submission transitions are traceable throughout the workflow. Each transition and its audit record are written **in the same transaction**:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> SUBMITTED: Labeler 提交
-    SUBMITTED --> AI_REVIEWING: 入队 AI 预审
-    AI_REVIEWING --> AI_PASSED: AI 通过
-    AI_REVIEWING --> NEEDS_HUMAN_REVIEW: AI 打回 / 需人工
-    AI_PASSED --> HUMAN_REVIEWING: 进入人工复审
-    NEEDS_HUMAN_REVIEW --> HUMAN_REVIEWING: 进入人工复审
-    HUMAN_REVIEWING --> ACCEPTED: PASS / REVISE（带字段 patch）
-    HUMAN_REVIEWING --> RETURNED: RETURN（理由必填）
-    HUMAN_REVIEWING --> REJECTED: REJECT（终审拒绝）
-    RETURNED --> SUBMITTED: 标注员看打回意见 → 修改重提
-    ACCEPTED --> [*]: 入库 / 可导出
+    [*] --> SUBMITTED: Labeler submits
+    SUBMITTED --> AI_REVIEWING: Queue AI pre-review
+    AI_REVIEWING --> AI_PASSED: AI passes
+    AI_REVIEWING --> NEEDS_HUMAN_REVIEW: AI flags / Human review needed
+    AI_PASSED --> HUMAN_REVIEWING: Start human review
+    NEEDS_HUMAN_REVIEW --> HUMAN_REVIEWING: Start human review
+    HUMAN_REVIEWING --> ACCEPTED: PASS / REVISE (with field patches)
+    HUMAN_REVIEWING --> RETURNED: RETURN (reason required)
+    HUMAN_REVIEWING --> REJECTED: REJECT (final rejection)
+    RETURNED --> SUBMITTED: Labeler reads feedback, revises, and resubmits
+    ACCEPTED --> [*]: Stored / Ready for export
     REJECTED --> [*]
 ```
 
-> **决策语义**：Reviewer UI 提供 `PASS / RETURN / REVISE` 三种操作——`REVISE` 是「修订后通过」，携带字段级 patches，底层以 `PASS + patches` 落库；契约层的人工决策枚举为 `PASS / RETURN / REJECT`（`REJECT` 为终审拒绝）。状态值取自后端 `SubmissionStatus`，所有迁移写入审计。
+> **Decision semantics**: the Reviewer UI offers `PASS / RETURN / REVISE`. `REVISE` means “approve with revisions,” includes field-level patches, and is persisted as `PASS + patches`. The contract-level human decision enum is `PASS / RETURN / REJECT`, where `REJECT` is a final rejection. State values come from the backend `SubmissionStatus`; all transitions are audited.
 
 ---
 
-## 4. 仓库结构
+## 4. Repository Structure
 
-```
+```txt
 apps/
-  web/        前端应用（React + Vite）
-  api/        后端 API 服务（FastAPI），同一镜像启动 Celery worker
+  web/        Frontend application (React + Vite)
+  api/        Backend API (FastAPI); Celery workers use the same image
 
 packages/
-  contracts/        共享类型与 API 契约（唯一类型来源）
-  schema-core/      Schema 版本、兼容性、字段废弃与迁移计划纯函数
-  schema-compiler/  Schema 编译相关能力
-  schema-renderer/  Runtime renderer 与 AI preflight
-  schema-designer/  Owner 侧 Schema 编辑工具
-  workflow-core/    工作流相关核心能力
+  contracts/        Shared types and API contracts (single source of shared types)
+  schema-core/      Pure functions for schema versions, compatibility, deprecation, and migration plans
+  schema-compiler/  Schema compilation
+  schema-renderer/  Runtime renderer and AI preflight
+  schema-designer/  Owner-side schema editing tools
+  workflow-core/    Core workflow logic
 
 docs/
-  架构、Schema Governance、交付说明、AI Coding 过程记录（AI_CODING_PROCESS.md）
+  Architecture, schema governance, delivery guides, and AI coding records (AI_CODING_PROCESS.md)
 
 submission/
-  答辩交付物索引（submission/README.md）
+  Presentation deliverables index (submission/README.md)
 ```
 
-> 说明：worker 不是独立目录，而是基于 `apps/api` 镜像运行的 Celery 进程（见 `docker-compose.yml` 的 `worker` 服务）。
+> Workers are Celery processes using the `apps/api` image, not a separate top-level directory. See the `worker` service in `docker-compose.yml`.
 
 ---
 
-## 5. 主要模块
+## 5. Main Modules
 
-### Owner —— 任务负责人后台（`apps/web/src/features/owner`）
+### Owner — Task Administration (`apps/web/src/features/owner`)
 
-- 任务管理与任务配置引导
-- 数据集导入 / 预览
-- Schema Designer（模板设计）
-- Schema Version Management（版本状态条、兼容性 badge、发布结论 banner）
-- AI 预审配置（Prompt / 维度 / 阈值 / 权重 slider）
+- Task management and guided task setup
+- Dataset import and preview
+- Schema Designer
+- Schema Version Management: version status, compatibility badges, and publication outcome banners
+- AI pre-review configuration: prompts, dimensions, thresholds, and weight sliders
 - Quality Center
-- 导出 / Quality Passport
+- Exports and Quality Passports
 - Audit timeline
 
-![Owner · AI 预审配置（维度权重自动归一化 + 规则预览）](submission/screenshots/owner-2-ai-config.png)
+[View screenshot: Owner AI pre-review configuration, normalized dimension weights, and rule preview](submission/screenshots/owner-2-ai-config.png)
 
-### Labeler —— 标注员工作台（`apps/web/src/features/labeler`）
+### Labeler — Annotation Workspace (`apps/web/src/features/labeler`)
 
-- 任务市场
-- 标注工作台（Dynamic Schema Runtime 渲染）
-- 草稿自动保存
-- 提交校验
+- Task marketplace
+- Annotation workspace powered by the dynamic schema runtime
+- Draft autosave
+- Submission validation
 - AI Assist Panel
-- 被打回任务的继续修改
+- Revisions to returned submissions
 
-![Labeler · 标注工作台（字段联动 + AI 辅助）](submission/screenshots/labeler-1-workspace.png)
+[View screenshot: Labeler workspace with field dependencies and AI assistance](submission/screenshots/labeler-1-workspace.png)
 
-### Reviewer —— 审核员工作台（`apps/web/src/features/reviewer`）
+### Reviewer — Review Workspace (`apps/web/src/features/reviewer`)
 
-- 审核队列
-- 批量领取 / 批量审核
-- 审核详情
-- `PASS / RETURN / REVISE` 决策（`RETURN` 必填理由，`REVISE` 字段级修订）
-- AI 预审结果查看
+- Review queue
+- Batch claiming and batch review
+- Review details
+- `PASS / RETURN / REVISE` decisions: required return reasons and field-level revisions
+- AI pre-review results
 
-![Reviewer · 审核详情与字段级 Diff](submission/screenshots/reviewer-2-detail.png)
+[View screenshot: Reviewer details and field-level diffs](submission/screenshots/reviewer-2-detail.png)
 
-> 更多界面见 [`submission/screenshots/`](submission/screenshots/)（三角色 6 张关键页 + 索引）。
+> The screenshots show the current Chinese-language application UI. See [`submission/screenshots/`](submission/screenshots/) for six key screens across the three roles and their index. This English README does not change the application's interface language.
 
-### Shared Governance Layer —— 共享治理层（`packages/*`）
+### Shared Governance Layer (`packages/*`)
 
-- contracts（共享类型与契约）
-- schema runtime（动态渲染）
-- compatibility check（兼容性检查）
-- preflight（AI 建议预检查）
-- audit（审计）
-- export quality evidence（导出质量证据）
+- Shared types and contracts
+- Dynamic schema runtime
+- Compatibility checks
+- AI suggestion preflight checks
+- Auditing
+- Export quality evidence
 
 ---
 
-## 6. 本地启动指引
+## 6. Local Setup
 
-### 方式一：Docker Compose（推荐，含真实后端）
+### Option 1: Docker Compose (Recommended, Includes the Real Backend)
 
 ```bash
-# 0) 准备环境变量
-cp .env.example .env          # 按需填 DOUBAO_API_KEY / DOUBAO_MODEL 等
+# 0) Prepare environment variables
+cp .env.example .env          # Set DOUBAO_API_KEY / DOUBAO_MODEL as needed
 
-# 1) 确定性构建，并先启动基础设施
-# 容量不足会阻断构建；不会自动删除容器或数据卷
+# 1) Build deterministically and start infrastructure first
+# Insufficient disk capacity blocks the build; containers and volumes are not deleted automatically
 python3 scripts/local-compose.py build --pull
 python3 scripts/local-compose.py up -d mysql redis --wait
 
-# 2) 执行 Alembic 迁移并写入可重复的基础演示 / E2E 数据
+# 2) Run Alembic migrations and seed repeatable base demo / E2E data
 python3 scripts/local-compose.py --profile tools run --rm seed
 
-# 3) 启动全部应用并等待真实健康检查
+# 3) Start all applications and wait for health checks
 python3 scripts/local-compose.py up -d --wait
 
-# 4) 可选：补充竞赛演示数据
+# 4) Optional: add competition demo data
 python3 scripts/local-compose.py run --rm api python scripts/seed_competition.py
 ```
 
-Compose 包含以下服务：`web`、`api`、`worker`、`scheduler`、`mysql`、`redis`。`scheduler` 负责定时清理过期幂等记录。
+Compose includes `web`, `api`, `worker`, `scheduler`, `mysql`, and `redis`. The scheduler periodically removes expired idempotency records.
 
-前端访问 `http://localhost:5173/`。生产 Web 镜像只包含 Nginx 与静态构建产物，
-同源 `/api` 由 Nginx 反向代理至 `api:3000`；容器启动时不执行 npm 安装，也不运行
-Vite 开发服务器。MySQL 与 Redis 默认只在 Compose 内网开放。
+Open the frontend at `http://localhost:5173/`. The production Web image contains only Nginx and static build artifacts. Nginx proxies same-origin `/api` requests to `api:3000`; container startup neither installs npm dependencies nor runs the Vite development server. MySQL and Redis are exposed only within the Compose network by default.
 
-> **环境变量**：复制 `.env.example` 为 `.env` 并填写本地配置。**不要提交真实 API key、token 或 secret。**
+> **Environment variables**: copy `.env.example` to `.env` and fill in local settings. **Never commit real API keys, tokens, or secrets.**
 
-生产部署必须显式设置 `APP_ENV=production`、`DEMO_MODE=false`、至少 32 字符的随机 `JWT_SECRET`、非默认数据库密码、`LOGIN_RATE_LIMIT_BACKEND=redis` 和实际 `TRUSTED_HOSTS`。任一安全条件不满足时 API 会在启动阶段失败。正式前端构建需设置 `VITE_DEMO_MODE=false`，登录页不会显示或预填演示账号。
+Production deployments must explicitly configure `APP_ENV=production`, `DEMO_MODE=false`, a random `JWT_SECRET` of at least 32 characters, non-default database passwords, `LOGIN_RATE_LIMIT_BACKEND=redis`, and the actual `TRUSTED_HOSTS`. The API fails at startup if any required security condition is unmet. Production frontend builds must set `VITE_DEMO_MODE=false` so the login page neither displays nor prefills demo accounts.
 
-### 方式二：前端 + 共享库本地开发
+### Option 2: Local Frontend and Shared-Library Development
 
-本项目统一使用 Node `26.13.0` 与 npm `11.20.0`。安装了 nvm 时，可先执行 `nvm use` 读取根目录 `.nvmrc`。
+The project uses Node `26.13.0` and npm `11.20.0`. If nvm is installed, run `nvm use` to load the version from the root `.nvmrc`.
 
 ```bash
-# 切换到项目约定的 Node 版本
+# Switch to the project's Node version
 nvm use
 
-# 共享库（packages/*）依赖与检查
+# Install and check shared libraries (packages/*)
 npm ci
 npm run typecheck
 npm run test
 
-# 前端应用（apps/web 为独立 npm 项目）
+# Frontend application (apps/web is a separate npm project)
 cd apps/web
 npm ci
-npm run dev          # Vite 开发服务器
+npm run dev          # Vite development server
 ```
 
-如需纯前端演示（不依赖后端），可显式启用 MSW Mock：
+For a frontend-only demo without the backend, explicitly enable MSW mocks. Run this from the repository root:
 
 ```bash
 VITE_ENABLE_MSW=true VITE_DEMO_MODE=true \
   npm --prefix apps/web run dev -- --host 127.0.0.1 --port 5180
 ```
 
-环境变量完整清单见 [`docs/environment-variables.md`](./docs/environment-variables.md)。
+See [`docs/environment-variables.md`](./docs/environment-variables.md) for the full environment-variable reference.
 
 ---
 
-## 7. 测试与验证命令
+## 7. Testing and Validation Commands
 
 ```bash
-# 共享库：根目录 workspace 统一检查（contracts / schema-core / schema-compiler /
-# schema-renderer / schema-designer / workflow-core）
+# Shared libraries: check all root workspaces (contracts / schema-core / schema-compiler /
+# schema-renderer / schema-designer / workflow-core)
 npm run typecheck
 npm run test
 
-# 单独运行某个共享库测试
+# Run tests for an individual shared library
 npm run test:contracts
 npm run test:schema-core
 npm run test:schema-renderer
 
-# 前端应用
+# Frontend application
 cd apps/web
 npm run typecheck
 npm run test:run
 npm run build
 cd ../..
 
-# 真实后端 E2E（首次执行需安装 Chromium）
+# Real-backend E2E (install Chromium before the first run)
 npm --prefix apps/web exec playwright install chromium
 python3 scripts/local-compose.py up -d --build --wait
 python3 scripts/local-compose.py --profile tools run --rm seed
 npm --prefix apps/web run e2e
 
-# 构建 API 复用的共享迁移引擎（需 Node 26）
+# Build the shared migration engine used by the API (requires Node 26)
 npm run build:migration-engine
 
-# 后端（生产镜像不包含测试依赖，在 Python 3.11 虚拟环境按哈希锁安装）
+# Backend (production images exclude test dependencies; use hash-locked dependencies in a Python 3.11 venv)
 cd apps/api
 python3.11 -m venv .venv
 .venv/bin/python -m pip install --require-hashes -r requirements-dev.txt
 .venv/bin/python -m pytest -m "not integration" -q
 cd ../..
 
-# 生产依赖漏洞门禁
+# Production dependency vulnerability checks
 npm audit --omit=dev --audit-level=high
 npm --prefix apps/web run audit:production
 
-# 交付前检查 whitespace / conflict markers
+# Check whitespace errors and conflict markers before delivery
 git diff --check
 ```
 
 ---
 
-## 8. 演示账号与演示路由
+## 8. Demo Accounts and Routes
 
-演示账号（由 seed / mock 数据提供，也可通过登录页的角色入口直接进入对应工作台）：
+Demo accounts are provided by seed / mock data. The login page also offers role shortcuts to the corresponding workspaces.
 
-| 角色 | 账号 | 密码 |
+| Role | Account | Password |
 | --- | --- | --- |
 | Owner | `owner@labelhub.com` | `password123` |
 | Labeler | `labeler@labelhub.com` | `password123` |
 | Reviewer | `reviewer@labelhub.com` | `password123` |
 
-真实演示路由（来自 `apps/web/src/app/routes.tsx`）：
+Available demo routes (from `apps/web/src/app/routes.tsx`):
 
 ```txt
 Owner:
-- /owner/tasks                                            任务管理
-- /owner/ai-config                                        AI 预审规则（含权重 slider）
+- /owner/tasks                                            Task management
+- /owner/ai-config                                        AI pre-review rules, including weight sliders
 - /owner/quality                                          Quality Center
-- /owner/tasks/:taskId/designer                           Schema Designer
-- /owner/tasks/:taskId/dataset                            数据集
-- /owner/tasks/:taskId/export                             导出
+- /owner/tasks/:taskId/designer                            Schema Designer
+- /owner/tasks/:taskId/dataset                             Dataset
+- /owner/tasks/:taskId/export                              Exports
 
-  Schema Governance 演示任务（mock）:
+  Schema Governance demo tasks (mock):
 - /owner/tasks/task_demo_schema_breaking_change/designer
 - /owner/tasks/task_demo_schema_migration_required/designer
 - /owner/tasks/task_demo_schema_deprecation/designer
 - /owner/tasks/task_demo_schema_safe_publish/designer
 
 Labeler:
-- /labeler/tasks                                          任务市场
-- /labeler/workspace/asn_1001                             标注工作台
-- /labeler/submissions                                    我的提交
+- /labeler/tasks                                          Task marketplace
+- /labeler/workspace/asn_1001                              Annotation workspace
+- /labeler/submissions                                    My submissions
 
 Reviewer:
-- /reviewer/items                                         审核队列
-- /reviewer/items/:submissionId                           审核详情
+- /reviewer/items                                         Review queue
+- /reviewer/items/:submissionId                           Review details
 ```
 
 ---
 
-## 9. 关键设计取舍
+## 9. Key Design Decisions
 
-### 9.1 Contract-first development
+### 9.1 Contract-First Development
 
-共享契约定义在 `packages/contracts` 中，各层统一引用 `@labelhub/contracts`。这样可以避免重复定义状态码、审核决策和 API shape，保证前端、后端、Worker、Mock 对同一概念的理解一致。
+Shared contracts are defined in `packages/contracts`, and consumers use `@labelhub/contracts`. This avoids duplicate definitions of status codes, review decisions, and API shapes, keeping the frontend, backend, workers, and mocks aligned on the same concepts.
 
-### 9.2 Schema-driven runtime
+### 9.2 Schema-Driven Runtime
 
-标注页面不是硬编码表单，而是由版本化 Schema 动态生成。字段显示、必填和校验规则在 runtime 中解析（`packages/schema-renderer`、`packages/schema-core`）。
+Annotation pages are generated dynamically from versioned schemas. Field visibility, required values, and validation rules are evaluated at runtime by `packages/schema-renderer` and `packages/schema-core`.
 
-### 9.3 Schema version freeze
+### 9.3 Schema Version Freeze
 
-已发布的 Schema 是不可变快照。历史任务和提交绑定到当时的 `schemaVersionId`，避免后续模板修改破坏历史数据。核心原则：默认不迁移，每一次变更都可被识别，每一次迁移都应留下痕迹。
+Published schemas are immutable snapshots. Historical tasks and submissions remain bound to their original `schemaVersionId`, preventing later template edits from invalidating historical data. The core principle is no migration by default: every change must be identifiable, and every migration must leave a trace.
 
-### 9.4 AI as governed suggester
+### 9.4 AI as a Governed Suggestion Provider
 
-AI 的 `suggestedPatch` 不能直接覆盖答案。应用前必须经过确定性的 preflight 检查（检查字段是否存在、是否产生新的必填缺失、是否符合 Schema Runtime 联动逻辑）；被阻断的建议可以被解释和忽略，但不会被静默应用。
+AI-generated `suggestedPatch` values cannot overwrite answers directly. They must first pass deterministic preflight checks for field existence, newly missing required values, and schema runtime dependencies. Blocked suggestions can be explained and dismissed, but are never silently applied.
 
-### 9.5 Human review as decision flow
+### 9.5 Human Review as a Decision Flow
 
-审核不是简单按钮，而是 `PASS / RETURN / REVISE` 结构化决策流。`RETURN` 必须填写理由；`REVISE` 会记录字段级 patches。
+Review is a structured `PASS / RETURN / REVISE` decision flow. `RETURN` requires a reason; `REVISE` records field-level patches.
 
-### 9.6 Quality evidence chain
+### 9.6 Quality Evidence Chain
 
-Audit、AI precheck、Reviewer decision 和 Export Passport 共同形成可追踪的质量证据链，使交付数据可以回溯其质量与审核过程。
+Audits, AI prechecks, reviewer decisions, and Export Passports form a traceable evidence chain, allowing delivered data to be linked back to its quality checks and review process.
 
-### 9.7 No fake migration execution
+### 9.7 Verified Migration Execution
 
-历史迁移复用 `schema-core` 的计划、预演与执行规则。后端保存固定输入与 SHA-256 摘要，经另一位授权用户审批后由 worker 生成独立、不可变的迁移产物；原始提交和已发布版本保持不变。源数据变化会记录为冲突，不能绕过审批或发布门禁。流程与限制见 [治理说明](./docs/GOVERNANCE.md)。
+Historical-data migration reuses the planning, dry-run, and execution rules in `schema-core`. The backend persists fixed inputs and SHA-256 digests. After approval by a different authorized user, a worker generates separate, immutable migration outputs. Original submissions and published versions remain unchanged. Source-data changes are recorded as conflicts; approval and publication gates cannot be bypassed. See the [governance guide](./docs/GOVERNANCE.md) for the workflow and limits.
 
 ---
 
-## 10. 当前完成状态
+## 10. Current Implementation Status
 
-### 已完成
+### Completed
 
-- Owner / Labeler / Reviewer 三角色工作流
-- Dynamic Schema Designer 与 Runtime
+- Owner / Labeler / Reviewer workflows
+- Dynamic Schema Designer and runtime
 - Schema Version Management UI
-- 版本历史与不可变快照
-- 兼容性检查与 breaking change 阻断
+- Version history and immutable snapshots
+- Compatibility checks and breaking-change blocking
 - Labeler / Reviewer AI Assist preflight
-- Reviewer decision flow（PASS / RETURN / REVISE）
+- Reviewer decision flow (`PASS / RETURN / REVISE`)
 - Quality Center / Export Passport / Audit
-- AI Review 配置与自动归一化权重 slider
+- AI Review configuration with automatically normalized weight sliders
+- Batch migration of historical submissions: dry runs, independent approval, background execution, conflict detection, and immutable results
+- Task-level action authorization: allow / deny, expiry, revocation, server-side enforcement, and auditing
+- Runtime Trace Panel, field dependency graph, worker compilation, and bounded caching
+- Repository-managed Prometheus / Alertmanager / Grafana deployment configuration and automated acceptance checks
 
-- 历史答卷批量迁移：预演、独立审批、后台执行、冲突检测与不可变结果
-- 任务级动作授权：允许 / 拒绝、到期、撤销、服务端鉴权与审计
-- Runtime Trace Panel、字段依赖图、Worker 编译与有界缓存
-- 仓库内 Prometheus / Alertmanager / Grafana 部署方案与自动验收
+### Deployment Boundaries and Optional Extensions
 
-### 部署边界与可选扩展
-
-- GitHub Pages 提供浏览器内 Mock 演示；持久化迁移需要部署真实 API、MySQL、Redis、worker 与 scheduler。
-- 监控默认使用本地告警接收器；外部生产地址和通知渠道由具体环境配置，本轮不接入未知生产环境。
-- 更深入的质量分析和 AI 审计摘要属于未来可选扩展，尚未作为产品能力交付。
+- GitHub Pages provides an in-browser mock demo. Persistent migration requires the real API, MySQL, Redis, workers, and scheduler.
+- Monitoring uses a local alert receiver by default. Production endpoints and notification channels must be configured for the target environment; no unspecified production environment is connected.
+- Deeper quality analytics and AI audit summaries remain optional future extensions and have not been delivered as product capabilities.
 
 ---
 
-## 11. 相关交付文档
+## 11. Related Documentation
 
-| 文档 | 用途 |
+The linked project documents retain their existing language.
+
+| Document | Purpose |
 | --- | --- |
-| [docs/GOVERNANCE.md](./docs/GOVERNANCE.md) | 历史迁移、独立审批、任务权限与运行诊断 |
-| [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) | 监控部署、指标、告警与故障恢复 |
-| [docs/PROJECT_STATUS.md](./docs/PROJECT_STATUS.md) | 当前主线、验证快照、能力边界与维护待办 |
-| [labelhub-architecture-contract.md](./labelhub-architecture-contract.md) | 顶层架构契约（v1.1），各层共同依据 |
-| [AI_CODING_RULES.md](./AI_CODING_RULES.md) | AI Coding 统一规则（contract-driven、禁止事项、验证要求） |
-| [docs/LabelHub_Final_Delivery.md](./docs/LabelHub_Final_Delivery.md) | 最终交付说明 |
-| [docs/LabelHub_Delivery_Runbook.md](./docs/LabelHub_Delivery_Runbook.md) | 交付 / 部署 runbook |
-| [docs/environment-variables.md](./docs/environment-variables.md) | 环境变量必填项、默认值与敏感等级 |
-| [docs/LabelHub_Schema_Version_Management.md](./docs/LabelHub_Schema_Version_Management.md) | Schema 版本管理实施规格 |
-| [docs/AI_CODING_PROCESS.md](./docs/AI_CODING_PROCESS.md) | AI Coding 过程与开发记录 |
-| [submission/README.md](./submission/README.md) | 答辩交付物索引 |
+| [docs/GOVERNANCE.md](./docs/GOVERNANCE.md) | Historical-data migration, independent approval, task permissions, and runtime diagnostics |
+| [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) | Monitoring deployment, metrics, alerts, and recovery |
+| [docs/PROJECT_STATUS.md](./docs/PROJECT_STATUS.md) | Current mainline baseline, validation snapshot, capability boundaries, and maintenance backlog |
+| [labelhub-architecture-contract.md](./labelhub-architecture-contract.md) | Top-level architecture contract (v1.1), shared across all layers |
+| [AI_CODING_RULES.md](./AI_CODING_RULES.md) | AI coding rules: contract-driven development, prohibited actions, and validation requirements |
+| [docs/LabelHub_Final_Delivery.md](./docs/LabelHub_Final_Delivery.md) | Final delivery notes |
+| [docs/LabelHub_Delivery_Runbook.md](./docs/LabelHub_Delivery_Runbook.md) | Delivery and deployment runbook |
+| [docs/environment-variables.md](./docs/environment-variables.md) | Required environment variables, defaults, and sensitivity levels |
+| [docs/LabelHub_Schema_Version_Management.md](./docs/LabelHub_Schema_Version_Management.md) | Schema version management specification |
+| [docs/AI_CODING_PROCESS.md](./docs/AI_CODING_PROCESS.md) | AI coding process and development records |
+| [submission/README.md](./submission/README.md) | Presentation deliverables index |
 
 ---
 
-## 12. 安全说明
+## 12. Security Notes
 
-- 不要提交 API keys、tokens 或 secrets。
-- 不要暴露私有 LLM provider credentials。
-- 使用本地 `.env` 文件管理密钥（参考 `.env.example`）。
-- 演示 seed 只允许在 `DEMO_MODE=true` 的非生产环境运行；生产环境禁止启用。
-- 文件上传会校验配置上限、实际大小、扩展名、MIME、内容签名与 SHA-256；可通过 `MAX_UPLOAD_SIZE_BYTES` 和文件白名单配置。
-- JWT 有效期、登录失败限流、可信 Host 与 HSTS 均由环境变量控制；生产环境登录限流必须使用 Redis。
+- Never commit API keys, tokens, or secrets.
+- Never expose private LLM provider credentials.
+- Manage secrets in a local `.env` file; see `.env.example`.
+- Demo seeding is allowed only in non-production environments with `DEMO_MODE=true`; it must not be enabled in production.
+- File uploads validate configured limits, actual size, extension, MIME type, content signature, and SHA-256. Configure limits through `MAX_UPLOAD_SIZE_BYTES` and file allowlists.
+- Environment variables control JWT lifetime, failed-login rate limits, trusted hosts, and HSTS. Production login rate limiting must use Redis.
 
 ---
 
-## 13. 最终交付说明
+## 13. Delivery Notes
 
-- 当前稳定交付分支为 `main`；禁止直接在 `main` 开发或 push。
-- Git tag 或主线 commit 表示可复现的产品交付快照；历史答辩固定点 `final-delivery-0610` 继续保留。
-- 私有 npm workspace 版本与 OpenAPI 服务版本属于不同命名空间，当前值与解释见项目状态页。
+- `main` is the stable delivery branch. Do not develop on or push directly to `main`.
+- Git tags and mainline commits identify reproducible product snapshots. The historical presentation tag `final-delivery-0610` is retained.
+- Private npm workspace versions and the OpenAPI service version use separate namespaces. See the project status page for current values and their meaning.
 
-本地容量保护、异盘备份与恢复验证见 [本地存储维护](docs/LOCAL_STORAGE_MAINTENANCE.md)。文档一致性检查：`npm run check:docs`。
+See [local storage maintenance](docs/LOCAL_STORAGE_MAINTENANCE.md) for disk-capacity protection, backups to a separate disk, and restore verification. Run `npm run check:docs` to check documentation consistency.
