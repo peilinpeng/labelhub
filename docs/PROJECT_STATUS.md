@@ -1,6 +1,14 @@
 # LabelHub 项目状态
 
-> 受 Git 管理的交付快照，代码与 GitHub Actions 是最终事实来源。更新时间：2026-11-03。
+> 受 Git 管理的交付快照，代码与 GitHub Actions 是最终事实来源。更新时间：2026-11-05。
+
+## 文档维护（2026-11-05）
+
+[PR #150](https://github.com/peilinpeng/labelhub/pull/150) 将仓库首页 README 改为英文，
+并在 `AGENTS.md`、`CONTRIBUTING.md`、`AI_CODING_RULES.md` 中统一后续提交语言：
+所有新提交的标题与正文使用英文，包括 merge / squash；既有提交不重写、不强制推送。
+应用界面、其他文档及产品代码基线保持不变，仍为下述 PR #145 基线。
+本次文档检查通过；此前本分支共享包 380 项测试、Web 60 项测试、类型检查、覆盖率检查及生产构建均通过。
 
 ## 本轮交付
 
