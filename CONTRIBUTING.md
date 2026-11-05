@@ -4,7 +4,8 @@
 
 ## 工作语言
 
-- 文档、README、部署说明、代码注释、错误提示统一使用中文。
+- 根目录 `README.md` 使用英文；其他文档、部署说明、代码注释、错误提示继续使用中文。
+- 所有新 Git 提交说明（标题与正文）统一使用英文，具体规则见下文。
 - TypeScript 类型名、接口名、变量名、函数名、枚举值、API 路径保持英文。
 - 不要在同一个文件中混用中英文注释。
 
@@ -32,10 +33,13 @@
 
 ## Commit message 规范
 
+从现在起，所有新提交说明的标题与正文统一使用英文，包括普通提交、merge 和 squash 提交。
+既有提交保留原样，不为翻译重写历史或强制推送。
+
 格式：
 
 ```text
-type(scope): 中文描述
+type(scope): English description
 ```
 
 常用 type：
@@ -51,11 +55,14 @@ type(scope): 中文描述
 示例：
 
 ```text
-feat(web): 接入任务广场 mock 数据
-fix(api): 修复提交状态非法迁移判断
-docs: 补充 Docker 启动说明
-test(contracts): 增加 JsonPath 命名空间测试
+feat(web): integrate mock data into the task marketplace
+fix(api): reject invalid submission state transitions
+docs: add Docker setup instructions
+test(contracts): cover JsonPath namespaces
 ```
+
+合并 PR 前，检查 GitHub 最终生成的提交标题与正文。如果 merge / squash 默认说明包含中文
+PR 标题、描述或提交列表，应编辑为英文后再合并。PR 讨论可继续使用中文。
 
 ## PR 规则
 
