@@ -16,8 +16,10 @@ python3 scripts/local-compose.py -p labelhub-test -f docker-compose.yml build ap
 ```
 
 - macOS 检查工作区与 Docker.raw 所在宿主文件系统；原生 Linux 检查工作区与 Docker 数据目录。
+  Windows Docker Desktop WSL2 检查工作区与显式指定的数据 VHDX 所在宿主文件系统，见 [Windows 开发](WINDOWS_DEVELOPMENT.md)。
 - 任何写入型 Compose 操作启动前至少保留 **10 GiB**，并确认 `docker system df` 可正常读取。
 - 操作执行中每 2 秒检查容量，低于 **3 GiB** 时取消本次命令；先发 SIGINT，未退出再升级为 SIGTERM/SIGKILL。
+  Windows 使用 `taskkill /PID <本次子进程> /T /F` 终止客户端进程树。
   这是尽力取消客户端和其子进程，不代表 Docker daemon 已写入的数据会回滚；随后用 `compose ps` 核对部分启动的资源。
 - 只读查询、停止和清理入口不受低空间门槛阻断，便于恢复；不会自动调用 prune 或删除卷。
 - 不修改系统 `docker` 命令。直接运行 `docker compose` 会绕过此门禁；当前操作文档及 E2E CI 构建入口已使用包装脚本。
@@ -52,7 +54,7 @@ python3 scripts/recovery_backup.py prepare \
   --manifest /absolute/private/recovery-transfer.json
 ```
 
-默认准备数据库、卷归档、配置清单与日志，不包含 `Docker.raw*`；这是一份数据恢复备份，不能据此宣称所有镜像及容器可离线整机恢复。
+默认准备数据库、卷归档、配置清单与日志，不包含 `Docker.raw*` 或 VHDX；这是一份数据恢复备份，不能据此宣称所有镜像及容器可离线整机恢复。
 需要把已停机保存的整盘副本一起转存时，在 prepare 增加 `--include-vm`。它会读取并计算整盘全部逻辑字节，
 耗时和目标容量需求明显更大。传输支持保留零块为空洞，但目标文件系统的实际占用可能不同。
 传输清单必须位于源目录之外，且不能覆盖已有文件。准备阶段核对卷原始摘要、解压完整性与 SQL 摘要。
@@ -74,6 +76,7 @@ python3 scripts/recovery_backup.py copy \
 - 全部通过后才生成 `TRANSFER_VERIFIED.json`；失败保留部分副本供排查，不生成成功证明，也不删除源数据。
 - 文件权限请求 0600、目录 0700；实际访问控制由目标文件系统决定。NAS 需有私有 ACL，移动介质宜采用加密卷。
 - 此脚本当前的物理介质自动核验限 macOS，其他平台会明确失败，不降级为“路径不同即异盘”。
+  Windows 的准备与内容校验使用 UTF-8；缺少 `st_blocks` 时以完整逻辑大小保守估算，不低估容量。
 
 ## 5. 从目标恢复验证
 

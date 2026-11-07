@@ -10,7 +10,7 @@ import re
 import ipaddress
 from urllib.parse import urlsplit
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import platform
 import posixpath
 import plistlib
@@ -41,16 +41,32 @@ def digest(path: Path, compressed: bool = False) -> str:
 
 def safe_file(root: Path, name: str) -> Path:
     relative = PurePosixPath(name)
-    if relative.is_absolute() or '..' in relative.parts or not relative.parts:
+    # 清单可跨平台传输；同时拒绝 Windows 盘符、反斜线与备用数据流。
+    if (relative.is_absolute() or '..' in relative.parts or not relative.parts
+            or '\\' in name or ':' in name
+            or any(PureWindowsPath(part).is_reserved() or part != part.rstrip(' .') for part in relative.parts)):
         raise BackupError('清单包含非法相对路径。')
     current = root
     for part in relative.parts:
         current /= part
-        if current.is_symlink():
+        if is_link(current):
             raise BackupError('备份源或目标不允许通过符号链接访问文件。')
     if not current.is_file():
         raise BackupError(f'备份文件不存在：{name}')
     return current
+
+
+def is_link(path: Path) -> bool:
+    # Python 3.11 的 is_symlink 不识别 Windows 目录联接点。
+    try:
+        return path.is_symlink() or bool(getattr(path.lstat(), 'st_file_attributes', 0) & 0x400)
+    except FileNotFoundError:
+        return False
+
+
+def allocated_bytes(info: os.stat_result) -> int:
+    # Windows 不提供 st_blocks，以完整逻辑大小保守估算，不低估目标容量。
+    return info.st_blocks * 512 if hasattr(info, 'st_blocks') else info.st_size
 
 
 def write_private_json(path: Path, data: dict) -> None:
@@ -85,7 +101,7 @@ def validate_member_paths(members: list[tarfile.TarInfo]) -> None:
 
 
 def validate_archives(source: Path) -> None:
-    records = json.loads((source / 'volume-backup-manifest.json').read_text())
+    records = json.loads((source / 'volume-backup-manifest.json').read_text(encoding='utf-8'))
     if not records:
         raise BackupError('数据卷归档清单为空。')
     for record in records:
@@ -117,7 +133,7 @@ def validate_archives(source: Path) -> None:
     if not sql_files:
         raise BackupError('缺少数据库逻辑备份。')
     for path in sql_files:
-        expected = safe_file(source, path.name + '.sha256').read_text().strip()
+        expected = safe_file(source, path.name + '.sha256').read_text(encoding='utf-8').strip()
         if digest(path, compressed=True) != expected:
             raise BackupError('数据库逻辑备份的解压摘要不一致。')
 
@@ -129,13 +145,13 @@ def prepare(source: Path, manifest: Path, include_vm: bool) -> dict:
     validate_archives(source)
     entries = []
     for path in sorted(source.rglob('*')):
-        if path.is_symlink():
+        if is_link(path):
             raise BackupError('源目录含符号链接，拒绝隐式扩大备份范围。')
         if path.is_dir():
             continue
         if not stat.S_ISREG(path.stat().st_mode):
             raise BackupError('源目录含非普通文件。')
-        if path.name.startswith('Docker.raw') and not include_vm:
+        if (path.name.startswith('Docker.raw') or '.vhdx' in path.name.lower()) and not include_vm:
             continue
         before = path.stat()
         checksum = digest(path)
@@ -143,7 +159,7 @@ def prepare(source: Path, manifest: Path, include_vm: bool) -> dict:
         if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
             raise BackupError('备份源在校验期间发生变化。')
         entries.append({'path': path.relative_to(source).as_posix(), 'bytes': after.st_size,
-                        'allocated_bytes': after.st_blocks * 512, 'sha256': checksum})
+                        'allocated_bytes': allocated_bytes(after), 'sha256': checksum})
     data = {'version': 1, 'prepared_at': datetime.now(timezone.utc).isoformat(),
             'source': str(source), 'include_vm': include_vm,
             'scope': '恢复目录全部普通文件' if include_vm else '数据库、卷归档、清单与日志；不含虚拟机整盘',
@@ -224,7 +240,7 @@ def verify(directory: Path, data: dict) -> None:
 
 
 def transfer(manifest: Path, destination: Path) -> Path:
-    data = json.loads(manifest.read_text())
+    data = json.loads(manifest.read_text(encoding='utf-8'))
     if data.get('version') != 1 or not data.get('files'):
         raise BackupError('不支持的或空的传输清单。')
     if any(record['path'] in {'transfer-manifest.json', 'TRANSFER_VERIFIED.json'} for record in data['files']):
@@ -277,13 +293,13 @@ def transfer(manifest: Path, destination: Path) -> Path:
 
 def restore_check(directory: Path, manifest: Path, report: Path) -> None:
     from storage_guard import check_space, storage_paths, run_output
-    data = json.loads(manifest.read_text())
+    data = json.loads(manifest.read_text(encoding='utf-8'))
     verify(directory, data)
     paths = storage_paths()
     check_space(paths, 3)
     run_output(['docker', 'system', 'df'])
     image = run_output(['docker', 'image', 'inspect', '--format', '{{.Id}}', 'ubuntu:24.04'])
-    records = json.loads((directory / 'volume-backup-manifest.json').read_text())
+    records = json.loads((directory / 'volume-backup-manifest.json').read_text(encoding='utf-8'))
     restored = []
     for record in records:
         check_space(paths, 3)
@@ -342,7 +358,7 @@ def main() -> int:
         elif args.action == 'restore-check':
             restore_check(args.directory.resolve(strict=True), args.manifest, args.report)
         else:
-            verify(args.directory.resolve(strict=True), json.loads(args.manifest.read_text()))
+            verify(args.directory.resolve(strict=True), json.loads(args.manifest.read_text(encoding='utf-8')))
             print('内容校验通过；此操作本身不证明异盘身份或恢复演练通过。')
         return 0
     except (RuntimeError, OSError, ValueError, KeyError, EOFError, tarfile.TarError, subprocess.SubprocessError) as exc:
