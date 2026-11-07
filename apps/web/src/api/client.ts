@@ -81,8 +81,8 @@ function getAuthHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export async function apiGet<T>(url: string): Promise<T> {
-  const response = await fetch(apiUrl(url), { headers: { ...getAuthHeader() } });
+export async function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(apiUrl(url), { headers: { ...getAuthHeader() }, signal });
   return handleResponse<T>(response);
 }
 

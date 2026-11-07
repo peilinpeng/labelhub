@@ -26,5 +26,7 @@ describe("三角色落地页冒烟", () => {
     expect(
       await screen.findByRole("heading", { name: "AI 自动预审队列" }),
     ).toBeInTheDocument();
+    // 标题只代表队列已返回，选中项的评分随后才发起请求。
+    expect(await screen.findByText(/已读取 \d+ 项 AI 维度评分/)).toBeInTheDocument();
   });
 });
