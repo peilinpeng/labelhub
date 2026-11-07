@@ -3,6 +3,15 @@
 本文件只记录所有分支长期有效的工程约束。当前主线、验证快照和维护待办统一读取
 [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)；临时轮班记录不得作为仓库状态依据。
 
+## 当前开发模式
+
+- 当前采用单人全栈开发；同一开发者可负责前端、API、数据库、worker 和工程维护，不设按人员划分的修改禁区。
+- PR 用于保存改动范围、自查与验收记录，不强制他人 review 或 GitHub `APPROVED`。
+  提交者完成完整 diff 自查、相关检查与已发现问题处理后，可自行合并。
+- AI 可在用户已授权的任务与合并范围内完成修改、自查、验证和合并，无需重复索取确认。
+  AI 自查必须如实标注，不能称为人工 review；GitHub 实际权限与检查仍须满足。
+- 此开发模式不改变产品内的审核、迁移审批、权限与审计规则。
+
 ## 开始工作前
 
 1. 阅读 `docs/PROJECT_STATUS.md`、`CONTRIBUTING.md`、`AI_CODING_RULES.md`。
@@ -20,11 +29,11 @@
 
 ## 架构边界
 
-- `packages/contracts` 是共享类型的唯一来源；破坏性变更必须先更新架构契约并协调所有消费者。
+- `packages/contracts` 是共享类型的唯一来源；必要的契约变更先明确影响、更新架构契约与共享类型，再同步所有消费者及测试。
 - Web 层必须复用 Schema 包的遍历、`visibleWhen`、校验和规范化逻辑，不得平行实现。
 - Owner 使用 `SchemaDesigner`；Labeler 使用 `SchemaRenderer` 的 `LABELING` 模式；Reviewer 使用
   `REVIEW_READONLY` 或 `REVIEW_DIFF` 模式。
-- `apps/api`、数据库、worker、导出管线的业务修改由后端负责人审阅；跨边界变更必须拆分说明。
+- `apps/api`、数据库、worker、导出管线的业务修改由提交者检查数据兼容、状态机、权限及失败恢复；跨边界变更须说明各层影响并验证真实链路。
 - 设计文档描述目标态，不自动构成当前实现范围。
 
 ## 安全红线
@@ -36,7 +45,7 @@
 
 ## 交付门禁
 
-按改动范围至少执行：
+业务代码及影响构建、运行行为的工程修改至少执行：
 
 ```bash
 npm run typecheck
@@ -49,3 +58,5 @@ git diff --check
 
 涉及 API、Docker 或真实链路时，追加 API 测试、依赖审计和真实后端 Playwright。PR 必须列明
 影响范围、验证结果、契约影响和后续待办；合并后更新 `docs/PROJECT_STATUS.md` 的日期与基线。
+纯文档修改执行 `npm run check:docs`、`git diff --check` 并核实事实与链接即可，无需重复无关的全量测试。
+所有改动均须检查完整 diff，确认没有密钥、本地产物或无关修改，且适用的远端 CI 通过。
