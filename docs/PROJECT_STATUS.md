@@ -1,6 +1,6 @@
 # LabelHub 项目状态
 
-> 受 Git 管理的交付快照，代码与 GitHub Actions 是最终事实来源。更新时间：2026-11-07。
+> 受 Git 管理的交付快照，代码与 GitHub Actions 是最终事实来源。更新时间：2026-11-08（Europe/Berlin）。
 
 ## 当前开发与合并方式
 
@@ -8,7 +8,32 @@
 取消强制他人 review 和分角色负责人审阅；保留任务分支、PR、完整 diff 自查和适用 CI。
 用户已授权合并时，自查与检查通过即可推进，无需再等待另一位维护者批准。
 规范见 [贡献指南](../CONTRIBUTING.md)、[工程规则](../AGENTS.md) 和 [AI 编码规则](../AI_CODING_RULES.md)。
-产品内的审核、迁移审批、权限和审计机制不变；本次仅调整开发规范与状态文档。
+产品内的审核、迁移审批、权限和审计机制不变；[PR #151](https://github.com/peilinpeng/labelhub/pull/151) 仅调整开发规范与状态文档。
+
+## 角色冒烟退出错误修复（2026-11-08）
+
+[PR #152](https://github.com/peilinpeng/labelhub/pull/152) 已于本地时间 2026-11-08 合并。
+当前代码基线：`ccad71f70f3781628619dc03e2a7f9f965d22a44`；后续纯文档更新不改变此代码基线。
+
+- 根因：Reviewer 标题出现时评分和统计请求仍可能在运行；旧实现卸载时未取消请求，
+  评分 catch 在检查取消标记前输出日志，可能在 MSW / Vitest 退出时触发异步网络与控制台错误。
+- 修复：GET 客户端与 Reviewer 读取 API 透传可选 AbortSignal；effect 清理取消队列、统计和评分请求，
+  已取消结果不写状态或错误日志。取消中的评分缓存标记会释放，切回该提交可以重新加载。
+  冒烟测试等待真实评分展示；真实接口错误继续保留诊断。共享契约、后端和数据库未改动。
+- 新增 4 项可控延迟回归，覆盖初始卸载、队列显示后的延迟请求卸载、StrictMode 切换/重选和真实 503。
+  同一回归在旧实现上 3 failed / 1 passed，在修复后 4 passed；不是通过固定等待、测试重试或屏蔽错误实现。
+- 本地门禁全部通过：共享包 typecheck/test（380 项）、Web typecheck/test:coverage（64 项）、生产构建、
+  41 份文档检查与 `git diff --check`。完整 Web coverage 首次加额外 5 次连续运行全部通过。
+  覆盖率 statements 66.74%、branches 55.02%、functions 67.53%、lines 70.14%，四项门槛仍为 50%。
+- PR 的分支推送和 PR 工作流均首次通过：[共享包/Web](https://github.com/peilinpeng/labelhub/actions/runs/42424811561)、
+  [真实后端 E2E](https://github.com/peilinpeng/labelhub/actions/runs/42424811560)，包含 MySQL 并发、监控、
+  非 root / 内网端口、额外导出与重复 seed。完成 AI 完整 diff 自查，无密钥或本地产物；按单人规则合并。
+
+合并提交与已验证 PR 文件树一致，主线工作流全部首次通过：
+[共享包/Web](https://github.com/peilinpeng/labelhub/actions/runs/42425065395)、
+[真实后端 E2E / 监控](https://github.com/peilinpeng/labelhub/actions/runs/42425065368)、
+[自动 Mock Pages](https://github.com/peilinpeng/labelhub/actions/runs/42425065387)。
+主线 E2E 包含 11 项场景与额外导出 1 项。异盘备份继续暂缓，未部署真实生产后端。
 
 ## Windows 工程适配交付（2026-11-07）
 
@@ -38,7 +63,7 @@ Web 覆盖率为 statements 66.47%、branches 54.82%、functions 67.40%、lines 
 [Mock Pages](https://github.com/peilinpeng/labelhub/actions/runs/42421433933)。
 共享包/Web 第一次运行的 60 项 Web 断言全部通过，但 `role-smoke.test.tsx` 退出时出现
 `EnvironmentTeardownError`（待处理的控制台 RPC，伴随异步请求 `ECONNREFUSED`），导致任务失败；
-未改代码、未跳过检查，仅重跑失败任务一次后通过。此记录不代表已修复该测试退出时序问题。
+当时未改代码、未跳过检查，仅重跑失败任务一次后通过；该退出时序问题现已由上述 PR #152 修复并补充回归。
 未部署真实生产后端；仓库已有的 Mock Pages 工作流由合并自动触发。
 
 ## 文档维护（2026-11-05）
@@ -49,11 +74,11 @@ Web 覆盖率为 statements 66.47%、branches 54.82%、functions 67.40%、lines 
 应用界面、其他文档及产品代码基线保持不变，仍为下述 PR #145 基线。
 本次文档检查通过；此前本分支共享包 380 项测试、Web 60 项测试、类型检查、覆盖率检查及生产构建均通过。
 
-## 本轮交付
+## PR #145 历史交付
 
 [PR #145](https://github.com/peilinpeng/labelhub/pull/145) 完成剩余治理、运行诊断与监控任务，
 并整合依赖 PR #137–142，已于 2026-11-03 合并。
-产品代码基线：`a793e5c5d7171db4073be8f8e6bab71d675e9570`（PR #145；后续纯文档提交不改变此基线）。
+PR #145 历史产品基线：`a793e5c5d7171db4073be8f8e6bab71d675e9570`；当前代码基线见上述 PR #152。
 合并前全部 CI、合并后主线四套工作流与线上浏览器验收均已通过。
 
 ## 已实现能力
@@ -103,8 +128,7 @@ Web 覆盖率为 statements 66.47%、branches 54.82%、functions 67.40%、lines 
 核心功能、依赖整合、Docker 恢复与仓库内监控已交付。2026-11-03 的维护收尾统一全仓文档定位，
 新增容量保护入口、文档 CI 与异盘备份工具；此类运维脚本不改变产品业务基线。
 
-后续维护：排查角色冒烟测试的异步请求与 MSW / Vitest 退出时序，避免再次出现上述偶发退出错误。
-本次 Windows 适配与状态记录未修改业务实现或关闭相关错误检测。
+角色冒烟测试退出错误已完成修复、回归与验收，详见上述 PR #152 记录；相关错误检测保持启用。
 
 异盘备份按用户要求暂缓。此前 macOS 主机的数据恢复包与包含停机磁盘副本的完整包均已准备，完成全文件 SHA-256；
 七个卷归档已通过新工具在临时卷恢复比较。尚无用户指定的独立目标，
