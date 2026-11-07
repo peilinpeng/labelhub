@@ -1,6 +1,37 @@
 # LabelHub 项目状态
 
-> 受 Git 管理的交付快照，代码与 GitHub Actions 是最终事实来源。更新时间：2026-11-05。
+> 受 Git 管理的交付快照，代码与 GitHub Actions 是最终事实来源。更新时间：2026-11-07。
+
+## Windows 工程适配交付（2026-11-07）
+
+[PR #149](https://github.com/peilinpeng/labelhub/pull/149) 已合并，工程交付基线为
+`b9868806bca6133cf8c7f536e371d67ab9911683`。产品业务与共享契约仍沿用下述 PR #145 基线。
+推荐 Windows PowerShell + Docker Desktop WSL2 Linux 引擎；工具链、安装与验收说明见
+[Windows 本地开发](WINDOWS_DEVELOPMENT.md)。
+
+- `xiongweiluo` 于 2026-11-07 22:34:36 UTC 对最终提交 `7b1e689` 提交真实 `APPROVED` review，
+  合并前无未解决审阅讨论；四套 PR 工作流、七个检查全部通过。
+- 完成跨平台构建与 Python 入口、Windows 中文诊断编码、维护 CI 的 Windows / Ubuntu 双平台覆盖。
+  容量保护继续执行启动前 10 GiB、运行中 3 GiB 阈值，并检查明确指定的 Docker VHDX 宿主分区。
+- Windows 完整本地验收包含共享包 380 项、Web 60 项、API 293 项（2 项集成测试单独执行）、
+  MySQL 并发 2 项、真实后端 E2E 11 项及额外导出 1 项、监控、重复 seed、非 root 与内网端口检查。
+  根/Web 生产依赖及 Python 哈希锁审计通过；41 份文档、23 项维护工具测试通过。
+- 本机只验证合成恢复包的准备、完整读取校验及临时卷恢复比较，没有旧数据或真实异盘恢复证明。
+  C / D 盘位于同一物理 NVMe；Windows 异盘 `copy` 仍明确拒绝不受支持的物理介质核验。
+  **用户已明确暂缓异盘备份，不作为本次合并前置条件，也不标记为已完成。**
+
+合并提交与已批准 PR 最终提交的文件树一致。本地主线复验通过共享包 typecheck/test、
+Web typecheck/test:coverage/build:production、check:docs、test:ops 和 `git diff --check`；
+Web 覆盖率为 statements 66.47%、branches 54.82%、functions 67.40%、lines 69.97%，均高于 50% 门槛。
+合并后主线工作流通过：[维护工具（Windows / Ubuntu）](https://github.com/peilinpeng/labelhub/actions/runs/42421433996)、
+[共享包/Web](https://github.com/peilinpeng/labelhub/actions/runs/42421433934)、
+[API 与依赖审计](https://github.com/peilinpeng/labelhub/actions/runs/42421434026)、
+[真实后端与监控](https://github.com/peilinpeng/labelhub/actions/runs/42421433955)、
+[Mock Pages](https://github.com/peilinpeng/labelhub/actions/runs/42421433933)。
+共享包/Web 第一次运行的 60 项 Web 断言全部通过，但 `role-smoke.test.tsx` 退出时出现
+`EnvironmentTeardownError`（待处理的控制台 RPC，伴随异步请求 `ECONNREFUSED`），导致任务失败；
+未改代码、未跳过检查，仅重跑失败任务一次后通过。此记录不代表已修复该测试退出时序问题。
+未部署真实生产后端；仓库已有的 Mock Pages 工作流由合并自动触发。
 
 ## 文档维护（2026-11-05）
 
@@ -29,7 +60,7 @@
 
 详细说明：[治理与权限](GOVERNANCE.md)、[监控部署](OBSERVABILITY.md)、[交付记录](GOVERNANCE_DELIVERY.md)。
 
-## 验证快照
+## PR #145 与此前维护的验证快照
 
 | 范围 | 结果与来源 |
 | --- | --- |
@@ -44,7 +75,8 @@
 | 运维收尾 | 40 份文档一致性检查、14 项维护工具测试、本机七卷恢复比较通过；异盘目标尚待指定 |
 | Pages 线上验收 | 三角色登录与深链接刷新、治理桌面/390px 窄屏、Worker、实际运行追踪通过；控制台与页面无异常 |
 
-本机 Docker 存储故障已完成恢复与本地完整验收：停机备份虚拟磁盘，重启恢复存储读取，
+以下为此前 macOS 主机的恢复记录，不代表当前 Windows 电脑存在这些旧数据或已完成旧数据备份。
+该主机 Docker 存储故障已完成恢复与本地完整验收：停机备份虚拟磁盘，重启恢复存储读取，
 清除失效的未使用构建缓存，并回收已释放磁盘空间。原有 12 个容器和 7 个卷保留；
 7 份卷备份均实际恢复到临时卷并逐文件对比通过，数据库逻辑备份已保存。
 本地验收临时容器、卷及网络已清理，原有容器配置、挂载与运行/停止状态核对一致。
@@ -63,12 +95,15 @@
 核心功能、依赖整合、Docker 恢复与仓库内监控已交付。2026-11-03 的维护收尾统一全仓文档定位，
 新增容量保护入口、文档 CI 与异盘备份工具；此类运维脚本不改变产品业务基线。
 
-异盘备份当前状态：数据恢复包与包含停机磁盘副本的完整包均已准备，完成全文件 SHA-256；
+后续维护：排查角色冒烟测试的异步请求与 MSW / Vitest 退出时序，避免再次出现上述偶发退出错误。
+本次 Windows 适配与状态记录未修改业务实现或关闭相关错误检测。
+
+异盘备份按用户要求暂缓。此前 macOS 主机的数据恢复包与包含停机磁盘副本的完整包均已准备，完成全文件 SHA-256；
 七个卷归档已通过新工具在临时卷恢复比较。尚无用户指定的独立目标，
-未完成异盘复制或从异盘恢复演练，不能标记为全部收尾完成。当前低容量会阻断新构建；
+未完成异盘复制或从异盘恢复演练，不能标记为备份收尾完成。容量低于门槛时会阻断新构建；
 持续空间余量需结合宿主内存交换与存储使用情况维护。具体操作见 [本地存储维护](LOCAL_STORAGE_MAINTENANCE.md)。
 
-主线证据：[API 与审计](https://github.com/peilinpeng/labelhub/actions/runs/41550975141)、
+PR #145 历史主线证据：[API 与审计](https://github.com/peilinpeng/labelhub/actions/runs/41550975141)、
 [共享包/Web](https://github.com/peilinpeng/labelhub/actions/runs/41550975072)、
 [真实后端/监控](https://github.com/peilinpeng/labelhub/actions/runs/41550975096)、
 [Pages 部署](https://github.com/peilinpeng/labelhub/actions/runs/41550975261)。
