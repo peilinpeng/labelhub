@@ -29,8 +29,9 @@ for (const [advisoryId, entry] of Object.entries(allowlist)) {
   }
 }
 
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const auditResult = spawnSync(npmCommand, ["audit", "--omit=dev", "--json"], {
+// npm run 提供真实 CLI 路径，直接用 Node 执行，避免 Windows 无法 spawn .cmd。
+if (!process.env.npm_execpath) throw new Error("请通过 npm run audit:production 执行审计");
+const auditResult = spawnSync(process.execPath, [process.env.npm_execpath, "audit", "--omit=dev", "--json"], {
   encoding: "utf8",
 });
 

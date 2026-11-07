@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
-    policy = json.loads((ROOT / 'docs/document-policy.json').read_text())
+    policy = json.loads((ROOT / 'docs/document-policy.json').read_text(encoding='utf-8'))
     tracked = set(subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '--', '*.md'], cwd=ROOT, text=True).splitlines())
     errors = []
     if tracked != set(policy):
@@ -20,7 +20,7 @@ def main() -> int:
         if not path.is_file():
             errors.append(f'文档缺失：{name}')
             continue
-        content = path.read_text()
+        content = path.read_text(encoding='utf-8')
         if category not in {'current', 'historical', 'design'}:
             errors.append(f'非法文档分类：{name}')
         if category != 'current' and '文档定位：' not in '\n'.join(content.splitlines()[:8]):
@@ -34,15 +34,15 @@ def main() -> int:
             relative = unquote(target.split('#')[0])
             if relative and not (path.parent / relative).exists():
                 errors.append(f'失效相对链接：{name} → {target}')
-    readme = (ROOT / 'README.md').read_text()
+    readme = (ROOT / 'README.md').read_text(encoding='utf-8')
     if '属于后续计划，未作为已完成能力交付' in readme:
         errors.append('README 仍错误地把已交付迁移管线标为未来计划。')
     for name in ['docs/LabelHub_Delivery_Runbook.md', 'docs/deployment.md', 'submission/README.md']:
-        content = (ROOT / name).read_text()
+        content = (ROOT / name).read_text(encoding='utf-8')
         if re.search(r'47 路径|39 路径|375 个测试|264 passed|共 6 个场景|9 个 Playwright', content):
             errors.append(f'当前入口残留旧测试/接口数量：{name}')
     for name in ['README.md','apps/api/README.md','docs/LabelHub_Delivery_Runbook.md','docs/deployment.md','docs/OBSERVABILITY.md','submission/README.md']:
-        if re.search(r'docker compose[^\n`]*(?:\bbuild\b|\bup\b|\brun\b)', (ROOT/name).read_text()):
+        if re.search(r'docker compose[^\n`]*(?:\bbuild\b|\bup\b|\brun\b)', (ROOT/name).read_text(encoding='utf-8')):
             errors.append(f'当前写入命令绕过容量保护：{name}')
     if errors:
         print('\n'.join(errors), file=sys.stderr)

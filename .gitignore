@@ -18,6 +18,8 @@ build/
 .next/
 .vite/
 coverage/
+playwright-report/
+test-results/
 
 # contracts test output
 .contract-test-dist/
