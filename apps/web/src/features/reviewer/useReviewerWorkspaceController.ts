@@ -34,10 +34,11 @@ export function useReviewerWorkspaceController() {
   // 否则非当前 Tab（已通过 / 已打回）会恒为 0，必须点击该 Tab 后才显示真实数字。
   const [counts, setCounts] = useState({ pending: 0, passed: 0, returned: 0, manual: 0, failed: 0 });
 
-  const loadQueue = useCallback(async () => {
+  const loadQueue = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true);
-      const data = await listReviewQueue({ status: reviewQueueStatusFor(filter) });
+      const data = await listReviewQueue({ status: reviewQueueStatusFor(filter) }, signal);
+      if (signal?.aborted) return;
       // 后端/mock 可能返回缺少嵌套 submission 的脏数据，统一在入口过滤，
       // 保证下游过滤 / 选中 / 渲染读取 item.submission.* 时不会崩溃。
       const safeData = data.filter(
@@ -49,37 +50,44 @@ export function useReviewerWorkspaceController() {
       setSelectedBatchIds([]);
       setOfflineNotice(null);
     } catch (error) {
+      if (signal?.aborted) return;
       console.warn("审核队列加载失败：", error);
       setSubmissions([]);
       setSelectedId(null);
       setOfflineNotice("审核队列加载失败，请稍后重试。");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [filter]);
 
-  const loadCounts = useCallback(async () => {
+  const loadCounts = useCallback(async (signal?: AbortSignal) => {
     try {
       const [pending, passed, returned] = await Promise.all([
-        fetchReviewQueueCount("NEEDS_HUMAN_REVIEW"),
-        fetchReviewQueueCount("ACCEPTED"),
-        fetchReviewQueueCount("RETURNED"),
+        fetchReviewQueueCount("NEEDS_HUMAN_REVIEW", signal),
+        fetchReviewQueueCount("ACCEPTED", signal),
+        fetchReviewQueueCount("RETURNED", signal),
       ]);
+      if (signal?.aborted) return;
       // 「转人工」与「待审核」共用 NEEDS_HUMAN_REVIEW 状态（reviewQueueStatusFor 同口径）；
       // 队列中无独立「失败」状态（AI 失败会转人工），保持 0。
       setCounts({ pending, passed, returned, manual: pending, failed: 0 });
     } catch (error) {
+      if (signal?.aborted) return;
       console.warn("审核队列统计加载失败：", error);
     }
   }, []);
 
   useEffect(() => {
-    void loadQueue();
+    const controller = new AbortController();
+    void loadQueue(controller.signal);
+    return () => controller.abort();
   }, [loadQueue]);
 
   // Tab 数字首屏即加载，且不随选中 Tab 变化（与列表请求解耦）。
   useEffect(() => {
-    void loadCounts();
+    const controller = new AbortController();
+    void loadCounts(controller.signal);
+    return () => controller.abort();
   }, [loadCounts]);
 
   const filteredSubmissions = submissions.filter((item) => {
@@ -103,30 +111,36 @@ export function useReviewerWorkspaceController() {
       ...current,
       [submissionId]: { status: "loading", scores: [] },
     }));
-    let cancelled = false;
+    const controller = new AbortController();
+    let settled = false;
     void (async () => {
       try {
-        const detail = await getReviewDetail(submissionId);
+        const detail = await getReviewDetail(submissionId, controller.signal);
         const scores = normalizeDimensionScores(detail.aiResult?.aiResult?.dimensionScores);
         const aiDecision = detail.aiResult?.decision ?? null;
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setDimensionScoresBySubmissionId((current) => ({
             ...current,
             [submissionId]: { status: "ready", scores, aiDecision },
           }));
         }
       } catch (error) {
+        if (controller.signal.aborted) return;
         console.warn("AI 维度评分加载失败：", error);
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setDimensionScoresBySubmissionId((current) => ({
             ...current,
             [submissionId]: { status: "error", scores: [] },
           }));
         }
+      } finally {
+        settled = true;
       }
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
+      // 取消中的请求没有可复用结果，切回该项或 StrictMode 重挂载时应重新加载。
+      if (!settled) requestedDimensionScoreIdsRef.current.delete(submissionId);
     };
   }, [selected?.submission.id]);
 

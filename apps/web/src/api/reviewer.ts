@@ -44,13 +44,13 @@ function unwrapList<T>(response: PageList<T>): T[] {
   return response.items ?? response.submissions ?? [];
 }
 
-export async function listReviewQueue(params: { page?: number; pageSize?: number; status?: string } = {}): Promise<ReviewQueueItem[]> {
+export async function listReviewQueue(params: { page?: number; pageSize?: number; status?: string } = {}, signal?: AbortSignal): Promise<ReviewQueueItem[]> {
   const search = new URLSearchParams();
   if (params.page) search.set("page", String(params.page));
   if (params.pageSize) search.set("pageSize", String(params.pageSize));
   if (params.status) search.set("status", params.status);
   const query = search.toString();
-  const res = await apiGet<PageList<ReviewQueueItem>>(`/api/v1/review/queue${query ? `?${query}` : ""}`);
+  const res = await apiGet<PageList<ReviewQueueItem>>(`/api/v1/review/queue${query ? `?${query}` : ""}`, signal);
   return unwrapList(res);
 }
 
@@ -61,20 +61,20 @@ export async function listReviewQueue(params: { page?: number; pageSize?: number
  * 真实后端返回 { items, total }，直接取 total（不受分页 pageSize 限制）；
  * mock 返回裸数组且忽略 status 参数，回退为按 status 客户端过滤后计数。
  */
-export async function fetchReviewQueueCount(status: string): Promise<number> {
+export async function fetchReviewQueueCount(status: string, signal?: AbortSignal): Promise<number> {
   const search = new URLSearchParams();
   search.set("pageSize", "100");
   search.set("status", status);
-  const res = await apiGet<unknown>(`/api/v1/review/queue?${search.toString()}`);
+  const res = await apiGet<unknown>(`/api/v1/review/queue?${search.toString()}`, signal);
   if (res != null && typeof res === "object" && !Array.isArray(res) && typeof (res as { total?: unknown }).total === "number") {
     return (res as { total: number }).total;
   }
   return unwrapList(res as PageList<ReviewQueueItem>).filter((item) => item?.submission?.status === status).length;
 }
 
-export async function getReviewDetail(submissionId: string): Promise<ReviewDetailResponse> {
+export async function getReviewDetail(submissionId: string, signal?: AbortSignal): Promise<ReviewDetailResponse> {
   const res = await apiGet<ReviewDetailResponse | { detail: ReviewDetailResponse }>(
-    `/api/v1/review/submissions/${submissionId}`
+    `/api/v1/review/submissions/${submissionId}`, signal
   );
   return isRecord(res) && "detail" in res ? (res as { detail: ReviewDetailResponse }).detail : res;
 }
