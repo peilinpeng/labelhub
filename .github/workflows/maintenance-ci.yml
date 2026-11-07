@@ -24,6 +24,9 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+    env:
+      # 英文 Windows runner 的默认输出编码无法打印中文诊断。
+      PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
