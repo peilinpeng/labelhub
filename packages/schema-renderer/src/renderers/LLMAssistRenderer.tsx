@@ -169,6 +169,7 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
                 const ops = convertSuggestedPatchToPreflightPatch(patch);
                 const preflight = runSchemaPreflight({
                   schema: renderContext.schema,
+                  context: renderContext.context,
                   currentAnswers: renderContext.answers,
                   patch: ops,
                 });
@@ -306,6 +307,7 @@ async function runLLMAssist(
       const ops = convertSuggestedPatchToPreflightPatch(patch);
       const preflight = runSchemaPreflight({
         schema: renderContext.schema,
+        context: renderContext.context,
         currentAnswers: renderContext.answers,
         patch: ops,
       });
