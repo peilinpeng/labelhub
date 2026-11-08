@@ -1,5 +1,5 @@
 import type { AnswerPayload, LLMAssistNode, LLMRuntimeResponse } from "@labelhub/contracts";
-import { normalizeAnswers } from "@labelhub/schema-core";
+import { normalizeAnswers, stableStringify } from "@labelhub/schema-core";
 import { runSchemaPreflight } from "@labelhub/schema-compiler";
 import type { PreflightPatchOperation, PreflightResult } from "@labelhub/schema-compiler";
 import { useRef, useState } from "react";
@@ -32,6 +32,8 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<LLMRuntimeResponse | undefined>();
   const [error, setError] = useState<string | undefined>();
+  const [baseAnswers, setBaseAnswers] = useState<Record<string, string>>();
+  const [baseScope, setBaseScope] = useState<string>();
   const [preflightResult, setPreflightResult] = useState<PreflightResult | undefined>();
   const notifiedOutcomesRef = useRef<Set<string>>(new Set());
 
@@ -42,7 +44,11 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
     Object.keys(response.suggestedPatch).length > 0 &&
     requireUserConfirm(node);
   const preflightBlocked = preflightResult !== undefined && !preflightResult.ok;
-  const canApply = hasSuggestedPatch && !preflightBlocked;
+  const scope = `${renderContext.context.schema.schemaVersionId}:${renderContext.context.item.id}:${node.id}`;
+  const stale = response !== undefined && (baseScope !== scope || Object.keys(response.suggestedPatch ?? {}).some(
+    (name) => (baseAnswers?.[name] ?? stableStringify({ value: undefined })) !== stableStringify({ value: renderContext.answers[name] }),
+  ));
+  const canApply = hasSuggestedPatch && !preflightBlocked && !stale;
   const patchFieldNames = Object.keys(response?.suggestedPatch ?? {}).sort();
   const suggestionItems = buildSuggestionItems(response?.suggestedPatch, renderContext.answers);
   const aiJudgement = getAiJudgement(response?.output);
@@ -60,6 +66,8 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
           disabled={renderContext.readonly || loading || renderContext.onLLMAssist === undefined}
           type="button"
           onClick={() => {
+            setBaseAnswers(Object.fromEntries(Object.entries(renderContext.answers).map(([name, value]) => [name, stableStringify({ value })])));
+            setBaseScope(scope);
             void runLLMAssist(
               node,
               renderContext,
@@ -109,6 +117,7 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
           )}
         </div>
       ) : null}
+      {stale ? <div role="alert">建议生成后相关字段已修改，请重新检查质量。</div> : null}
       {response !== undefined && preflightResult !== undefined ? (
         <PreflightStatusBlock result={preflightResult} patchFieldNames={patchFieldNames} />
       ) : null}
@@ -147,7 +156,7 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
               一键采纳
             </button>
           ) : null}
-          {hasSuggestedPatch && !canApply ? (
+          {hasSuggestedPatch && !canApply && !stale ? (
             // 建议被 preflight 拦截（需人工补充必填项）时，给出明确的下一步：用户补全后
             // 重新跑一次 preflight（不重新调用 LLM）。补全后若不再缺项，一键采纳会自动恢复可用。
             <button
@@ -160,6 +169,7 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
                 const ops = convertSuggestedPatchToPreflightPatch(patch);
                 const preflight = runSchemaPreflight({
                   schema: renderContext.schema,
+                  context: renderContext.context,
                   currentAnswers: renderContext.answers,
                   patch: ops,
                 });
@@ -283,6 +293,7 @@ async function runLLMAssist(
 
   // 每次新调用前清空旧 preflight 结果，避免残留
   setPreflightResult(undefined);
+  setResponse(undefined);
   setLoading(true);
   setError(undefined);
 
@@ -296,6 +307,7 @@ async function runLLMAssist(
       const ops = convertSuggestedPatchToPreflightPatch(patch);
       const preflight = runSchemaPreflight({
         schema: renderContext.schema,
+        context: renderContext.context,
         currentAnswers: renderContext.answers,
         patch: ops,
       });

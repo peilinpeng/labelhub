@@ -1,11 +1,8 @@
-import hashlib
-import json
 import logging
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
-
-from jinja2 import Template
+from jinja2 import TemplateError
 
 from app.config import settings
 from app.services.audit_domain import write_audit_log
@@ -14,216 +11,22 @@ from app.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
-AI_REVIEW_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "submit_ai_review_result",
-        "description": "Submit structured AI review result for a data annotation submission",
-        "parameters": {
-            "type": "object",
-            "required": ["decision", "totalScore", "dimensionScores", "fieldIssues", "summary", "confidence"],
-            "properties": {
-                "decision": {
-                    "type": "string",
-                    "enum": ["PASS", "RETURN", "NEED_HUMAN_REVIEW"],
-                    "description": "Final review decision",
-                },
-                "totalScore": {"type": "number", "description": "Weighted total score (0-100)"},
-                "dimensionScores": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["key", "score", "reason"],
-                        "properties": {
-                            "key": {"type": "string"},
-                            "score": {"type": "number"},
-                            "reason": {"type": "string"},
-                        },
-                    },
-                },
-                "fieldIssues": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["severity", "message"],
-                        "properties": {
-                            "fieldName": {"type": "string"},
-                            "severity": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]},
-                            "message": {"type": "string"},
-                            "suggestion": {"type": "string"},
-                        },
-                    },
-                },
-                "summary": {"type": "string", "description": "Overall review summary"},
-                "confidence": {"type": "number", "description": "Confidence score 0.0-1.0"},
-            },
-        },
-    },
-}
+from app.services.ai_quality import AI_REVIEW_TOOL
 
-
-def _sha256(content: str) -> str:
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-
-def _loads_lenient(raw: str) -> dict:
-    """
-    容错解析 LLM 返回的 JSON（提升 AI 鲁棒性 / 评分稳定性）。
-    依次尝试：直接解析 → 去 ```json 围栏 → 截取首尾大括号 → 补全未闭合的括号/引号。
-    全部失败才抛 ValueError，交由上层重试 / 人工兜底。
-    """
-    if not raw or not raw.strip():
-        raise ValueError("LLM 返回为空")
-
-    candidates: list[str] = [raw]
-
-    # 去掉 markdown 代码围栏
-    fenced = raw.strip()
-    if fenced.startswith("```"):
-        fenced = fenced.split("```", 2)
-        fenced = fenced[1] if len(fenced) > 1 else raw
-        if fenced.lstrip().lower().startswith("json"):
-            fenced = fenced.lstrip()[4:]
-        candidates.append(fenced)
-
-    # 截取第一个 { 到最后一个 }
-    src = candidates[-1]
-    start, end = src.find("{"), src.rfind("}")
-    if start != -1 and end > start:
-        candidates.append(src[start:end + 1])
-
-    # 对截断的 JSON 做补全（best-effort）：扫描出未闭合的字符串与括号栈，按逆序补齐
-    trimmed = candidates[-1]
-    stack: list[str] = []
-    in_str = False
-    esc = False
-    for ch in trimmed:
-        if in_str:
-            if esc:
-                esc = False
-            elif ch == "\\":
-                esc = True
-            elif ch == '"':
-                in_str = False
-        else:
-            if ch == '"':
-                in_str = True
-            elif ch in "{[":
-                stack.append(ch)
-            elif ch == "}" and stack and stack[-1] == "{":
-                stack.pop()
-            elif ch == "]" and stack and stack[-1] == "[":
-                stack.pop()
-    if in_str or stack:
-        repaired = trimmed + ('"' if in_str else "")
-        repaired += "".join("}" if c == "{" else "]" for c in reversed(stack))
-        candidates.append(repaired)
-
-    last_err: Exception | None = None
-    for cand in candidates:
-        try:
-            parsed = json.loads(cand)
-            if isinstance(parsed, dict):
-                return parsed
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-    raise ValueError(f"无法解析 LLM JSON 输出：{last_err}")
-
-
-def _extract_ai_result(response) -> dict:
-    """从 LLM 响应提取结构化结果：优先 tool_calls，回退 message.content。"""
-    message = response.choices[0].message
-    tool_calls = getattr(message, "tool_calls", None)
-    if tool_calls:
-        return _loads_lenient(tool_calls[0].function.arguments)
-    # 部分模型可能不走 function calling，回退解析正文
-    if getattr(message, "content", None):
-        return _loads_lenient(message.content)
-    raise ValueError("LLM 未返回 tool_call 或可解析正文")
-
-
-def _route_with_confidence(raw_decision: str, confidence, threshold: float) -> tuple[str, bool]:
-    """置信度感知路由（human-in-the-loop）。
-
-    LLM 给 PASS 但 confidence 低于阈值时，降级为 NEED_HUMAN_REVIEW，不把"不确定的通过"
-    自动放行。仅收紧不放宽：RETURN / NEED_HUMAN_REVIEW 原样返回，永不因此自动通过更多。
-    返回 (有效决策, 是否发生了降级)。
-    """
-    low = (
-        raw_decision == "PASS"
-        and isinstance(confidence, (int, float))
-        and float(confidence) < threshold
-    )
-    return ("NEED_HUMAN_REVIEW" if low else raw_decision), low
-
-
-# 仅此模式允许 AI 决策自动流转到终态（自动通过 / 自动打回）。
-# 其余模式（AI_THEN_HUMAN / HUMAN_REVIEW_ONLY）下 AI 结论仅作参考，一律转人工复核。
+# 保留内部函数别名供已有调用方使用；不再修补截断 JSON。
+from app.services.ai_quality import (
+    strict_json as _loads_lenient, extract_result,
+    route_with_confidence as _route_with_confidence,
+    decide_by_threshold as _decide_by_threshold,
+    route_by_strategy as _route_by_strategy, validate_review_result, validate_config,
+)
+from app.services.ai_workflow import VERSION, review_messages, field_names
+from app.utils.hashing import hash_canonical_json
 AUTO_FLOW_MODE = "AUTO_PASS_RETURN"
 
 
-def _normalize_fraction(value) -> float | None:
-    """把分数 / 阈值统一归一化到 0..1。totalScore 契约为 0-100，阈值配置为 0-1，
-    这里按「>1 视为百分制、除以 100」抹平两种量纲，避免硬比较时鸡同鸭讲。"""
-    if not isinstance(value, (int, float)):
-        return None
-    v = float(value)
-    return v / 100.0 if v > 1 else v
-
-
-def _decide_by_threshold(total_score, thresholds: dict) -> str:
-    """AUTO 模式的硬阈值闸门：按 totalScore 与 passScore / returnScore 的数值比较得出决策，
-    不再单纯信任 LLM 自报的 decision——阈值才真正「说了算」。
-
-    score >= passScore → PASS；score < returnScore → RETURN；落在中间或缺分 → 转人工。
-    """
-    score = _normalize_fraction(total_score)
-    if score is None:
-        return "NEED_HUMAN_REVIEW"
-    # 阈值键名存在两套约定：前端存 passScore/returnScore，seed_competition 存 autoPass/autoReturn。
-    # 两者都兼容，避免老配置（autoPass/autoReturn）下闸门取不到阈值而恒转人工。
-    pass_score = _normalize_fraction(thresholds.get("passScore", thresholds.get("autoPass")))
-    return_score = _normalize_fraction(thresholds.get("returnScore", thresholds.get("autoReturn")))
-    if pass_score is not None and score >= pass_score:
-        return "PASS"
-    if return_score is not None and score < return_score:
-        return "RETURN"
-    return "NEED_HUMAN_REVIEW"
-
-
-def _route_by_strategy(
-    raw_decision: str, mode: str, total_score=None, thresholds: dict | None = None
-) -> tuple[str, bool]:
-    """审核策略门控：把 owner 配置的 conclusionMapping.mode 真正落到流转上。
-
-    - AUTO_PASS_RETURN：用 totalScore 与阈值硬比较（_decide_by_threshold）决定 PASS/RETURN/转人工，
-      自动通过线由数值闸门把关，而非只信 LLM 的 decision。
-    - 其余模式（AI_THEN_HUMAN / HUMAN_REVIEW_ONLY）：AI 结论仅作人工参考，PASS/RETURN 一律
-      降级为 NEED_HUMAN_REVIEW，绝不无人工自动流转。
-
-    返回 (有效决策, 是否相对 LLM 原始判断发生改写)。
-    """
-    if mode == AUTO_FLOW_MODE:
-        decided = _decide_by_threshold(total_score, thresholds or {})
-        return decided, decided != raw_decision
-    if raw_decision in ("PASS", "RETURN"):
-        return "NEED_HUMAN_REVIEW", True
-    return raw_decision, False
-
-
-def _render_prompt(template_str: str, context: dict) -> str:
-    return Template(template_str).render(**context)
-
-
-def _build_prompt_context(task, item, submission, schema_version, review_config) -> dict:
-    return {
-        "task": {"id": task.id, "title": task.title, "description": task.description},
-        "item": {"sourcePayload": item.source_payload},
-        "submission": {"answers": submission.answers_json, "attemptNo": submission.attempt_no},
-        "schema": schema_version.schema_json,
-        "dimensions": review_config.dimensions_json,
-        "thresholds": review_config.thresholds_json,
-    }
+def _extract_ai_result(response):
+    return extract_result(response, "submit_ai_review_result")
 
 
 def _fail_to_human(db, job, submission, actor_id: str, reason: str) -> None:
@@ -289,15 +92,8 @@ def _handle_auto_accept(db, submission, actor_id: str) -> None:
 def _execute_review(db, job_id: str) -> None:
     from app.models.llm import LLMCallLog
     from app.models.review import AIReviewJob, ReviewConfig, ReviewResult
-    from app.models.schema import SchemaVersion
     from app.models.submission import Submission
-    from app.models.task import Task
     from app.models.user import User
-
-    try:
-        from app.models.dataset import DatasetItem
-    except ImportError:
-        DatasetItem = None
 
     job = db.query(AIReviewJob).filter_by(id=job_id).first()
     if not job:
@@ -324,29 +120,33 @@ def _execute_review(db, job_id: str) -> None:
     )
     db.commit()
 
-    task = db.query(Task).filter_by(id=submission.task_id).first()
-    item = None
-    if DatasetItem is not None:
-        item = db.query(DatasetItem).filter_by(id=submission.item_id).first()
-    schema_version = db.query(SchemaVersion).filter_by(id=job.schema_version_id).first()
     review_config = db.query(ReviewConfig).filter_by(task_id=submission.task_id).first()
 
     if not review_config or not review_config.enabled:
         _fail_to_human(db, job, submission, system_actor_id, "ReviewConfig 不存在或已禁用")
         return
 
-    context = _build_prompt_context(task, item, submission, schema_version, review_config)
-    rendered_prompt = _render_prompt(review_config.prompt_template, context)
-    input_str = json.dumps({"prompt": rendered_prompt, "context": context}, ensure_ascii=False)
-    input_hash = _sha256(input_str)
-    prompt_hash = _sha256(rendered_prompt)
+    snapshot = job.workflow_snapshot_json
+    try:
+        if not snapshot or snapshot.get("version") != VERSION:
+            raise ValueError("任务缺少固定工作流快照，请转人工审核")
+        context = snapshot["context"]
+        validate_config(context["dimensions"], context["thresholds"])
+        if not context["item"]["sourcePayload"]:
+            raise ValueError("原始材料为空")
+        messages = review_messages(snapshot)
+        input_hash = hash_canonical_json(messages)
+        prompt_hash = hash_canonical_json(snapshot["promptTemplate"])
+    except (ValueError, KeyError, TypeError, TemplateError):
+        _fail_to_human(db, job, submission, system_actor_id, "AI 上下文无效或缺少快照")
+        return
 
     llm_log = LLMCallLog(
         id="llm_" + uuid4().hex,
         purpose="AI_REVIEW",
         actor_id=system_actor_id,
         submission_id=submission.id,
-        model_policy_id=review_config.model_policy_id,
+        model_policy_id=snapshot["modelPolicyId"],
         prompt_snapshot_hash=prompt_hash,
         input_hash=input_hash,
         status="PENDING",
@@ -357,23 +157,23 @@ def _execute_review(db, job_id: str) -> None:
     try:
         from openai import OpenAI
 
-        client = OpenAI(api_key=settings.DOUBAO_API_KEY, base_url=settings.DOUBAO_BASE_URL)
+        client = OpenAI(api_key=settings.DOUBAO_API_KEY, base_url=settings.DOUBAO_BASE_URL, timeout=30, max_retries=0)
         llm_log.status = "RUNNING"
         db.flush()
 
         _started = time.monotonic()
         response = client.chat.completions.create(
-            model=settings.DOUBAO_MODEL,
-            messages=[{"role": "user", "content": rendered_prompt}],
+            model=snapshot["model"]["model"],
+            messages=messages,
             tools=[AI_REVIEW_TOOL],
             tool_choice={"type": "function", "function": {"name": "submit_ai_review_result"}},
-            temperature=0,        # 确定性输出，提升评分稳定性
-            max_tokens=2048,      # 防止结构化 JSON 被截断（之前未设置导致 "Expecting ':'"）
+            temperature=snapshot["model"]["temperature"],  # 固定采样参数，不声称模型完全确定
+            max_tokens=4096,      # 有界输出；截断响应仍会被拒绝
         )
         _latency_ms = int((time.monotonic() - _started) * 1000)
-        ai_result = _extract_ai_result(response)  # 容错解析（截断/围栏/补全）
-        raw_output = json.dumps(ai_result, ensure_ascii=False)
-        output_hash = _sha256(raw_output)
+        raw_result = _extract_ai_result(response)
+        ai_result = validate_review_result(raw_result, context["dimensions"], context["thresholds"], field_names(context["schema"]))
+        output_hash = hash_canonical_json(raw_result)
 
         llm_log.status = "SUCCEEDED"
         llm_log.output_hash = output_hash
@@ -387,11 +187,17 @@ def _execute_review(db, job_id: str) -> None:
         llm_log.finished_at = datetime.now(timezone.utc)
         job.raw_output_ref = llm_log.id
 
-    except Exception as llm_exc:
+    except ValueError:
         llm_log.status = "FAILED"
-        llm_log.error_message = str(llm_exc)[:500]
+        llm_log.error_message = "AI 审核输出校验失败"
         llm_log.finished_at = datetime.now(timezone.utc)
-        job.failure_reason = str(llm_exc)[:500]
+        _fail_to_human(db, job, submission, system_actor_id, "AI 审核输出校验失败")
+        return
+    except Exception:
+        llm_log.status = "FAILED"
+        llm_log.error_message = "AI 服务调用失败"
+        llm_log.finished_at = datetime.now(timezone.utc)
+        job.failure_reason = "AI 服务调用失败"
         job.retry_count += 1
 
         if job.retry_count <= job.max_retries:
@@ -402,7 +208,7 @@ def _execute_review(db, job_id: str) -> None:
                 entity_id=submission.id,
                 action="AI_REVIEW_FAILED",
                 actor_id=system_actor_id,
-                after={"jobId": job.id, "retryCount": job.retry_count, "error": str(llm_exc)[:200]},
+                after={"jobId": job.id, "retryCount": job.retry_count, "error": "AI 服务调用失败"},
             )
             db.commit()
             countdown = 5 * (2 ** (job.retry_count - 1))
@@ -413,7 +219,7 @@ def _execute_review(db, job_id: str) -> None:
                 countdown=countdown,
             )
         else:
-            _fail_to_human(db, job, submission, system_actor_id, str(llm_exc)[:500])
+            _fail_to_human(db, job, submission, system_actor_id, "AI 服务调用失败")
         return
 
     if ai_result.get("decision") not in ("PASS", "RETURN", "NEED_HUMAN_REVIEW"):
@@ -434,17 +240,20 @@ def _execute_review(db, job_id: str) -> None:
     )
     db.add(review_result)
 
-    # 路由分两道闸，AI_PRECHECK 记录上面已存 LLM 原始决策，这里只调整路由用的有效决策，
+    # AI_PRECHECK 保存校验后的意见与复算总分；日志摘要保留原始输出的哈希。
     # 原始判断保留供人机一致性对账：
     #   1) 审核策略门控（_route_by_strategy）：AUTO_PASS_RETURN 模式用 totalScore 硬阈值决定
     #      PASS/RETURN；其余模式（AI 预审后人工复核 / 仅质检提示）一律降级转人工，绝不无人工自动流转。
     #   2) 置信度感知路由（_route_with_confidence）：自动模式下，低置信度的 PASS 再降级转人工。
+    db.refresh(review_config)
+    if not review_config.enabled:
+        _fail_to_human(db, job, submission, system_actor_id, "审核配置已禁用")
+        return
     raw_decision = ai_result["decision"]
     confidence = ai_result.get("confidence")
-    threshold = settings.AI_REVIEW_CONFIDENCE_THRESHOLD
-    conclusion_mapping = review_config.conclusion_mapping_json or {}
-    flow_mode = conclusion_mapping.get("mode", "AI_THEN_HUMAN")
-    thresholds_cfg = review_config.thresholds_json or {}
+    threshold = snapshot["confidenceThreshold"]
+    flow_mode = snapshot["flowMode"]
+    thresholds_cfg = context["thresholds"]
 
     strategy_decision, strategy_downgrade = _route_by_strategy(
         raw_decision, flow_mode, ai_result.get("totalScore"), thresholds_cfg
@@ -477,7 +286,7 @@ def _execute_review(db, job_id: str) -> None:
         actor_id=system_actor_id,
         after={
             "decision": decision,
-            "rawDecision": raw_decision,
+            "rawDecision": raw_result["decision"],
             "confidence": confidence,
             "confidenceThreshold": threshold,
             "flowMode": flow_mode,
@@ -502,7 +311,14 @@ def run_ai_review(self, job_id: str) -> None:
     db = SessionLocal()
     try:
         _execute_review(db, job_id)
-    except Exception as e:
-        logger.exception("ai_review job=%s unexpected error: %s", job_id, e)
+    except Exception:
+        db.rollback()
+        from app.models.review import AIReviewJob
+        from app.models.submission import Submission
+        job = db.get(AIReviewJob, job_id)
+        submission = db.get(Submission, job.submission_id) if job else None
+        if submission and submission.status == "AI_REVIEWING":
+            _fail_to_human(db, job, submission, submission.labeler_id, "AI 工作流执行失败")
+        logger.error("AI 工作流执行失败 job=%s", job_id)
     finally:
         db.close()

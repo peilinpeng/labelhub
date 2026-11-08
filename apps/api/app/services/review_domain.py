@@ -5,7 +5,10 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from copy import deepcopy
 from app.config import settings
+from app.services.ai_quality import validate_config
+from app.services.ai_workflow import VERSION, bounded_json, review_context
 from app.middleware.error_handler import (
     ResourceNotFoundException,
     ValidationFailedException,
@@ -74,6 +77,11 @@ def create_review_config(db: Session, task_id: str, actor: Any, req: CreateRevie
     if not task:
         raise ResourceNotFoundException(f"Task {task_id!r} 不存在")
 
+    try:
+        validate_config([d.model_dump() for d in req.dimensions], req.thresholds.model_dump())
+    except ValueError as exc:
+        raise ValidationFailedException(str(exc)) from exc
+
     existing = db.query(ReviewConfig).filter_by(task_id=task_id).first()
     if existing:
         raise ValidationFailedException("该任务已有 ReviewConfig，请使用 update 接口")
@@ -105,6 +113,13 @@ def get_review_config(db: Session, task_id: str, actor: Any) -> ReviewConfig:
 def update_review_config(db: Session, task_id: str, actor: Any, req: UpdateReviewConfigRequest) -> ReviewConfig:
     config = get_review_config(db, task_id, actor)
 
+    try:
+        if req.enabled is not False:
+            validate_config([d.model_dump() for d in req.dimensions] if req.dimensions is not None else config.dimensions_json,
+                        req.thresholds.model_dump() if req.thresholds is not None else config.thresholds_json)
+    except ValueError as exc:
+        raise ValidationFailedException(str(exc)) from exc
+
     if req.enabled is not None:
         config.enabled = req.enabled
     if req.modelPolicyId:
@@ -131,14 +146,28 @@ def create_ai_review_job(db: Session, submission: Any, review_config: ReviewConf
     if existing_job:
         return existing_job
 
-    prompt_hash = hashlib.sha256(review_config.prompt_template.encode()).hexdigest()
+    from app.models.task import Task
+    from app.models.dataset import DatasetItem
+    from app.models.schema import SchemaVersion
+    context = review_context(db.get(Task, submission.task_id), db.get(DatasetItem, submission.item_id), submission,
+                             db.get(SchemaVersion, submission.schema_version_id), review_config)
+    prompt_hash = hash_canonical_json(review_config.prompt_template)
     model_snapshot = {
         "provider": "doubao",
         "model": settings.DOUBAO_MODEL,
-        "temperature": None,
+        "temperature": 0,
         "responseFormat": "FUNCTION_CALLING",
     }
 
+    snapshot = deepcopy({"version": VERSION, "context": context, "promptTemplate": review_config.prompt_template,
+                         "modelPolicyId": review_config.model_policy_id, "model": model_snapshot,
+                         "flowMode": (review_config.conclusion_mapping_json or {}).get("mode", "AI_THEN_HUMAN"),
+                         "confidenceThreshold": settings.AI_REVIEW_CONFIDENCE_THRESHOLD})
+    # 超限快照仍创建可追踪任务，由 worker 转人工，不阻断人工提交。
+    try:
+        bounded_json(snapshot)
+    except ValueError:
+        snapshot = None
     job = AIReviewJob(
         id="job_" + uuid4().hex,
         submission_id=submission.id,
@@ -150,6 +179,7 @@ def create_ai_review_job(db: Session, submission: Any, review_config: ReviewConf
         idempotency_key=idempotency_key,
         prompt_snapshot_hash=prompt_hash,
         model_snapshot_json=model_snapshot,
+        workflow_snapshot_json=snapshot,
     )
     db.add(job)
     return job

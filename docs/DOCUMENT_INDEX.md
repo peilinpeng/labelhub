@@ -20,6 +20,8 @@
 - [docs/test-cases.md](test-cases.md)：测试用例。
 - [docs/dataset-test-scenario-plan.md](dataset-test-scenario-plan.md)：数据集测试场景计划。
 
+- [AI 固定工作流质量改进](AI_WORKFLOW_QUALITY.md)：结构化输入、服务端校验、审核路由与评测基线。
+
 ## 3. 核心技术设计
 
 - [labelhub-architecture-contract.md](../labelhub-architecture-contract.md)：最高架构契约（v1.1）。

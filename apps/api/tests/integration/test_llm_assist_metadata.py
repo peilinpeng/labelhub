@@ -9,7 +9,7 @@ class _FakeUsage:
 
 
 class _FakeMsg:
-    content = "AI 生成的辅助建议"
+    content = '{"output":"AI 生成的辅助建议"}'
 
 
 class _FakeChoice:
@@ -35,13 +35,8 @@ class _FakeOpenAI:
         self.chat = _FakeChat()
 
 class _DimensionMsg:
-    content = """### 各维度打分佐证说明
-1. 相关性3分：回答基本相关，但遗漏了关键事实。
-2. 准确性2分：存在事实错误，需要人工复核。
-3. 合规性4分：基本符合格式要求，但总结部分偏长。
-4. 安全性5分：未发现明显安全风险。
-### 一句话结论
-建议人工复核后再提交。"""
+    content = '{"output":{"summary":"建议人工复核后再提交。","relevance":"回答基本相关，但遗漏了关键事实。","accuracy":"存在事实错误，需要人工复核。","compliance":"基本符合格式要求，但总结部分偏长。","safety":"未发现明显安全风险。"}}'
+
 
 
 class _DimensionChoice:
@@ -108,7 +103,8 @@ def test_llm_assist_returns_quality_metadata(client, auth, db_session, monkeypat
     assert isinstance(d["latencyMs"], int)
     # 新增 5 字段
     assert d["promptVersionId"] == "pt_demo_v3"
-    assert d["modelId"] == "mp_demo"
+    from app.config import settings
+    assert d["modelId"] == settings.DOUBAO_MODEL
     assert d["assistType"] == "SUMMARY"
     assert len(d["promptSnapshotHash"]) == 64       # 后端生成的 sha256
     assert len(d["outputHash"]) == 64
@@ -131,7 +127,7 @@ def test_llm_assist_outputhash_is_canonical(client, auth, db_session, monkeypatc
     assert d["outputHash"] == expected
 
 
-def test_llm_assist_splits_markdown_by_dimension(client, auth, db_session, monkeypatch):
+def test_llm_assist_maps_structured_dimensions(client, auth, db_session, monkeypatch):
     """多 outputBindings 时按维度拆分短评，不把整段 Markdown 总评重复塞进每个字段。"""
     monkeypatch.setattr("openai.OpenAI", _DimensionOpenAI)
     ctx = setup_published_task(client, db_session, auth["OWNER"], schema=_DIMENSION_SCHEMA)

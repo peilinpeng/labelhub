@@ -103,6 +103,9 @@ class AIReviewJob(Base):
     # 契约 AIReviewJob.modelSnapshot: ModelSnapshot {provider, model, temperature?, responseFormat}
     model_snapshot_json = Column(JSON, nullable=False)
 
+    # 固定工作流输入与执行配置，仅业务存储可读；旧任务为空时转人工。
+    workflow_snapshot_json = Column(JSON, nullable=True)
+
     # 契约 AIReviewJob.rawOutputRef，LLM 原始输出的文件/日志引用，契约要求必须可追溯
     raw_output_ref = Column(String(64), nullable=True)
 
