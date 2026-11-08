@@ -15,7 +15,7 @@
 - outputSchema 支持显式 type、properties、required、additionalProperties（布尔）、items、enum、minimum、maximum、
   minLength、maxLength、minItems、maxItems、title、description。未知关键字失败关闭，嵌套上限 20。
   包含尚未被 headless 预检完整处理的动态选项、只读等联动时拒绝返回可采纳候选，不静默绕过。
-- AI 辅助返回后，若用户已修改目标字段或切换 Schema 版本，旧候选不能采纳，需要重新生成。
+- AI 辅助返回后，若用户已修改目标字段、切换题目或 Schema 版本，旧候选不能采纳，需要重新生成。
 - 预审维度必须与配置完全匹配，数值必须有限且不能用字符串/布尔替代。
   每维按 scoreRange 归一化，再乘权重复算百分制总分；权重和必须为 1。
   模型总分相差超过 0.5 分、严重字段问题、明确请求人工、分数与结论冲突均转人工。

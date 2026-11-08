@@ -139,8 +139,16 @@ def main():
     if args.limit is not None:
         if args.limit<1: parser.error("limit 必须为正数")
         cases=cases[:args.limit]
-    rows=live_run(cases,args.variant,args.trials) if args.live else json.loads(args.replay.read_text())["results"] if args.replay else []
-    report={"suite":"annotation-quality-v1","corpusSha256":hashlib.sha256(args.corpus.read_bytes()).hexdigest(),
+    corpus_hash=hashlib.sha256(args.corpus.read_bytes()).hexdigest()
+    if args.replay:
+        saved=json.loads(args.replay.read_text())
+        if saved.get("corpusSha256") != corpus_hash: parser.error("重放报告与评测集摘要不一致")
+        rows=saved["results"]
+        if any(r["caseId"] not in {c["id"] for c in cases} for r in rows): parser.error("重放结果包含当前范围之外的样本")
+        args.variant=saved["variant"]
+    else:
+        rows=live_run(cases,args.variant,args.trials) if args.live else []
+    report={"suite":"annotation-quality-v1","corpusSha256":corpus_hash,
         "baselineCommit":"bcf5117e6d045c7de4dc2f1bcd3461e1be9f42d6","variant":args.variant,
         "mode":"live" if args.live else "replay" if args.replay else "manifest-only","cases":len(cases),
         "origin":"synthetic; not human-adjudicated production data","results":rows,

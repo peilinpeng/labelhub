@@ -33,7 +33,7 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
   const [response, setResponse] = useState<LLMRuntimeResponse | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [baseAnswers, setBaseAnswers] = useState<Record<string, string>>();
-  const [baseVersion, setBaseVersion] = useState<string>();
+  const [baseScope, setBaseScope] = useState<string>();
   const [preflightResult, setPreflightResult] = useState<PreflightResult | undefined>();
   const notifiedOutcomesRef = useRef<Set<string>>(new Set());
 
@@ -44,8 +44,8 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
     Object.keys(response.suggestedPatch).length > 0 &&
     requireUserConfirm(node);
   const preflightBlocked = preflightResult !== undefined && !preflightResult.ok;
-  const version = renderContext.context.schema.schemaVersionId;
-  const stale = response !== undefined && (baseVersion !== version || Object.keys(response.suggestedPatch ?? {}).some(
+  const scope = `${renderContext.context.schema.schemaVersionId}:${renderContext.context.item.id}:${node.id}`;
+  const stale = response !== undefined && (baseScope !== scope || Object.keys(response.suggestedPatch ?? {}).some(
     (name) => (baseAnswers?.[name] ?? stableStringify({ value: undefined })) !== stableStringify({ value: renderContext.answers[name] }),
   ));
   const canApply = hasSuggestedPatch && !preflightBlocked && !stale;
@@ -67,7 +67,7 @@ export function LLMAssistRenderer({ node, renderContext }: LLMAssistRendererProp
           type="button"
           onClick={() => {
             setBaseAnswers(Object.fromEntries(Object.entries(renderContext.answers).map(([name, value]) => [name, stableStringify({ value })])));
-            setBaseVersion(version);
+            setBaseScope(scope);
             void runLLMAssist(
               node,
               renderContext,
