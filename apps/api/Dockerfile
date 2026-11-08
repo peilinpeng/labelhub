@@ -49,6 +49,7 @@ COPY --chown=labelhub:labelhub apps/api/app/ ./app/
 COPY --chown=labelhub:labelhub apps/api/alembic/ ./alembic/
 COPY --chown=labelhub:labelhub apps/api/scripts/ ./scripts/
 COPY --chown=labelhub:labelhub apps/api/datasets/ ./datasets/
+COPY --chown=labelhub:labelhub apps/api/evals/ ./evals/
 COPY --chown=labelhub:labelhub apps/api/main.py apps/api/alembic.ini ./
 
 USER 10001:10001

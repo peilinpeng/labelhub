@@ -14,3 +14,5 @@ export * from "./schema-versioning";
 export * from "./utils/contract-guards";
 export * from "./workflow";
 export * from "./governance";
+
+export * from "./ai-workflow";

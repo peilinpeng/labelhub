@@ -657,3 +657,16 @@ describe("LLMAssistRenderer preflight UI", () => {
     expect(document.body.textContent).not.toContain(sensitiveValue);
   });
 });
+
+test("建议返回后修改目标字段不能被旧候选覆盖", async () => {
+  const schema = makeSimpleSchema();
+  const onLLMAssist = vi.fn(async (): Promise<LLMRuntimeResponse> => ({ output: "建议", callId: "llm_stale_call", suggestedPatch: { fieldA: "旧建议" } }));
+  const onAnswersChange = vi.fn();
+  const view = renderWithSchema(schema, { answers: { fieldA: "旧值" }, onLLMAssist, onAnswersChange });
+  await clickAiButton();
+  await waitFor(() => expect((screen.getByRole("button", { name: "一键采纳" }) as HTMLButtonElement).disabled).toBe(false));
+  const answers = { fieldA: "新值" };
+  view.rerender(<SchemaRenderer schema={schema} context={{ ...baseContext, answers }} answers={answers} mode="LABELING" onAnswersChange={onAnswersChange} onLLMAssist={onLLMAssist} />);
+  expect((screen.getByRole("button", { name: "一键采纳" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText("建议生成后相关字段已修改，请重新检查质量。")).toBeTruthy();
+});

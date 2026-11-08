@@ -39,5 +39,6 @@
   "packages/contracts/README.md": "current",
   "submission/README.md": "current",
   "submission/ai-coding-log.md": "historical",
-  "submission/screenshots/README.md": "historical"
+  "submission/screenshots/README.md": "historical",
+  "docs/AI_WORKFLOW_QUALITY.md": "current"
 }

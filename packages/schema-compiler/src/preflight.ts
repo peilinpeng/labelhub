@@ -16,6 +16,7 @@ export interface PreflightInput {
   schema: LabelHubSchema;
   currentAnswers: AnswerPayload;
   patch: PreflightPatchOperation[];
+  context?: RuntimeContextWithOutput;
 }
 
 export interface PreflightFieldState {
@@ -122,7 +123,7 @@ export function runSchemaPreflight(input: PreflightInput): PreflightResult {
   // 3. 执行 ReactionPlan
   // ------------------------------------------------------------------
   const reactionPlan = buildReactionPlan(schema);
-  const runtimeCtx = buildRuntimeContext(schema, nextAnswers);
+  const runtimeCtx = input.context ? { ...input.context, answers: nextAnswers } : buildRuntimeContext(schema, nextAnswers);
   const clearedSet = new Set<string>();
   const changedByReactionSet = new Set<string>();
 

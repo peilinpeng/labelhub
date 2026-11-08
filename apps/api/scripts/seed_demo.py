@@ -98,6 +98,8 @@ _DEMO_REVIEW_DIMENSIONS = [
     {"key": "accuracy", "label": "准确性", "weight": 0.4},
     {"key": "compliance", "label": "格式合规", "weight": 0.2},
 ]
+for _dimension in _DEMO_REVIEW_DIMENSIONS:
+    _dimension.update(scoreRange=[0, 100], description="检查标注答案在该维度是否符合材料与标注规范，100 为完全正确，0 为完全错误。")
 _DEMO_REVIEW_THRESHOLDS = {"autoPass": 0.85, "autoReturn": 0.5}
 _DEMO_REVIEW_CONCLUSION_MAPPING = {
     "PASS": "AI_PASSED",
@@ -267,7 +269,7 @@ def main() -> None:
         db.add(ReviewConfig(
             id=RC_ID, task_id=TASK_ID, enabled=True,
             model_policy_id="mp_doubao_pro",
-            prompt_template="请基于相关性、准确性、格式合规对该标注打分并给出结论。",
+            prompt_template="核查标注答案是否符合材料与评分规范。原始回答质量差不等于标注错误；证据不足转人工。",
             dimensions_json=_DEMO_REVIEW_DIMENSIONS,
             thresholds_json=_DEMO_REVIEW_THRESHOLDS,
             conclusion_mapping_json=_DEMO_REVIEW_CONCLUSION_MAPPING,

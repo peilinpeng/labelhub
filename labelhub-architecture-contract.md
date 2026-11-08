@@ -1969,3 +1969,21 @@ HTTP 指标只使用路由模板、方法和状态码，禁止 userId/taskId/URL
   源版本必须属于当前任务，返回分页 `{items: MigrationCandidate[],total,page,pageSize}`，只含 ID、版本、标注员、状态和提交时间，不含答案。
 - 后端调用共享内核的 migration-preview；兼容已有简化 Schema 时先使用既有 normalize_schema_payload。
 - 权限同时应用于列表/统计/批量入口，不能通过全局聚合查询或幂等批量回放绕过任务动作拒绝。
+
+## AI 固定工作流第一轮补充（2026-11-08）
+
+- `ai-workflow-v1` 不增加自主 Agent 行为。辅助只建议，预审评价标注正确性而非原始回答质量。
+- 服务端总是发送源材料、当前答案、绑定 Schema、任务说明/评分规范与明确目标；模板不能删除这些输入。
+  `inputBindings` 使用共享 JsonPath 解析，未找到值列入 `missingInputs`；源数据是证据，不是系统指令。
+- 辅助模型输出唯一信封为 `{output: unknown}`；`outputSchema` 可选，存在时必须完整通过支持的校验。
+  补丁只由服务端执行 `outputBindings` 产生，保留字段原始类型；目标必须存在、可编辑并通过共享规则。
+  APPEND 按同类型文本拼接/数组连接，其他类型拒绝；AI 不能创建文件引用。
+  不支持的 Schema 关键字、联动或校验必须明确拒绝，不能静默放过。响应沿用 `LLMRuntimeResponse`。
+- 预审结果维度严格匹配配置，分数属于各自 `scoreRange`；服务端归一化后按权重复算百分制总分。
+  阈值固定为 0..1；不猜测量纲。非法/不完整结果、低置信度、明确转人工、分数与决策冲突均转人工。
+- `AIReviewWorkflowSnapshot` 固定输入、模板、配置与实际模型；保存在 `ai_review_jobs.workflow_snapshot_json`
+  （nullable JSON，新迁移添加），不进入普通审计日志或公共响应。旧无快照的待处理任务转人工。
+  重试沿用快照；审核配置禁用作为即时停止开关。业务存储按已有任务权限保护。
+- 所有哈希采用 canonical-json-v1 + SHA-256；历史任务哈希格式只读保留。新快照运行记录不能冒充历史原文。
+- 评测区分确定性工程回归、合成探索样本、人工裁定真实样本与真实模型运行；mock 通过不代表模型质量提升。
+- 回退代码前停止 worker 并处理在途任务；保留新增可空列和历史记录。不得回退到有错误自动路由的旧 worker。

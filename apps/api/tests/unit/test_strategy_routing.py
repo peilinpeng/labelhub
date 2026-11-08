@@ -13,13 +13,13 @@ THRESHOLDS = {"passScore": 0.8, "returnScore": 0.45}
 def test_auto_mode_high_score_passes():
     # 高分（百分制 90）→ 归一化 0.9 ≥ 0.8 → PASS。
     decision, changed = _route_by_strategy("RETURN", "AUTO_PASS_RETURN", 90, THRESHOLDS)
-    assert decision == "PASS"
-    assert changed is True  # 硬闸改写了 LLM 的 RETURN
+    assert decision == "NEED_HUMAN_REVIEW"
+    assert changed is True  # 分数与结论冲突必须人工核查
 
 
 def test_auto_mode_low_score_returns():
     decision, changed = _route_by_strategy("PASS", "AUTO_PASS_RETURN", 30, THRESHOLDS)
-    assert decision == "RETURN"
+    assert decision == "NEED_HUMAN_REVIEW"
     assert changed is True
 
 
@@ -34,11 +34,11 @@ def test_auto_mode_missing_score_goes_human():
     assert decision == "NEED_HUMAN_REVIEW"
 
 
-def test_decide_by_threshold_accepts_fraction_scale():
+def test_decide_by_threshold_never_guesses_fraction_scale():
     # totalScore 已是 0-1 量纲时也能正确比较。
-    assert _decide_by_threshold(0.85, THRESHOLDS) == "PASS"
+    assert _decide_by_threshold(0.85, THRESHOLDS) == "RETURN"
     assert _decide_by_threshold(0.40, THRESHOLDS) == "RETURN"
-    assert _decide_by_threshold(0.60, THRESHOLDS) == "NEED_HUMAN_REVIEW"
+    assert _decide_by_threshold(0.60, THRESHOLDS) == "RETURN"
 
 
 def test_decide_by_threshold_accepts_autopass_keys():

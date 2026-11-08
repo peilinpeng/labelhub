@@ -212,7 +212,8 @@ class AITraceResponse(BaseModel):
             # 无 snapshot_prompt_hash（旧数据/无对应 job）时无法判定漂移，置 None。
             if snapshot_prompt_hash is not None:
                 current_hash = sha256_hex(prompt_template)
-                prompt_matches = current_hash == snapshot_prompt_hash
+                from app.utils.hashing import hash_canonical_json
+                prompt_matches = snapshot_prompt_hash in (current_hash, hash_canonical_json(prompt_template))
         return cls(
             callId=log.id,
             modelPolicyId=log.model_policy_id,

@@ -26,11 +26,11 @@ def test_pass_at_threshold_is_not_downgraded():
     assert downgraded is False
 
 
-def test_low_confidence_return_is_untouched():
+def test_low_confidence_return_goes_to_human():
     # 仅收紧不放宽：RETURN 不受置信度影响。
     decision, downgraded = _route_with_confidence("RETURN", 0.1, THRESHOLD)
-    assert decision == "RETURN"
-    assert downgraded is False
+    assert decision == "NEED_HUMAN_REVIEW"
+    assert downgraded is True
 
 
 def test_need_human_is_untouched():
@@ -39,8 +39,8 @@ def test_need_human_is_untouched():
     assert downgraded is False
 
 
-def test_missing_confidence_does_not_downgrade():
+def test_missing_confidence_goes_to_human():
     # confidence 缺失（None）时不臆断，保持原决策。
     decision, downgraded = _route_with_confidence("PASS", None, THRESHOLD)
-    assert decision == "PASS"
-    assert downgraded is False
+    assert decision == "NEED_HUMAN_REVIEW"
+    assert downgraded is True

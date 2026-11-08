@@ -321,49 +321,9 @@ _REVIEW_CONCLUSION_MAPPING = {
 # 关键：dimensionScores 的 key 必须用英文维度 key（前端 DIMENSION_LABELS 按英文 key 取中文名）。
 # ---------------------------------------------------------------------------
 
-_QA_REVIEW_PROMPT = """你是「大模型问答质量」预审 AI。请基于下面这条样本的真实内容，独立评估【待评估回答】的质量。
-
-【用户问题】
-{{ item.sourcePayload.prompt }}
-
-【待评估回答（model_answer）】
-{{ item.sourcePayload.model_answer }}
-
-【参考答案（reference）】
-{{ item.sourcePayload.reference | default('（无）') }}
-
-请对【待评估回答】逐维度打分（每维 0-100 的整数），维度如下：
-{% for d in dimensions %}- {{ d.key }}：{{ d.label }}
-{% endfor %}
-要求：
-1. dimensionScores 中每项的 key 必须用上面的英文维度 key（如 relevance / accuracy），不要用中文。
-2. score 必须依据本回答的具体内容给出，不同样本应有不同分数；reason 用一句中文引用本回答的具体情况。
-3. totalScore 取各维度的加权/平均（0-100）。
-4. decision：质量明显合格→PASS；存在明显问题应退回→RETURN；把握不足→NEED_HUMAN_REVIEW。
-5. summary 一句中文，需引用本回答的具体内容；confidence 为你的把握（0-1）。
-请通过 submit_ai_review_result 函数提交结构化结果。"""
-
-_PREF_REVIEW_PROMPT = """你是「偏好对比（RLHF）」预审 AI。请基于下面这条样本的真实内容，比较回答 A 与回答 B。
-
-【用户问题】
-{{ item.sourcePayload.prompt }}
-
-【回答 A（response_a）】
-{{ item.sourcePayload.response_a }}
-
-【回答 B（response_b）】
-{{ item.sourcePayload.response_b }}
-
-请对「本次偏好判定所依据的质量」逐维度打分（每维 0-100 的整数），维度如下：
-{% for d in dimensions %}- {{ d.key }}：{{ d.label }}
-{% endfor %}
-要求：
-1. dimensionScores 中每项的 key 必须用上面的英文维度 key（如 relevance / completeness），不要用中文。
-2. score 必须依据 A/B 的具体内容给出，不同样本应有不同分数；reason 用一句中文引用具体差异。
-3. summary 用一句中文给出更优的一方（A 更优 / B 更优 / 平局）及理由，需引用具体内容。
-4. decision：判定清晰可信→PASS；需要人工复核→NEED_HUMAN_REVIEW；样本质量过差→RETURN。
-5. totalScore 0-100；confidence 0-1。
-请通过 submit_ai_review_result 函数提交结构化结果。"""
+from app.services.ai_quality import DEFAULT_REVIEW_TEMPLATE
+_QA_REVIEW_PROMPT = DEFAULT_REVIEW_TEMPLATE + "\n核查问答质量标注：低质量回答被正确标为低分应通过，错误的高分或无依据理由应指出。"
+_PREF_REVIEW_PROMPT = DEFAULT_REVIEW_TEMPLATE + "\n核查偏好标注：比较 A/B 后检查标注员选择与理由是否合理，允许有依据的平局。"
 
 
 # ---------------------------------------------------------------------------
@@ -489,7 +449,7 @@ def _seed_task(db, owner_id: str, spec: dict) -> dict:
         id=ids["rc"], task_id=ids["task"], enabled=True,
         model_policy_id="mp_doubao_pro",
         prompt_template=spec["review_prompt"],
-        dimensions_json=spec["dimensions"],
+        dimensions_json=[{**d, "scoreRange": [0, 100], "description": "检查标注答案在该维度是否符合材料与标注规范，100 为完全正确，0 为完全错误。"} for d in spec["dimensions"]],
         thresholds_json=_REVIEW_THRESHOLDS,
         conclusion_mapping_json=_REVIEW_CONCLUSION_MAPPING,
         max_retries=3,
