@@ -7859,6 +7859,14 @@
               }
             ]
           },
+          "reviewDimensions": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDimensionDisplay"
+            },
+            "type": "array",
+            "title": "Reviewdimensions",
+            "default": []
+          },
           "history": {
             "items": {
               "$ref": "#/components/schemas/ReviewResultResponse"
@@ -7889,6 +7897,24 @@
           "auditLogs"
         ],
         "title": "ReviewDetailResponse"
+      },
+      "ReviewDimensionDisplay": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "ReviewDimensionDisplay"
       },
       "ReviewDimensionInput": {
         "properties": {

@@ -75,7 +75,6 @@ function formatTime(value: string): string {
   return formatBeijingClock(value);
 }
 
-
 export function ReviewerWorkspaceView({ controller }: { controller: ReviewerWorkspaceController }) {
   const {
     batchMessage, batchReturnReason, batching, counts, filter, filteredSubmissions,
@@ -427,7 +426,7 @@ function DimensionScoresPreview({ state }: { state: DimensionScoreState | undefi
       <strong style={{ display: "block", marginBottom: 10 }}>已读取 {state.scores.length} 项 AI 维度评分</strong>
       {state.scores.map((score) => {
         const percent = normalizeScorePercent(score.score);
-        const label = dimensionLabel(score.key);
+        const label = score.label;
         return (
           <div className="review-ai-score-row" key={score.key} style={{ gridTemplateColumns: "minmax(128px, 1fr) minmax(0, 2fr) 96px" }}>
             <span style={{ overflowWrap: "anywhere", wordBreak: "break-word" }} title={score.key}>{label}</span>
@@ -456,27 +455,6 @@ function normalizeScorePercent(rawScore: number | null): number {
   if (rawScore == null) return 0;
   const normalizedScore = rawScore <= 1 ? rawScore * 100 : rawScore;
   return Math.max(0, Math.min(100, normalizedScore));
-}
-
-const DIMENSION_LABELS: Record<string, string> = {
-  // ReviewConfig.dimensions_json 实际下发的 key（见 seed_demo / seed_competition）：
-  // relevance / accuracy / compliance / safety —— 缺失这些映射会导致维度全部显示「未命名维度」。
-  relevance: "内容相关性",
-  accuracy: "内容准确性",
-  compliance: "格式合规性",
-  safety: "安全性",
-  completeness: "完整性",
-  readability: "可读性",
-  content_accuracy: "内容准确性",
-  format_compliance: "格式合规性",
-  factuality: "事实准确性",
-  category: "分类一致性",
-  evidence: "证据充分性",
-  format: "格式规范性",
-};
-
-function dimensionLabel(key: string): string {
-  return DIMENSION_LABELS[key] ?? "未命名维度";
 }
 
 function scoreVerdict(percent: number): string {

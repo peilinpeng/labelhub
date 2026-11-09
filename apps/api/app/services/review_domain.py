@@ -432,6 +432,26 @@ def get_review_queue(
     return submissions, total
 
 
+def review_dimension_display(ai_job, review_config):
+    """快照存在时不混用新配置；旧记录只返回安全的名称元数据。"""
+    snapshot = ai_job.workflow_snapshot_json if ai_job else None
+    if isinstance(snapshot, dict):
+        context = snapshot.get("context")
+        dimensions = context.get("dimensions", []) if isinstance(context, dict) else []
+    else:
+        dimensions = review_config.dimensions_json if review_config else []
+    output, seen = [], set()
+    for dimension in dimensions if isinstance(dimensions, list) else []:
+        if not isinstance(dimension, dict):
+            continue
+        key, label = dimension.get("key"), dimension.get("label")
+        if not isinstance(key, str) or not key.strip() or key in seen or not isinstance(label, str) or not label.strip():
+            continue
+        seen.add(key)
+        output.append({"key": key, "label": label.strip()})
+    return output
+
+
 def get_review_detail(db: Session, submission_id: str, actor: Any) -> dict:
     submission = db.query(Submission).filter_by(id=submission_id).first()
     if not submission:

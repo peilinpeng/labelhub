@@ -68,6 +68,20 @@ Wilson 区间仅描述当前试验；重复试验不独立，小合成集不能�
 
 ## 验收与后续
 
+审核队列和详情使用 `reviewDimensions` 显示任务自定义名称。新记录读取本次预审快照，
+旧无快照记录回退到当前 ReviewConfig；缺少元数据时使用历史标准名称或原始 key，不合并成“未命名维度”。
+
+三个历史演示任务缺少评分范围时，可在备份后执行定向维护脚本：
+
+```bash
+docker compose exec -T api python scripts/repair_demo_review_ranges.py
+docker compose exec -T api python scripts/repair_demo_review_ranges.py --apply
+```
+
+默认只预览。脚本按既有种子规范和竞赛旧 Prompt 为缺失范围补 `[0,100]`，保留已有范围、名称、
+权重、阈值及 Prompt；不运行 seed，不重写历史结果或快照。维度集合变化、配置缺失或权重/阈值非法时
+整批拒绝。重复执行无修改；问答表单的 1–5 分与预审的 0–100 分分别保留。
+
 确定性测试覆盖分数量纲、缺失置信度、未知字段、非法输出、截断、来源绑定、Schema 校验、
 固定快照重试、旧任务转人工、真实数据库状态流转和过期候选保护。远端全栈验收覆盖部署迁移与浏览器主链路。
 真实模型评测失败必须记录具体 HTTP 状态，不能用 mock 结果替代。

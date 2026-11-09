@@ -230,6 +230,11 @@ class AITraceResponse(BaseModel):
         )
 
 
+class ReviewDimensionDisplay(BaseModel):
+    key: str
+    label: str
+
+
 class ReviewDetailResponse(BaseModel):
     submission: SubmissionSummary
     # 契约 ReviewDetailResponse 要求 task / item / schema 为完整对象，审核详情页
@@ -247,6 +252,7 @@ class ReviewDetailResponse(BaseModel):
     # 前端读 detail.aiResult.aiResult.{dimensionScores,summary,confidence,fieldIssues}。
     aiResult: dict | None = None
     aiTrace: AITraceResponse | None = None
+    reviewDimensions: list[ReviewDimensionDisplay] = []
     history: list[ReviewResultResponse]
     auditLogs: list[AuditLogSummary]
 

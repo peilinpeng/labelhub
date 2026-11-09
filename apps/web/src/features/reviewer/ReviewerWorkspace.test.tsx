@@ -80,6 +80,20 @@ describe("Reviewer 队列与批量决策", () => {
     await waitFor(() => expect(statuses).toContain("ACCEPTED"));
   });
 
+  it("队列评分展示任务配置的自定义名称", async () => {
+    server.use(
+      http.get("*/api/v1/review/queue", () => HttpResponse.json([queueItem])),
+      http.get("*/api/v1/review/submissions/:submissionId", () => HttpResponse.json({
+        reviewDimensions: [{ key: "correctness", label: "标注正确性" }],
+        aiResult: { decision: "PASS", aiResult: { dimensionScores: [{ key: "correctness", score: 95, reason: "有依据" }] } },
+      })),
+    );
+    authenticateAs("REVIEWER");
+    renderRoute(<ReviewerWorkspace role="REVIEWER" />, { initialPath: "/reviewer/items" });
+    expect(await screen.findByText("标注正确性")).toBeInTheDocument();
+    expect(screen.queryByText("未命名维度")).not.toBeInTheDocument();
+  });
+
   it("队列接口失败时不渲染占位审核数据", async () => {
     server.use(
       http.get("*/api/v1/review/queue", () =>

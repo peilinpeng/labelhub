@@ -116,7 +116,7 @@ export function useReviewerWorkspaceController() {
     void (async () => {
       try {
         const detail = await getReviewDetail(submissionId, controller.signal);
-        const scores = normalizeDimensionScores(detail.aiResult?.aiResult?.dimensionScores);
+        const scores = normalizeDimensionScores(detail.aiResult?.aiResult?.dimensionScores, detail.reviewDimensions);
         const aiDecision = detail.aiResult?.decision ?? null;
         if (!controller.signal.aborted) {
           setDimensionScoresBySubmissionId((current) => ({
