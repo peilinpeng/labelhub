@@ -1,3 +1,6 @@
+import { http, HttpResponse } from "msw/http";
+import { server } from "../../test/server";
+import { getReviewDetail } from "../../mocks/mock-db";
 import { describe, expect, it } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -39,6 +42,24 @@ describe("ReviewDetailPage 审核详情页", () => {
     expect(screen.getByRole("heading", { name: /AI 评语与预审结果/ })).toBeInTheDocument();
     // 审计时间线是展开抽屉的切换按钮（默认收起）。
     expect(screen.getByRole("button", { name: "审计时间线" })).toBeInTheDocument();
+  });
+
+  it("详情优先显示配置名称并为未知维度显示 key", async () => {
+    const detail = getReviewDetail(submissionId!)!;
+    server.use(http.get("*/api/v1/review/submissions/:submissionId", () => HttpResponse.json({
+      ...detail,
+      reviewDimensions: [{ key: "correctness", label: "标注正确性" }, { key: "accuracy", label: "任务自定义准确度" }],
+      aiResult: { ...detail.aiResult, aiResult: { ...detail.aiResult?.aiResult, dimensionScores: [
+        { key: "correctness", score: 95, reason: "依据完整" },
+        { key: "accuracy", score: 80, reason: "依据完整" },
+        { key: "custom_missing", score: 70, reason: "历史字段" },
+      ] } },
+    })));
+    renderDetail(submissionId!);
+    expect(await screen.findByText(/标注正确性：/)).toBeInTheDocument();
+    expect(screen.getByText(/任务自定义准确度：/)).toBeInTheDocument();
+    expect(screen.getByText(/custom_missing：/)).toBeInTheDocument();
+    expect(screen.queryByText(/未命名维度/)).not.toBeInTheDocument();
   });
 
   it("详情页展示审核决策控件（通过 / 打回 / 修订提交）", async () => {

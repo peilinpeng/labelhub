@@ -1,10 +1,12 @@
-import type { AIPrecheckDecision } from "@labelhub/contracts";
+import type { AIPrecheckDecision, ReviewDetailResponse } from "@labelhub/contracts";
+import { dimensionLabel } from "./dimension-label";
 import type { ReviewQueueItem } from "../../api/reviewer";
 
 export type QueueFilter = "pending" | "passed" | "returned" | "manual" | "failed";
 
 export type DimensionScore = {
   key: string;
+  label: string;
   score: number | null;
   reason?: string;
 };
@@ -29,7 +31,7 @@ export function isBatchSelectable(item: ReviewQueueItem): boolean {
   );
 }
 
-export function normalizeDimensionScores(value: unknown): DimensionScore[] {
+export function normalizeDimensionScores(value: unknown, dimensions?: ReviewDetailResponse["reviewDimensions"]): DimensionScore[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
     if (item == null || typeof item !== "object") return [];
@@ -37,6 +39,6 @@ export function normalizeDimensionScores(value: unknown): DimensionScore[] {
     const key = typeof record.key === "string" && record.key.trim() ? record.key : "unknown";
     const score = typeof record.score === "number" && Number.isFinite(record.score) ? record.score : null;
     const reason = typeof record.reason === "string" ? record.reason : undefined;
-    return [{ key, score, reason }];
+    return [{ key, label: dimensionLabel(key, dimensions), score, reason }];
   });
 }

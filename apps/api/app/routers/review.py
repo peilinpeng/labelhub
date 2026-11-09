@@ -140,6 +140,7 @@ def get_review_detail(
         schemaVersionId=detail["submission"].schema_version_id,
         schemaJson=schema_json,
         aiResult=ai_record,
+        reviewDimensions=review_domain.review_dimension_display(detail.get("ai_job"), detail.get("review_config")),
         aiTrace=AITraceResponse.from_orm(
             detail["ai_trace"],
             detail.get("review_config"),

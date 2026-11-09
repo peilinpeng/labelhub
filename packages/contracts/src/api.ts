@@ -9,6 +9,7 @@ import type {
   FinalReviewResultRecord,
   HumanReviewResultRecord,
   ReviewCommand,
+  ReviewDimension,
   ReviewResult,
 } from "./review";
 import type {
@@ -159,6 +160,8 @@ export interface ReviewDetailResponse {
   schemaVersionId: ID;
   schema: PublishedLabelHubSchema;
   aiResult?: AIReviewResultRecord;
+  /** 本次预审快照的维度名称；旧任务无快照时回退到当前配置。 */
+  reviewDimensions?: Pick<ReviewDimension, "key" | "label">[];
   history: ReviewResult[];
   auditLogs: AuditLog[];
 }

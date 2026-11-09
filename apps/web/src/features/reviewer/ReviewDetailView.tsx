@@ -1,3 +1,4 @@
+import { dimensionLabel } from "./dimension-label";
 import { Fragment } from "react";
 import { Link } from "react-router";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
@@ -26,21 +27,6 @@ function valueText(value: unknown): string {
   if (value === undefined || value === null || value === "") return "未填写";
   return String(value);
 }
-
-const DIMENSION_LABELS: Record<string, string> = {
-  relevance: "内容相关性",
-  accuracy: "内容准确性",
-  compliance: "格式合规性",
-  safety: "安全性",
-  completeness: "完整性",
-  readability: "可读性",
-  content_accuracy: "内容准确性",
-  format_compliance: "格式合规性",
-  factuality: "事实准确性",
-  category: "分类一致性",
-  evidence: "证据充分性",
-  format: "格式规范性",
-};
 
 const FIELD_LABELS: Record<string, string> = {
   submission_material: "补充审核材料",
@@ -94,10 +80,6 @@ const FIELD_LABELS: Record<string, string> = {
   one_line_conclusion: "一句话结论",
 };
 
-function dimensionLabel(key: string): string {
-  return DIMENSION_LABELS[key] ?? "未命名维度";
-}
-
 function fieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? humanizeKey(key);
 }
@@ -120,7 +102,6 @@ function PayloadFieldList({ payload, hideEmpty = false }: { payload: Record<stri
     </dl>
   );
 }
-
 
 export function ReviewDetailView({ controller }: { controller: ReviewDetailController }) {
   const {
@@ -235,7 +216,7 @@ export function ReviewDetailView({ controller }: { controller: ReviewDetailContr
           {dimensionScores.length > 0 ? (
             <div className="review-human-ai__scores">
               {dimensionScores.map((score) => (
-                <span key={score.key}>{dimensionLabel(score.key)}：<strong>{Math.round(normalizeScorePercent(score.score))} 分</strong></span>
+                <span key={score.key}>{dimensionLabel(score.key, detail.reviewDimensions)}：<strong>{Math.round(normalizeScorePercent(score.score))} 分</strong></span>
               ))}
             </div>
           ) : <div className="empty-state">暂无 AI 维度评分</div>}
@@ -423,7 +404,6 @@ export function ReviewDetailView({ controller }: { controller: ReviewDetailContr
     </div>
   );
 }
-
 
 // 字段类型判定：决定行内编辑器形态。复杂对象/嵌套数组只读，避免在审核界面塞大 JSON。
 type FieldKind = "boolean" | "number" | "string" | "array" | "complex";
