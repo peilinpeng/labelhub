@@ -2,9 +2,11 @@
 
 > 受 Git 管理的交付快照，代码与 GitHub Actions 是最终事实来源。更新时间：2026-11-09（Europe/Zurich）。
 
-## 演示评分范围与自定义维度名称（2026-11-09，任务分支）
+## 演示评分范围与自定义维度名称（2026-11-09，已合并）
 
-`fix/review-dimension-metadata` 修复审核队列、详情中的自定义维度名称显示。
+[PR #164](https://github.com/peilinpeng/labelhub/pull/164) 已于 2026-11-09 合并，修复审核队列、详情中的自定义维度名称显示。
+当前代码基线：`a1013528fa135f482173e5d24b49599c84963559`；后续纯文档更新不改变此代码基线。
+合并提交与已验证 PR 最终提交 `5c4cc6bf44d6f6e818f127a61c7d1b802523870b` 的文件树完全一致。
 新增可选 `reviewDimensions` 名称元数据，优先取本次预审快照，旧记录回退到当前配置；
 缺少名称时显示历史标准名称或原始 key。已同步共享契约、API、Web 与 OpenAPI，无数据库结构变更。
 
@@ -16,17 +18,25 @@
 本地验证通过：共享包 392 项、API 361 项、Web 68 项，类型检查、coverage、生产构建、
 42 份文档检查和依赖审计。隔离真实后端浏览器验收确认队列/详情正确显示“标注正确性”，
 辅助建议、异步预审、人工通过链路正常，无页面脚本错误；模型由受控 HTTP 响应替代。
-本地运行环境已更新至本任务实现，备份保留，临时验收资源已清理；代码主线基线仍见下述 PR #162。
+本地运行环境已在上轮更新至本次实现，备份保留，临时验收资源已清理。
+完整 diff 由 AI 自查，已核对契约兼容、快照名称、权限、事务及数据保留，不称为独立人工 review。
+
+合并后的主线五套工作流全部首次通过：[共享包/Web](https://github.com/peilinpeng/labelhub/actions/runs/42635818313)、
+[API 与依赖审计](https://github.com/peilinpeng/labelhub/actions/runs/42635817899)、
+[Windows / Ubuntu 文档及维护工具](https://github.com/peilinpeng/labelhub/actions/runs/42635817601)、
+[真实后端 E2E / 监控](https://github.com/peilinpeng/labelhub/actions/runs/42635817240)、
+[Mock Pages](https://github.com/peilinpeng/labelhub/actions/runs/42635817316)。
+远端全栈通过迁移、MySQL 并发、浏览器流程、审核后导出、监控与重复 seed 检查；未部署真实生产后端。
 
 macOS 容量门槛曾阻断启动，回收可再生成的 Docker 构建缓存后完成上述操作；未删除原数据卷或备份。
-按用户最新决定，后续需要较多空间的操作转到 Windows，本机不继续新增构建或评测。
-Windows 接续时先获取本任务代码并备份目标本地数据库，再按 [AI 工作流说明](AI_WORKFLOW_QUALITY.md) 预览、执行定向修复；
+按用户最新决定，Mac 不再新增构建，后续本地运行、迁移和验收操作留到 Windows；本次合并仅进行 Git、文档检查和远端 CI 核验。
+Windows 接续时先获取最新 `main` 并备份目标本地数据库，再按 [AI 工作流说明](AI_WORKFLOW_QUALITY.md) 预览、执行定向修复；
 macOS 数据库修改不会通过 Git 自动同步到 Windows。真实模型评测和 Agent 化继续暂缓。
 
 ## AI 固定工作流第一轮（2026-11-08，已合并）
 
 [PR #162](https://github.com/peilinpeng/labelhub/pull/162) 已于 2026-11-08 合并。
-当前代码基线：`62f096f370c3509eaa44cee45d158d1251e096f3`；后续纯文档更新不改变此代码基线。
+该轮代码基线：`62f096f370c3509eaa44cee45d158d1251e096f3`；当前代码基线见上述 PR #164。
 合并提交与已验证 PR 最终提交 `d3b8f579484b3af2138db18db5b3be4cad59d3ea` 的文件树完全一致。
 
 本轮实施结构化输入、严格服务端输出校验、
@@ -63,7 +73,7 @@ PR 四套工作流通过，隔离全栈已验证新增迁移 `a7b8c9d0e1f2`、2 
 ## 角色冒烟退出错误修复（2026-11-08）
 
 [PR #152](https://github.com/peilinpeng/labelhub/pull/152) 已于本地时间 2026-11-08 合并。
-该轮代码基线：`ccad71f70f3781628619dc03e2a7f9f965d22a44`；当前代码基线见上述 PR #162。
+该轮代码基线：`ccad71f70f3781628619dc03e2a7f9f965d22a44`；当前代码基线见上述 PR #164。
 
 - 根因：Reviewer 标题出现时评分和统计请求仍可能在运行；旧实现卸载时未取消请求，
   评分 catch 在检查取消标记前输出日志，可能在 MSW / Vitest 退出时触发异步网络与控制台错误。
@@ -128,7 +138,7 @@ Web 覆盖率为 statements 66.47%、branches 54.82%、functions 67.40%、lines 
 
 [PR #145](https://github.com/peilinpeng/labelhub/pull/145) 完成剩余治理、运行诊断与监控任务，
 并整合依赖 PR #137–142，已于 2026-11-03 合并。
-PR #145 历史产品基线：`a793e5c5d7171db4073be8f8e6bab71d675e9570`；当前代码基线见上述 PR #162。
+PR #145 历史产品基线：`a793e5c5d7171db4073be8f8e6bab71d675e9570`；当前代码基线见上述 PR #164。
 合并前全部 CI、合并后主线四套工作流与线上浏览器验收均已通过。
 
 ## 已实现能力
