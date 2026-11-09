@@ -32,12 +32,15 @@ def repaired_dimensions(task_id, dimensions, thresholds):
     return result
 
 
-def repair(db, apply=False):
+def repair(db, apply=False, task_ids=None):
     from app.models.review import ReviewConfig
     from app.utils.hashing import hash_canonical_json
-    rows = db.query(ReviewConfig).filter(ReviewConfig.task_id.in_(EXPECTED_KEYS)).order_by(ReviewConfig.task_id).with_for_update().all()
-    if {row.task_id for row in rows} != set(EXPECTED_KEYS):
-        raise ValueError("三份演示配置不完整，拒绝部分修复")
+    targets = set(EXPECTED_KEYS if task_ids is None else task_ids)
+    if not targets or not targets.issubset(EXPECTED_KEYS):
+        raise ValueError("必须显式选择允许修复的演示任务")
+    rows = db.query(ReviewConfig).filter(ReviewConfig.task_id.in_(targets)).order_by(ReviewConfig.task_id).with_for_update().all()
+    if {row.task_id for row in rows} != targets:
+        raise ValueError("所选演示配置不完整，拒绝部分修复")
     plans = [(row, repaired_dimensions(row.task_id, row.dimensions_json, row.thresholds_json)) for row in rows]
     report = []
     for row, dimensions in plans:
@@ -57,7 +60,8 @@ def repair(db, apply=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="在同一事务中补齐缺失范围；请先完成备份与预览")
+    parser.add_argument("--task-id", action="append", choices=sorted(EXPECTED_KEYS), help="只处理显式指定的已有演示任务，可重复；默认要求全部三份配置齐全")
     args = parser.parse_args()
     from app.database import SessionLocal
     with SessionLocal() as session:
-        print(json.dumps({"applied": args.apply, "changes": repair(session, args.apply)}, ensure_ascii=False, indent=2))
+        print(json.dumps({"applied": args.apply, "changes": repair(session, args.apply, args.task_id)}, ensure_ascii=False, indent=2))
