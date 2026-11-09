@@ -1,6 +1,8 @@
 # Windows 本地开发与验收
 
 推荐 Windows 原生 PowerShell + Docker Desktop WSL2 Linux 引擎，不需要另外安装 Ubuntu。
+已有数据环境升级请先按 [Windows 接续操作清单](WINDOWS_UPGRADE_CHECKLIST.md) 执行；
+下方新建隔离环境的 seed 步骤不能直接用于更新旧库。
 不要在 Docker Desktop 内部发行版安装开发工具。改用通用 WSL2 时也须检查虚拟磁盘所在宿主分区，
 不能用 Linux 工作区余量代替宿主余量。工程边界见 [项目状态](PROJECT_STATUS.md)。
 
