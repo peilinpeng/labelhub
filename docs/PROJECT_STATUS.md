@@ -30,7 +30,8 @@
 
 macOS 容量门槛曾阻断启动，回收可再生成的 Docker 构建缓存后完成上述操作；未删除原数据卷或备份。
 按用户最新决定，Mac 不再新增构建，后续本地运行、迁移和验收操作留到 Windows；本次合并仅进行 Git、文档检查和远端 CI 核验。
-Windows 接续时先获取最新 `main` 并备份目标本地数据库，再按 [AI 工作流说明](AI_WORKFLOW_QUALITY.md) 预览、执行定向修复；
+Windows 接续统一按 [保留数据升级清单](WINDOWS_UPGRADE_CHECKLIST.md) 执行，覆盖主线拉取、备份验证、迁移、定向修复和隔离完整流程验收。
+清单为待执行指引，不表示本次升级已在 Windows 完成；先备份目标本地数据库，再按 [AI 工作流说明](AI_WORKFLOW_QUALITY.md) 预览、执行定向修复；
 macOS 数据库修改不会通过 Git 自动同步到 Windows。真实模型评测和 Agent 化继续暂缓。
 
 ## AI 固定工作流第一轮（2026-11-08，已合并）
