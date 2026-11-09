@@ -62,7 +62,7 @@ python3 scripts/local-compose.py up -d api worker scheduler web --wait
 | `scripts/seed.py`（E2E 用） | `owner@labelhub.test` / `labeler@labelhub.test` / `reviewer@labelhub.test` / `admin@labelhub.test` | `Seed@1234` |
 | `scripts/seed_demo.py`（演示用） | `owner@labelhub.com` / `labeler@labelhub.com` / `reviewer@labelhub.com` | `password123` |
 
-`seed_demo.py` 还会创建一个已发布的演示任务（含 Schema + 10 题 + ReviewConfig），可重复执行。
+`seed_demo.py` 还会创建一个已发布的演示任务（含 Schema + 10 题 + ReviewConfig），默认仅允许空库初始化；重复执行须在空库阶段登记为可丢弃测试库，详见 [初始化保护](../../docs/deployment.md)。
 
 ## 密码哈希迁移
 

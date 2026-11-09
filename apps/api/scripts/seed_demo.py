@@ -30,6 +30,7 @@ from dotenv import load_dotenv
 load_dotenv()  # 必须在 import app.* 之前
 
 from app.database import SessionLocal
+from scripts.seed_guard import guarded_seed_session
 from app.security import require_demo_mode
 from app.models.user import User
 from app.models.task import Task
@@ -213,8 +214,7 @@ def _upsert_users(db) -> dict:
 
 def main() -> None:
     require_demo_mode("seed_demo")
-    db = SessionLocal()
-    try:
+    with guarded_seed_session(SessionLocal) as db:
         print("=" * 60)
         print("LabelHub 演示数据 Seeder（seed_demo）")
         print("=" * 60)
@@ -347,8 +347,6 @@ def main() -> None:
         print("\n" + "=" * 60)
         print("演示数据初始化完成。可用上面账号登录前端走完整流程。")
         print("=" * 60)
-    finally:
-        db.close()
 
 
 if __name__ == "__main__":

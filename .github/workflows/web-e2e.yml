@@ -54,6 +54,8 @@ jobs:
     timeout-minutes: 40
     env:
       COMPOSE_FILE: docker-compose.yml:docker-compose.monitoring.yml
+      # 仅在本工作流新建的空库登记，非空未登记库即使设此值也会拒绝。
+      LABELHUB_SEED_MODE: disposable
     steps:
       - uses: actions/checkout@v7
 
@@ -143,6 +145,9 @@ jobs:
 
       - name: Verify seed remains idempotent after export workflows
         run: docker compose --profile tools run --rm seed
+
+      - name: Verify all initialization entrypoints refuse existing data by default
+        run: docker compose exec -T api python scripts/verify_seed_protection.py
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

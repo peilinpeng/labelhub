@@ -29,7 +29,7 @@ python3 scripts/local-compose.py --profile tools run --rm seed
 python3 scripts/local-compose.py up -d --wait
 ```
 
-`seed` 会先执行 `alembic upgrade head`，再运行可重复的 E2E seed，并校验三角色账号、
+`seed` 会先检查初始化目标，再执行 `alembic upgrade head` 和 E2E seed，并校验三角色账号、
 可领取题目和待审核提交。它不是启动占位服务，也不会在生产环境自动执行。
 
 访问地址：
@@ -74,7 +74,26 @@ python3 scripts/local-compose.py run --rm api python scripts/seed_competition.py
 python3 scripts/local-compose.py --profile tools run --rm seed
 ```
 
-生产部署必须先单独运行迁移，禁止运行任何 seed。
+默认 `LABELHUB_SEED_MODE=initialize` 只允许空库（忽略 `alembic_version`）；已有账号、审计、
+任务或其他表数据均会拒绝，且在账号密码更新、删除或迁移之前检查。`seed.py`、`seed_demo.py`、
+`seed_e2e.py`、`seed_competition.py`、`seed_demo_pipeline.py` 和 `clean_demo.py --apply` 共用保护。
+`clean_demo.py` 默认预览及流水线 `--dry-run` 保持只读。
+
+重复播种或在演示任务后继续加竞赛数据，只允许可丢弃测试库：**第一次在空库上运行前**明确设置
+`LABELHUB_SEED_MODE=disposable`，由保护脚本登记 `_labelhub_disposable_seed` 运维表。
+每次重复运行仍须显式传入此值；MySQL 标记绑定服务器 UUID 和数据库名称，复制到其他库的标记无效。
+非空未登记库不能事后登记，不能通过这个环境变量解锁；不要手工补标记或删除业务数据来解除保护。
+MySQL 命名锁阻止多个初始化并发执行，但它不阻止正常应用写入；初始化只能在新建隔离环境、无其他使用者时运行。
+这不是持久业务库的数据迁移方案，也不是对任意手写 SQL 或旧版本镜像的权限隔离。
+
+```bash
+# 仅对全新、可丢弃的独立测试项目使用；不要沿用业务项目名、外部卷或外部数据库 URL。
+LABELHUB_SEED_MODE=disposable python3 scripts/local-compose.py --profile tools run --rm seed
+# api 服务不默认继承测试授权，单次命令明确传入。
+python3 scripts/local-compose.py run --rm -e LABELHUB_SEED_MODE=disposable api python scripts/seed_competition.py
+```
+
+生产部署必须先单独运行迁移，禁止运行任何 seed。Windows 保留数据环境使用下述运维入口，不执行这里的重建命令。
 
 ## 4. 前端 Mock 模式
 
@@ -200,12 +219,51 @@ Web 使用 `audit:production` 保持同等门禁。Web 审计只允许
 critical 仍会失败，已修复后残留的例外也会失败并要求删除。Dependabot 每周检查 npm、
 pip、Docker 与 Actions，并将必须同步升级的 React / Vite 测试工具链分组。
 
-## 8. 停止、清理与重建
+## 8. Windows 保留数据日常运维
 
-保留数据库和文件：
+已有容器部署完成后登记一次，随后无需激活 `.cache` 下的旧 Compose 配置。入口只需 Python 3.11+；
+优先使用 `apps/api/.venv`，也支持 PATH 中的 Python。它固定 Docker 引擎、容器完整 ID、镜像、
+配置摘要、网络和挂载；登记时从运行中的 API 核实实际 MySQL UUID/库名与 Redis 身份。
+API/worker/scheduler 必须指向相同数据库和 Redis。项目名称由操作者按实际环境填写：
+
+```powershell
+.\scripts\windows-ops.ps1 register --app-project <当前应用项目> --infra-project <基础服务项目> --docker-disk <Docker数据VHDX绝对路径>
+.\scripts\windows-ops.ps1 status
+.\scripts\windows-ops.ps1 stop
+.\scripts\windows-ops.ps1 start
+.\scripts\windows-ops.ps1 backup --destination D:\LabelHub-backups\daily-<唯一时间戳>
+.\scripts\windows-ops.ps1 verify-backup D:\LabelHub-backups\daily-<唯一时间戳>
+```
+
+跨平台等价入口为 `npm run ops -- <命令>` 或 `python scripts/local_ops.py <命令>`。
+默认登记文件 `.local/operations.json` 已同时排除出 Git 和 Docker 构建上下文。
+指定其他配置需把 `--profile <文件>` 放在子命令之前；已有配置拒绝覆盖，合法升级后须核实并另存新配置。
+同一工作区的启停、登记和备份使用系统文件锁互斥，进程退出自动释放；备份期间不要使用其他工具手动启动写入服务。
+日常 `start/stop` 只作用于登记 ID，不使用 Compose 环境变量、不创建/重建/删除容器或卷；
+启动等待健康检查，未配置健康检查的监控服务只确认进程运行，其端点仍需按监控文档验证。
+发现未登记的同网络运行容器或共享卷写入者时，启动和备份会拒绝，以防旧 worker 同时运行。
+`stop/status` 不受低空间阻断；启动与备份继续执行原有 10 GiB 启动、3 GiB 运行时容量门禁。
+恢复启动若被低空间阻断会明确报错，排除空间问题后执行 `start`，不得绕过保护。
+
+本机备份要求 API/MySQL 正在运行以验证目标，目标必须是仓库外本地**新目录**，禁止覆盖及目录联接。
+Windows ACL 只授权当前用户和 SYSTEM；Unix 使用 0700。备份会短暂停止应用、Redis 和监控，
+等待 worker 正常退出（不强杀），保留 MySQL 运行，生成一致性 SQL、文件/Redis/监控卷归档、
+绑定配置和容器恢复元数据，逐文件完整回读 SHA-256 后才发布成功清单；最后恢复原先运行的服务。
+失败目录保留，不自动删除；没有有效 `manifest.json` 的目录不得作为完整备份使用。
+备份可能含数据库密码、JWT 密钥和用户数据，必须留在私有目录，禁止上传 Git 或公开分享。
+
+此入口的 `verify-backup` 只证明字节完整性；恢复仍须在全新隔离库/卷演练，不能向业务库自动覆盖恢复。
+SQL 不包含 MySQL 系统账号或 binlog/PITR，数据目录不做在线物理拷贝；历史日志需另行按需留存。
+同盘备份不提供物理介质损坏保障，不能称作异盘备份；Windows 异盘识别仍保持原有拒绝策略。
+旧镜像中的 seed 不会因主机脚本更新自动改变，禁止对保留的旧镜像运行 seed/clean；只使用这些日常命令。
+
+## 9. 隔离开发环境的停止、清理与重建
+
+以下仅适用于自行创建的可丢弃开发环境，不适用于需保留容器的 Windows 业务环境。
+仅停止并保留容器、数据库和文件：
 
 ```bash
-python3 scripts/local-compose.py down
+python3 scripts/local-compose.py stop
 ```
 
 删除 Compose 容器、数据库、Redis 和上传文件卷（不可恢复）：
@@ -231,7 +289,7 @@ python3 scripts/local-compose.py ps
 python3 scripts/local-compose.py logs --tail=200 api worker scheduler web
 ```
 
-## 9. 生产部署
+## 10. 生产部署
 
 生产环境至少满足：
 
@@ -259,7 +317,7 @@ docker history labelhub-api:local
 docker history labelhub-web:local
 ```
 
-## 10. 常见问题
+## 11. 常见问题
 
 | 现象 | 检查与处理 |
 | --- | --- |
@@ -272,7 +330,7 @@ docker history labelhub-web:local
 | 宿主无法连 MySQL / Redis | 默认是安全行为；确有需要时叠加 `docker-compose.dev.yml` |
 | production 启动失败 | 按 `environment-variables.md` 检查弱 JWT、默认数据库密码、Demo 模式和 Trusted Hosts |
 
-## 11. 迁移治理与监控扩展
+## 12. 迁移治理与监控扩展
 
 本轮升级新增 Alembic revision `f6a7b8c9d0e1`，API 镜像内包含从共享包构建的 Node 迁移引擎。
 升级前备份数据库；先运行迁移，再启动新版 API、worker 和 scheduler。迁移执行使用 maintenance 队列，
@@ -282,7 +340,7 @@ scheduler 每分钟重投尚未执行的任务。禁止通过删除迁移表或�
 Prometheus / Alertmanager / Grafana 使用独立 overlay 和凭据文件，启动及验收命令见
 [OBSERVABILITY.md](OBSERVABILITY.md)；默认只部署本机监控，不发送外部通知。
 
-## 12. 本机存储保护
+## 13. 本机存储保护
 
 上述 Compose 命令从仓库根运行，经过容量保护入口。macOS 需 Python 3.9+；原生 Linux 需能够读取 Docker 数据目录。写入操作启动前要求至少 10 GiB 可用空间，执行中低于 3 GiB 时取消本次命令；只读与停止操作仍可使用。远程 Docker 不接受本地空间替代检查。
 

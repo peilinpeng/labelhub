@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 load_dotenv()  # 必须在 import app.* 之前
 
 from app.database import SessionLocal
+from scripts.seed_guard import guarded_seed_session
 from app.security import require_demo_mode
 from app.models.user import User
 from app.passwords import hash_password
@@ -476,8 +477,7 @@ def _seed_task(db, owner_id: str, spec: dict) -> dict:
 
 def main() -> None:
     require_demo_mode("seed_competition")
-    db = SessionLocal()
-    try:
+    with guarded_seed_session(SessionLocal) as db:
         print("=" * 60)
         print("LabelHub 比赛真实数据 Seeder（seed_competition）")
         print("=" * 60)
@@ -498,8 +498,6 @@ def main() -> None:
             else:
                 print(f"  ✅ {r['title']}：schema 节点 {r['node_count']} 个，导入 {r['item_count']} 条")
         print("\n完成。可用 *@labelhub.com / password123 登录前端走完整流程。")
-    finally:
-        db.close()
 
 
 if __name__ == "__main__":

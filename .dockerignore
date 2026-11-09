@@ -2,6 +2,7 @@
 .github
 .codex
 .cache
+.local
 .claude
 .idea
 .vscode

@@ -34,6 +34,7 @@ load_dotenv()  # 必须在 import app.* 之前（读 DOUBAO_API_KEY 等）
 
 import app.models  # noqa: F401  聚合注册全部模型，避免跨表 FK 解析报错
 from app.database import SessionLocal
+from scripts.seed_guard import guarded_seed_session
 from app.security import require_demo_mode
 from app.models.task import Task
 from app.models.dataset import DatasetItem
@@ -314,8 +315,7 @@ def main() -> None:
     if args.task in ("pref", "both"):
         targets.append((PREF_TASK, _pref_answers, "AI_THEN_HUMAN"))
 
-    db = SessionLocal()
-    try:
+    with guarded_seed_session(SessionLocal, readonly=args.dry_run) as db:
         print("=" * 64)
         print(f"真实数据流水线 seeding（{'DRY-RUN' if args.dry_run else '真跑 · 真调 Doubao'}）")
         print("=" * 64)
@@ -342,8 +342,6 @@ def main() -> None:
                   f"一致率 evaluated={agg['evaluated']} rate={agg['agreementRate']}")
             if agg["evaluated"] < 5:
                 print(f"  ⚠️  evaluated={agg['evaluated']} 偏小（Doubao 多判转人工）。建议增大 --per-task 重跑。")
-    finally:
-        db.close()
 
 
 if __name__ == "__main__":

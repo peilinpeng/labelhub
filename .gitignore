@@ -84,3 +84,6 @@ docs/LabelHub_2026-06-10_Team_Handoff.md
 tasks/
 
 apps/api/generated/
+
+# 本机运维配置（固定容器身份，不进 Git）
+.local/

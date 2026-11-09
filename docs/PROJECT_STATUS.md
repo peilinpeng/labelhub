@@ -1,6 +1,38 @@
 # LabelHub 项目状态
 
-> 受 Git 管理的交付快照，代码与 GitHub Actions 是最终事实来源。更新时间：2026-11-09（Europe/Berlin）。
+> 受 Git 管理的交付快照，代码与 GitHub Actions 是最终事实来源。更新时间：2026-11-10（Europe/Berlin）。
+
+## 初始化保护与 Windows 日常运维（2026-11-10，本地验收完成）
+
+本轮从 `40d27bbcdde035ec6b4f975d8e1bc38c771a332b` 建立任务分支，新增保护与运维脚本。
+合并基线与远端 CI 结果在合并后补记；下列均为本机实际执行结果，不以 AI 自查冒充人工 review。
+
+- 六个初始化/清理入口默认拒绝任何已有数据，校验先于账号更新、删除和 seed 内迁移。
+  重复播种必须显式使用 disposable 模式，且测试库标记只能在空库阶段创建，绑定 MySQL UUID/库名。
+  MySQL 命名锁阻止初始化并发；生产模式限制保留。业务 API、状态机、共享契约与产品迁移均未改变。
+  `_labelhub_disposable_seed` 仅存在于明确登记的可丢弃测试库，不向保留业务库添加表。
+- 新增 `scripts/windows-ops.ps1` / `npm run ops --`：登记、状态、启动、停止、本机备份和回读验证。
+  登记固定 Docker 引擎、容器 ID/镜像/挂载/网络，核实实际 MySQL/Redis；发现其他共享数据写入者拒绝启动/备份。
+  日常命令不使用旧 `.cache/activate.ps1`，不运行 Compose up/down，不重建或删除容器/卷。
+  本机配置 `.local/operations.json` 同时排除出 Git 和 Docker 构建；Windows 无需额外激活 Node 或 Compose 配置。
+- `D:\LabelHub-backups\daily-ops-20261110` 完成本机私有备份：SQL、12 份挂载归档及恢复元数据，
+  最终版本另备份至 `D:\LabelHub-backups\daily-ops-final-20261110`；两次均有 16 个文件完整 SHA-256 回读通过。Windows ACL 仅当前用户与 SYSTEM；没有敏感数据进入 Git。
+  SQL 在独立 MySQL 恢复后 23 张表、101 行逐行一致；12 份归档共 1,467 个文件的内容、大小、属主及权限一致。
+  文件卷演练首次因 API 自动创建目录触发空目录断言，改用独立空目录后通过，未覆盖现有文件。
+- 克隆业务库上六个入口分别以 initialize/disposable 模式实测拒绝，12 次均未改变任何行。
+  本机业务库只执行两次只读保护探测，也均拒绝；已有表、101 行、历史导出与容器/卷身份保持不变。
+  全新 MySQL 测试库验证登记、迁移、重复播种和默认拒绝；真实后端 CI 增加同样的六入口拒绝回归。
+- 原业务环境完整 stop/start 及备份停止/恢复均已实测；只启用登记的新应用与原基础设施，保留的旧应用继续停止。
+  旧镜像不会自动包含新 seed 保护，禁止在其内部执行旧 seed/clean；本轮未替换业务应用镜像或部署生产；本轮隔离验收与恢复项目均已停止并保留。
+
+验收：共享包 392 项、API 376 项、真实 MySQL 并发 2 项、Web 68 项、维护工具 34 项，
+真实后端 Playwright 11 项及审核后额外导出 1 项全部通过；类型检查、coverage、生产构建、
+npm/Python 依赖审计、监控抓取/告警/Grafana、重复 seed 与数据不变检查通过。
+Web coverage statements 66.83%、branches 55.17%、functions 67.53%、lines 70.15%。
+
+备份为本机同盘副本，不提供物理介质损坏保障；SQL 不含 MySQL 系统账号和 binlog/PITR。
+`verify-backup` 只验证字节，恢复演练另有上述记录；失败目录保留，容量不足仍阻断启动，不绕过保护。
+异盘备份、真实模型评测和 Agent 化继续暂缓，未生产上线。操作说明见 [部署与日常运维](deployment.md)。
 
 ## 两份历史导出记录恢复（2026-11-09，已完成）
 
@@ -48,7 +80,7 @@ Windows 本次实际执行记录：
   新应用项目 `labelhub-windows-upgrade-20261109` 显式复用原网络和文件卷。
   API/worker/scheduler 使用同一 API 镜像，镜像标签 `windows-upgrade-20261109`；应用均健康。
   Web 为 `http://127.0.0.1:15173`，API 为 `http://127.0.0.1:13000`。
-  本机后续管理须激活忽略文件 `.cache/live-activate.ps1`；旧 `.cache/activate.ps1` 指向保留的旧项目，
+  当时的管理入口为忽略文件 `.cache/live-activate.ps1`，现已由上述固定容器 ID 的运维入口替代；旧 `.cache/activate.ps1` 指向保留的旧项目，
   不得用其 `up` 重建旧应用。原基础服务仅 `start`，不得同时启动旧新 worker。
 - 3 个原用户、3 个任务、12 条数据、原提交及 AI 预审记录均可读回，旧维度名称正常回退。
   两份旧导出文件在升级备份时就缺少对应导出任务记录，当时 API 下载不可用；文件及元数据完整保留。

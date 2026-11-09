@@ -294,15 +294,20 @@ cp .env.example .env          # Set DOUBAO_API_KEY / DOUBAO_MODEL as needed
 python3 scripts/local-compose.py build --pull
 python3 scripts/local-compose.py up -d mysql redis --wait
 
-# 2) Run Alembic migrations and seed repeatable base demo / E2E data
+# 2) Check the empty target, run migrations and initialize base demo / E2E data
 python3 scripts/local-compose.py --profile tools run --rm seed
 
 # 3) Start all applications and wait for health checks
 python3 scripts/local-compose.py up -d --wait
-
-# 4) Optional: add competition demo data
-python3 scripts/local-compose.py run --rm api python scripts/seed_competition.py
 ```
+
+Initialization now refuses existing data by default, before updating accounts or resetting tasks.
+Repeat seeding requires an explicitly registered disposable database, created while empty; setting a flag on an existing business database does not authorize a reset.
+See [initialization safety and Windows operations](docs/deployment.md) for the isolated test workflow.
+
+For an existing Windows installation, register its current application and infrastructure containers once with `scripts/windows-ops.ps1 register`.
+Then use `scripts/windows-ops.ps1 status`, `start`, `stop`, `backup --destination <new-local-directory>`, or `verify-backup <directory>`.
+These commands pin existing container IDs and preserve containers and volumes. Backups are private, checksum-verified local copies; restore drills and separate physical media are distinct requirements.
 
 Compose includes `web`, `api`, `worker`, `scheduler`, `mysql`, and `redis`. The scheduler periodically removes expired idempotency records.
 
