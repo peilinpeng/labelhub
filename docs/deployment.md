@@ -289,7 +289,7 @@ python3 scripts/local-compose.py ps
 python3 scripts/local-compose.py logs --tail=200 api worker scheduler web
 ```
 
-## 9. 生产部署
+## 10. 生产部署
 
 生产环境至少满足：
 
@@ -317,7 +317,7 @@ docker history labelhub-api:local
 docker history labelhub-web:local
 ```
 
-## 10. 常见问题
+## 11. 常见问题
 
 | 现象 | 检查与处理 |
 | --- | --- |
@@ -330,7 +330,7 @@ docker history labelhub-web:local
 | 宿主无法连 MySQL / Redis | 默认是安全行为；确有需要时叠加 `docker-compose.dev.yml` |
 | production 启动失败 | 按 `environment-variables.md` 检查弱 JWT、默认数据库密码、Demo 模式和 Trusted Hosts |
 
-## 11. 迁移治理与监控扩展
+## 12. 迁移治理与监控扩展
 
 本轮升级新增 Alembic revision `f6a7b8c9d0e1`，API 镜像内包含从共享包构建的 Node 迁移引擎。
 升级前备份数据库；先运行迁移，再启动新版 API、worker 和 scheduler。迁移执行使用 maintenance 队列，
@@ -340,7 +340,7 @@ scheduler 每分钟重投尚未执行的任务。禁止通过删除迁移表或�
 Prometheus / Alertmanager / Grafana 使用独立 overlay 和凭据文件，启动及验收命令见
 [OBSERVABILITY.md](OBSERVABILITY.md)；默认只部署本机监控，不发送外部通知。
 
-## 12. 本机存储保护
+## 13. 本机存储保护
 
 上述 Compose 命令从仓库根运行，经过容量保护入口。macOS 需 Python 3.9+；原生 Linux 需能够读取 Docker 数据目录。写入操作启动前要求至少 10 GiB 可用空间，执行中低于 3 GiB 时取消本次命令；只读与停止操作仍可使用。远程 Docker 不接受本地空间替代检查。
 

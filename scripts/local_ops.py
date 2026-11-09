@@ -197,7 +197,7 @@ def wait_ready(container_id, paths, timeout=180):
             raise OpsError('服务启动后退出；未删除容器，请检查本机日志。')
         health = state.get('Health', {}).get('Status')
         if health in (None, 'healthy'):
-            return
+            return health == 'healthy'
         if health == 'unhealthy':
             raise OpsError('服务健康检查失败；未重建容器。')
         time.sleep(2)
@@ -213,8 +213,9 @@ def start(profile, roles=None):
         validate(profile)
         check_space(paths, START_GIB)
         docker('start', containers[role]['Id'])
-        wait_ready(containers[role]['Id'], paths)
-        print(f'{role} 已启动并通过健康检查。', flush=True)
+        healthy = wait_ready(containers[role]['Id'], paths)
+        result = '已启动并通过健康检查' if healthy else '已运行（未配置容器健康检查）'
+        print(f'{role} {result}。', flush=True)
 
 
 def stop(profile, roles=None):
