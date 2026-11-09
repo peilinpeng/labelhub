@@ -45,6 +45,7 @@
 | `MYSQL_DATABASE` | 否 | `labelhub` | 内部 | 内置 MySQL 初始化库名 |
 | `MYSQL_USER` | 否 | `labelhub` | 内部 | 内置 MySQL 初始化用户 |
 | `MYSQL_PASSWORD` | 内置 MySQL 时必填 | `labelhub` | 敏感 | 必须与 `DATABASE_URL` 一致 |
+| `LABELHUB_SEED_MODE` | 否 | `initialize` | 公开 | 仅 seed 服务；默认拒绝已有数据，`disposable` 仅能在空库登记后允许重复播种，不能解除持久库保护 |
 | `LABELHUB_IMAGE_TAG` | 否 | `local` | 公开 | API / Worker / Web 镜像标签 |
 | `WEB_PORT` | 否 | `5173` | 公开 | Web 对宿主发布端口 |
 | `API_PORT` | 否 | `3000` | 公开 | API 对宿主发布端口 |

@@ -143,8 +143,10 @@ services:
     <<: *api-image
     profiles: ["tools"]
     restart: "no"
-    environment: *api-environment
-    command: ["sh", "-ec", "alembic upgrade head && python scripts/seed_e2e.py"]
+    environment:
+      <<: *api-environment
+      LABELHUB_SEED_MODE: ${LABELHUB_SEED_MODE:-initialize}
+    command: ["sh", "-ec", "python scripts/seed_guard.py && alembic upgrade head && python scripts/seed_e2e.py"]
     security_opt:
       - no-new-privileges:true
     cap_drop:

@@ -84,17 +84,18 @@ python3 scripts/local-compose.py run --rm api alembic upgrade head
 # 确定性 E2E seed（内含迁移和前置条件自检）
 python3 scripts/local-compose.py --profile tools run --rm seed
 
-# 可选竞赛数据
-python3 scripts/local-compose.py run --rm api python scripts/seed_competition.py
+# 可选竞赛数据：仅适用于空库阶段已登记的可丢弃测试环境
+python3 scripts/local-compose.py run --rm -e LABELHUB_SEED_MODE=disposable api python scripts/seed_competition.py
 
-# 停止并保留数据
-python3 scripts/local-compose.py down
+# 停止并保留容器和数据
+python3 scripts/local-compose.py stop
 
-# 删除全部 Compose 数据卷；数据库和上传文件不可恢复
+# 仅清理可丢弃测试项目；禁止在 Windows 保留数据环境执行，数据库和文件不可恢复
 python3 scripts/local-compose.py down -v
 ```
 
-生产环境禁止运行 seed。
+生产环境禁止运行 seed。已有数据默认拒绝初始化；重复播种只用于空库阶段明确登记的隔离测试库。
+Windows 保留容器的启停与本机备份统一使用 [日常运维入口](deployment.md)，不要用旧激活文件重建应用。
 
 ## 6. 健康与安全自检
 

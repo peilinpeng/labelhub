@@ -19,6 +19,7 @@ load_dotenv()
 
 from app.config import settings
 from app.database import SessionLocal
+from scripts.seed_guard import guarded_seed_session
 from app.security import require_demo_mode
 from app.models.user import User
 from app.passwords import hash_password
@@ -70,8 +71,7 @@ def _create_token(user_id: str, role: str, display_name: str) -> str:
 
 def main() -> None:
     require_demo_mode("seed")
-    db = SessionLocal()
-    try:
+    with guarded_seed_session(SessionLocal) as db:
         print("=" * 60)
         print("LabelHub Seeder — 测试账号")
         print("=" * 60)
@@ -112,8 +112,6 @@ def main() -> None:
         print("\n" + "=" * 60)
         print("Seed 完成。请将上面的 Token 配置到 Postman 的 Bearer Token 中。")
         print("=" * 60)
-    finally:
-        db.close()
 
 
 if __name__ == "__main__":

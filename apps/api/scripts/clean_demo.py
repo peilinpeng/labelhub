@@ -22,6 +22,7 @@ load_dotenv()
 
 import app.models  # noqa: F401  聚合注册全部模型（避免跨表 FK 解析报错）
 from app.database import SessionLocal
+from scripts.seed_guard import guarded_seed_session
 from app.security import require_demo_mode
 from app.models.task import Task
 from app.models.schema import SchemaDraft, SchemaVersion
@@ -88,8 +89,7 @@ def _delete_tasks(db, task_ids: list[str]) -> None:
 def main() -> None:
     require_demo_mode("clean_demo")
     apply = "--apply" in sys.argv
-    db = SessionLocal()
-    try:
+    with guarded_seed_session(SessionLocal, readonly=not apply) as db:
         all_tasks = db.query(Task).order_by(Task.created_at.asc()).all()
         keep = [t for t in all_tasks if t.id.startswith(KEEP_PREFIX)]
         drop = [t for t in all_tasks if not t.id.startswith(KEEP_PREFIX)]
@@ -115,8 +115,6 @@ def main() -> None:
         _delete_tasks(db, [t.id for t in drop])
         db.commit()
         print(f"\n✅ 已删除 {len(drop)} 个杂项任务及其关联数据。当前剩余 {len(keep)} 个演示任务。")
-    finally:
-        db.close()
 
 
 if __name__ == "__main__":
