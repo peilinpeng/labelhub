@@ -4,7 +4,9 @@
 
 ## 新闻质量真实材料试用（2026-11-10，人工复核待用户完成）
 
-本轮从 `f943ad7c1468e367486cf2cf07de286eb20f3ff5` 建立任务分支。
+[PR #174](https://github.com/peilinpeng/labelhub/pull/174) 已合并，当前代码基线为
+`6dbf5400e8cb9fa149f4944e35e8aa0a055e5f35`；合并树与已验收提交
+`bc79615eedbfddef76e03cfc334560b667817416` 完全一致。
 用户已选择开放许可新闻，并明确由本人完成最终人工判定。准备与自动化走查完成；
 **人工金标准仍为 0，人工操作耗时与业务导出适用性尚待用户填写**，不得把自动化结果视为人工试用结论。
 具体规范、问题清单与入口见[新闻质量试用](NEWS_QUALITY_PILOT.md)。
@@ -29,11 +31,26 @@
 依赖审计、监控、重复 seed/六入口拒绝写入、文档检查及 diff 检查通过。
 走查脚本的多选顺序和导出嵌套结构断言曾修正；额外导出命令首次工作目录不正确，修正后通过，未修改产品规则。
 完整 diff 已进行 AI 自查，不称人工 review；真实材料、运行凭据与本地产物不纳入提交。
-异盘备份、真实模型评测、Agent 化及生产上线继续暂缓。PR 与主线 CI 的合并证明在验收后更新。
+PR 五套适用工作流首次通过：[共享包/Web](https://github.com/peilinpeng/labelhub/actions/runs/42855433149)、
+[API/审计](https://github.com/peilinpeng/labelhub/actions/runs/42855433125)、
+[维护工具](https://github.com/peilinpeng/labelhub/actions/runs/42855433142)、
+[常规 E2E/监控](https://github.com/peilinpeng/labelhub/actions/runs/42855433204)、
+[受控模型/纯人工链路](https://github.com/peilinpeng/labelhub/actions/runs/42855433170)；
+后者在 Linux runner 八项通过（19.1 秒），隔离和容量检查、退出停止均通过。
+合并后主线六套工作流全部通过：[共享包/Web](https://github.com/peilinpeng/labelhub/actions/runs/42856076367)、
+[API/审计](https://github.com/peilinpeng/labelhub/actions/runs/42856076245)、
+[维护工具](https://github.com/peilinpeng/labelhub/actions/runs/42856076396)、
+[常规 E2E/监控](https://github.com/peilinpeng/labelhub/actions/runs/42856076372)、
+[受控模型/纯人工链路](https://github.com/peilinpeng/labelhub/actions/runs/42856076160)、
+[Mock Pages](https://github.com/peilinpeng/labelhub/actions/runs/42856076270)。
+两套全栈主线运行首次被取消，日志仅显示 operation was canceled，未提供具体原因；
+同一提交重跑后通过，没有以取消代替成功，也没有修改门禁或跳过用例。
+合并后再次核实原业务库逐行一致、两份历史导出字节和权限正确，业务与试用入口均返回 200。
+异盘备份、真实模型评测、Agent 化及生产上线继续暂缓。
 
 ## 受控模型真实链路 CI（2026-11-10，已合并）
 
-[PR #172](https://github.com/peilinpeng/labelhub/pull/172) 已合并，当前仓库代码基线为
+[PR #172](https://github.com/peilinpeng/labelhub/pull/172) 已合并，该轮仓库代码基线为
 `d4cae9d24b9d1abd7169bb6f2fd70a893536755a`；合并树与已验收提交
 `f8a9ce43827389f9d6931d5fd1d9fa25f13be0be` 完全一致。此前私有本地验收已固化为
 `npm run e2e:ai` 和独立的 [Controlled AI workflow](../.github/workflows/controlled-ai.yml)。
