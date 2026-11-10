@@ -84,8 +84,8 @@ def test_save_draft_then_submit(client, auth, db_session):
         headers=auth["LABELER"],
     )
     assert r_submit.status_code == 201
-    # 无 ReviewConfig → 不入队 Celery，状态停在 AI_REVIEWING
-    assert r_submit.json()["submission"]["status"] == "AI_REVIEWING"
+    # 无 ReviewConfig → 不入队 Celery，直接转人工审核。
+    assert r_submit.json()["submission"]["status"] == "NEEDS_HUMAN_REVIEW"
 
 
 def test_submit_invalid_field_rejected(client, auth, db_session):

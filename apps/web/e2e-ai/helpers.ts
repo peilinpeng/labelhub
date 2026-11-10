@@ -40,7 +40,7 @@ export class Workflow {
     return result;
   }
 
-  async createTask(mode = "HUMAN_REVIEW_ONLY") {
+  async createTask(mode = "HUMAN_REVIEW_ONLY", reviewEnabled = true) {
     const title = `受控链路 ${randomUUID()}`;
     const { task } = await this.call<{ task: Task }>("OWNER", "/tasks", {
       title, description: "仅核查合成材料中的标注，不评价材料质量。", quota: { total: 10 },
@@ -70,10 +70,10 @@ export class Workflow {
     await this.call("OWNER", `/files/${upload.file.id}/confirm`, { checksum: createHash("sha256").update(raw).digest("hex") });
     expect((await this.call<ImportDatasetResponse>("OWNER", `/tasks/${task.id}/dataset/import`, { fileId: upload.file.id, format: "JSON" })).importedCount).toBe(1);
     await this.call("OWNER", `/tasks/${task.id}/review-config`, {
-      enabled: true, modelPolicyId: "controlled", promptTemplate: "核查标注答案与材料是否一致", dimensions,
+      enabled: reviewEnabled, modelPolicyId: "controlled", promptTemplate: "核查标注答案与材料是否一致", dimensions,
       thresholds: { passScore: .8, returnScore: .45 }, conclusionMapping: { mode }, maxRetries: 1,
     });
-    await this.call("OWNER", `/tasks/${task.id}/publish`, { schemaVersionId: version.schemaVersion.id, reviewDisabledExplicitly: false });
+    await this.call("OWNER", `/tasks/${task.id}/publish`, { schemaVersionId: version.schemaVersion.id, reviewDisabledExplicitly: !reviewEnabled });
     const { context } = await this.call<ClaimTaskResponse>("LABELER", `/tasks/${task.id}/claim`, {});
     return { task, assignment: context.assignment.id, schemaVersionId: version.schemaVersion.id };
   }

@@ -21,6 +21,7 @@
 - [docs/dataset-test-scenario-plan.md](dataset-test-scenario-plan.md)：数据集测试场景计划。
 
 - [AI 固定工作流质量改进](AI_WORKFLOW_QUALITY.md)：结构化输入、服务端校验、审核路由与评测基线。
+- [新闻质量试用](NEWS_QUALITY_PILOT.md)：开放许可材料、标注规范、自动化走查、人工复核入口与待办。
 
 ## 3. 核心技术设计
 

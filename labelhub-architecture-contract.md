@@ -1255,6 +1255,10 @@ AI 规则：
 - Job 使用 `submissionId + attemptNo` 作为业务幂等键。
 - `AIReviewJob PENDING -> RUNNING` 表示 worker 开始执行 AI 审核，审计动作为 `AI_REVIEW_STARTED`，不得复用 `AI_REVIEW_ENQUEUED`。
 - 重试耗尽后必须迁移到 `NEEDS_HUMAN_REVIEW`，并将 `AIReviewJob.status` 置为 `FAILED_TO_HUMAN_REVIEW`。
+- 已发布任务未配置或关闭 AI 预审时，提交在同一事务内复用 `enqueueAIReview` 与
+  `aiReviewFailedToHuman` 转入 `NEEDS_HUMAN_REVIEW`。不创建 Job 或调用模型，
+  对应 `AI_REVIEW_ENQUEUED` / `AI_REVIEW_FAILED_TO_HUMAN` 的 `jobId` 为 null，后者注明未启用原因；
+  这里的入队事件只记录路由阶段，不代表已投递 Celery。仍须人工审核确认，不直接通过。
 - AI Review 永远不能修改 answers。
 
 ## 21. 导出契约
