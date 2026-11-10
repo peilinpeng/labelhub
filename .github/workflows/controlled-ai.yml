@@ -1,0 +1,68 @@
+name: Controlled AI workflow
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'scripts/**'
+      - 'package*.json'
+      - '.nvmrc'
+      - '.dockerignore'
+      - 'docker-compose*.yml'
+      - '.github/workflows/controlled-ai.yml'
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'scripts/**'
+      - 'package*.json'
+      - '.nvmrc'
+      - '.dockerignore'
+      - 'docker-compose*.yml'
+      - '.github/workflows/controlled-ai.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: controlled-ai-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controlled-ai:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.13.0'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/web/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Install locked dependencies
+        run: |
+          npm ci
+          npm --prefix apps/web ci
+          npm --prefix apps/web exec -- playwright install --with-deps chromium
+      - name: Typecheck controlled workflow tests
+        run: npm --prefix apps/web run typecheck:e2e:ai
+      - name: Run isolated controlled model, database, worker and browser checks
+        run: npm run e2e:ai
+      - name: Upload synthetic workflow report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: controlled-ai-report
+          path: apps/web/playwright-report/controlled-ai/
+          retention-days: 7
