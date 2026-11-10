@@ -1,0 +1,33 @@
+# 仅由 scripts/controlled_ai.py 为全新隔离项目叠加；不用于业务环境。
+services:
+  api:
+    ports: !reset []
+  web:
+    networks: [default, ingress]
+    depends_on:
+      controlled-model:
+        condition: service_healthy
+    volumes:
+      - ./scripts/testing/controlled-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+  controlled-model:
+    init: true
+    image: labelhub-api:${LABELHUB_IMAGE_TAG:?必须使用隔离验收入口}
+    entrypoint: ["python", "/controlled_model.py"]
+    environment:
+      CONTROLLED_MODEL_TOKEN: ${CONTROLLED_MODEL_TOKEN:?必须使用隔离验收入口}
+      CONTROLLED_AI_RUN_ID: ${CONTROLLED_AI_RUN_ID:?必须使用隔离验收入口}
+    volumes:
+      - ./scripts/testing/controlled_model.py:/controlled_model.py:ro
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+networks:
+  default:
+    internal: true
+  ingress: {}

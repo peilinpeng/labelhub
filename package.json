@@ -29,6 +29,7 @@
     "check:docs": "node scripts/run-python.mjs scripts/check-docs.py",
     "check:storage": "node scripts/run-python.mjs scripts/local-compose.py --check",
     "compose": "node scripts/run-python.mjs scripts/local-compose.py",
+    "e2e:ai": "node scripts/run-python.mjs scripts/controlled_ai.py",
     "ops": "node scripts/run-python.mjs scripts/local_ops.py",
     "test:ops": "node scripts/run-python.mjs -m unittest discover -s scripts/tests -v",
     "backup:prepare": "node scripts/run-python.mjs scripts/recovery_backup.py prepare",

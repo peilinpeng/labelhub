@@ -317,6 +317,10 @@ Open the frontend at `http://localhost:5173/`. The production Web image contains
 
 Production deployments must explicitly configure `APP_ENV=production`, `DEMO_MODE=false`, a random `JWT_SECRET` of at least 32 characters, non-default database passwords, `LOGIN_RATE_LIMIT_BACKEND=redis`, and the actual `TRUSTED_HOSTS`. The API fails at startup if any required security condition is unmet. Production frontend builds must set `VITE_DEMO_MODE=false` so the login page neither displays nor prefills demo accounts.
 
+The controlled AI integration suite is available with `npm run e2e:ai` after installing the locked dependencies and Playwright Chromium.
+It creates a fresh isolated Docker project, uses a deterministic local model, and exercises the real API, database, Celery worker and browser.
+It does not call a model provider or measure model quality. See [controlled workflow CI](docs/AI_WORKFLOW_QUALITY.md) for prerequisites and data-protection boundaries.
+
 ### Option 2: Local Frontend and Shared-Library Development
 
 The project uses Node `26.13.0` and npm `11.20.0`. If nvm is installed, run `nvm use` to load the version from the root `.nvmrc`.

@@ -66,6 +66,44 @@ modelDecisionAgreement 比较模型原始判断；decisionAgreement 对 current 
 两项须分开阅读，不能把路由改进全部归因于提示词。还报告误放、误退、自动通过污染、转人工率、Token 和延迟。
 Wilson 区间仅描述当前试验；重复试验不独立，小合成集不能证明生产误判率上限。
 
+## 受控模型真实链路 CI
+
+[Controlled AI workflow](../.github/workflows/controlled-ai.yml) 在 API、Web、共享包、相关脚本与
+Compose 配置变更时执行，也可手动触发。它验证工程链路，不评估真实模型质量，不需要供应商密钥。
+原有真实后端 E2E/监控工作流继续独立运行，没有以受控测试替换部署、权限或迁移门禁。
+
+先安装仓库锁定的 Node/npm、Python 3.11+ 和两套 npm 依赖，再安装 Chromium。
+Docker Compose 需要支持 `!reset`（本机验收版本为 5.1.3）。从仓库根运行：
+
+```bash
+npm --prefix apps/web exec -- playwright install --with-deps chromium
+npm --prefix apps/web run typecheck:e2e:ai
+npm run e2e:ai
+```
+
+Windows 继续要求 `LABELHUB_DOCKER_DISK_PATH` 指向实际 Docker Desktop VHDX；可用
+`LABELHUB_PYTHON` 指定已有 Python 解释器。容量预检与运行中保护不变，不自动清理空间。
+运行器忽略旧 Compose 项目变量和 `.env`，显式覆盖数据库、模型、JWT 等测试配置；
+每次生成新项目名、私有运行目录、随机环回端口及独立数据库/文件卷，不支持接管现有环境。
+
+只有 Web 测试入口连接宿主网络。API、worker、MySQL、Redis、受控模型留在内部网络且不发布端口；
+模型控制由测试专用 Nginx 路径转发，控制接口需要本次随机凭据。初始化前及浏览器启动前均核实
+容器完整 ID、项目标签、卷归属、网络成员、内部网络、模型配置与 Web 端口；缺少隔离凭证则拒绝运行。
+不得绕过运行器直接把 `e2e:ai:browser` 指向业务后端。
+
+七个 Playwright 场景使用合成材料，通过真实 API 建任务、上传/确认文件、发布 Schema 与审核配置：
+
+- 辅助请求携带材料、答案和版本；候选在确认前不改变草稿。
+- 编辑后的旧候选不可采纳；非法模型输出返回失败，草稿保持原值；合法候选采纳后保存并刷新读回。
+- 真实 Celery worker 发起预审，测试屏障确认请求已发出后再修改配置，验证本次维度名称仍来自固定快照。
+- Reviewer 只读展示、人工通过/退回都需要确认；原答案、AI 结果与审核历史保留，审计不包含完整答案。
+- 自动路由分别覆盖正常通过、正常退回、非法输出、低置信度与分数/结论矛盾；后三者必须转人工。
+
+模型请求只保留在受控服务的有界内存中，控制日志不输出正文；报告仅含合成测试结果和失败截图，
+关闭网络 trace，不上传运行目录、容器环境或认证请求。测试不共享前次任务，不使用固定睡眠推测快照时机。
+正常、失败和可处理的中断均只停止本次隔离容器，保留新建卷和 `.cache/controlled-ai/` 证据，
+不删除或重建任何已有业务资源。Docker 不可访问或进程被强制终止时须自行核实本次项目状态。
+
 ## 验收与后续
 
 审核队列和详情使用 `reviewDimensions` 显示任务自定义名称。新记录读取本次预审快照，
