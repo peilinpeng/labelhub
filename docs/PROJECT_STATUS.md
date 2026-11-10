@@ -2,9 +2,11 @@
 
 > 受 Git 管理的交付快照，代码与 GitHub Actions 是最终事实来源。更新时间：2026-11-10（Europe/Berlin）。
 
-## 受控模型真实链路 CI（2026-11-10，本地验收完成）
+## 受控模型真实链路 CI（2026-11-10，已合并）
 
-本轮从 `cd34e7972cd88204a52ac592fad2451ebcbc64c6` 建立任务分支，将此前私有本地验收固化为
+[PR #172](https://github.com/peilinpeng/labelhub/pull/172) 已合并，当前仓库代码基线为
+`d4cae9d24b9d1abd7169bb6f2fd70a893536755a`；合并树与已验收提交
+`f8a9ce43827389f9d6931d5fd1d9fa25f13be0be` 完全一致。此前私有本地验收已固化为
 `npm run e2e:ai` 和独立的 [Controlled AI workflow](../.github/workflows/controlled-ai.yml)。
 仅新增工程验收入口、合成模型、测试及文档；产品业务代码、共享契约、数据库结构与部署配置默认行为不变。
 完整 diff 已完成 AI 自查，确认无真实密钥、本地产物或无关修改；不称为独立人工 review。
@@ -27,7 +29,18 @@
 常规真实后端 Playwright 11 项、额外导出 1 项、受控模型 Playwright 7 项全部通过。
 类型检查（含新 E2E）、coverage、生产构建、npm/Python 依赖审计、监控抓取/告警/Grafana、
 重复 seed 与六入口数据保护复测通过；Web coverage 为 66.83% / 55.17% / 67.53% / 70.15%
-（statements / branches / functions / lines）。远端 CI 与合并后基线将在交付后补记。
+（statements / branches / functions / lines）。PR 与分支推送的五套适用工作流均首次通过，
+[PR 受控模型 CI](https://github.com/peilinpeng/labelhub/actions/runs/42730212635) 在 Linux runner 上
+七项全部通过（17.2 秒），容量检查、两次隔离核实和退出停止均通过。
+
+合并后主线六套工作流也全部首次通过：
+[受控模型真实链路](https://github.com/peilinpeng/labelhub/actions/runs/42730691418)、
+[常规真实后端 E2E/监控](https://github.com/peilinpeng/labelhub/actions/runs/42730691375)、
+[共享包/Web](https://github.com/peilinpeng/labelhub/actions/runs/42730691465)、
+[API 与审计](https://github.com/peilinpeng/labelhub/actions/runs/42730691458)、
+[Windows/Ubuntu 维护工具](https://github.com/peilinpeng/labelhub/actions/runs/42730691721)、
+[Mock Pages](https://github.com/peilinpeng/labelhub/actions/runs/42730691503)。
+合并后再次确认本机业务 API/Web 就绪、原运行容器健康；本轮新建验收项目均已停止并保留。
 
 受控模型只证明工程链路，不证明真实模型质量。报告只保留合成结果，网络 trace 关闭；
 新建测试资源只停止不删除。异盘备份、真实模型评测和 Agent 化继续暂缓，未部署生产后端。
@@ -153,7 +166,7 @@ PR 与分支推送的四套工作流全部通过。合并后主线五套工作�
 ## 演示评分范围与自定义维度名称（2026-11-09，已合并）
 
 [PR #164](https://github.com/peilinpeng/labelhub/pull/164) 已于 2026-11-09 合并，修复审核队列、详情中的自定义维度名称显示。
-该轮代码基线：`a1013528fa135f482173e5d24b49599c84963559`；当前仓库基线见上述 PR #170。
+该轮代码基线：`a1013528fa135f482173e5d24b49599c84963559`；当前仓库基线见上述 PR #172。
 合并提交与已验证 PR 最终提交 `5c4cc6bf44d6f6e818f127a61c7d1b802523870b` 的文件树完全一致。
 新增可选 `reviewDimensions` 名称元数据，优先取本次预审快照，旧记录回退到当前配置；
 缺少名称时显示历史标准名称或原始 key。已同步共享契约、API、Web 与 OpenAPI，无数据库结构变更。
@@ -185,7 +198,7 @@ macOS 数据库修改不会通过 Git 自动同步到 Windows。真实模型评�
 ## AI 固定工作流第一轮（2026-11-08，已合并）
 
 [PR #162](https://github.com/peilinpeng/labelhub/pull/162) 已于 2026-11-08 合并。
-该轮代码基线：`62f096f370c3509eaa44cee45d158d1251e096f3`；当前仓库代码基线见上述 PR #170。
+该轮代码基线：`62f096f370c3509eaa44cee45d158d1251e096f3`；当前仓库代码基线见上述 PR #172。
 合并提交与已验证 PR 最终提交 `d3b8f579484b3af2138db18db5b3be4cad59d3ea` 的文件树完全一致。
 
 本轮实施结构化输入、严格服务端输出校验、
@@ -222,7 +235,7 @@ PR 四套工作流通过，隔离全栈已验证新增迁移 `a7b8c9d0e1f2`、2 
 ## 角色冒烟退出错误修复（2026-11-08）
 
 [PR #152](https://github.com/peilinpeng/labelhub/pull/152) 已于本地时间 2026-11-08 合并。
-该轮代码基线：`ccad71f70f3781628619dc03e2a7f9f965d22a44`；当前仓库代码基线见上述 PR #170。
+该轮代码基线：`ccad71f70f3781628619dc03e2a7f9f965d22a44`；当前仓库代码基线见上述 PR #172。
 
 - 根因：Reviewer 标题出现时评分和统计请求仍可能在运行；旧实现卸载时未取消请求，
   评分 catch 在检查取消标记前输出日志，可能在 MSW / Vitest 退出时触发异步网络与控制台错误。
@@ -287,7 +300,7 @@ Web 覆盖率为 statements 66.47%、branches 54.82%、functions 67.40%、lines 
 
 [PR #145](https://github.com/peilinpeng/labelhub/pull/145) 完成剩余治理、运行诊断与监控任务，
 并整合依赖 PR #137–142，已于 2026-11-03 合并。
-PR #145 历史产品基线：`a793e5c5d7171db4073be8f8e6bab71d675e9570`；当前仓库代码基线见上述 PR #170。
+PR #145 历史产品基线：`a793e5c5d7171db4073be8f8e6bab71d675e9570`；当前仓库代码基线见上述 PR #172。
 合并前全部 CI、合并后主线四套工作流与线上浏览器验收均已通过。
 
 ## 已实现能力
@@ -335,7 +348,7 @@ PR #145 历史产品基线：`a793e5c5d7171db4073be8f8e6bab71d675e9570`；当前
 ## 当前待办
 
 初始化防误操作与 Windows 固定容器运维入口已随 PR #170 完成，日常启停/本机备份使用新入口。
-受控模型真实链路已固化为可复现入口与 CI，本地验收完成，远端检查与合并记录见本页顶部。
+受控模型真实链路已随 PR #172 固化为可复现入口与 CI，完整验收与合并记录见本页顶部。
 下一步建议安排一轮实际业务任务试用与问题收敛；该项尚未实施，不把受控模型测试视为真实模型质量评测。
 
 Windows 保留数据升级、#158 修复和八项依赖整合已完成，证据见上述 PR #167。
