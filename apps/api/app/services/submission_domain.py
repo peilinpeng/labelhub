@@ -27,8 +27,7 @@ def _enqueue_ai_review(db: Session, submission: Submission, actor_id: str) -> tu
     from app.models.review import ReviewConfig
     from app.services.review_domain import create_ai_review_job
 
-    apply_transition(submission.status, "enqueueAIReview")
-    submission.status = "AI_REVIEWING"
+    submission.status = apply_transition(submission.status, "enqueueAIReview")
 
     review_config = (
         db.query(ReviewConfig)
@@ -48,6 +47,19 @@ def _enqueue_ai_review(db: Session, submission: Submission, actor_id: str) -> tu
         actor_id=actor_id,
         after={"jobId": job.id if job else None},
     )
+
+    if job is None:
+        # 显式关闭或未配置 AI 时，没有 worker 会接手；同一事务内转人工。
+        # 复用已有失败关闭命令和审计，不生成模型结果或绕过人工确认。
+        submission.status = apply_transition(submission.status, "aiReviewFailedToHuman")
+        write_audit_log(
+            db,
+            entity_type="SUBMISSION",
+            entity_id=submission.id,
+            action="AI_REVIEW_FAILED_TO_HUMAN",
+            actor_id=actor_id,
+            after={"jobId": None, "reason": "AI 预审未启用，转人工审核"},
+        )
 
     return (submission, log, job)
 
