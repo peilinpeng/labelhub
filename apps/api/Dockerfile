@@ -2,7 +2,7 @@
 
 ARG PYTHON_VERSION=3.11.13
 
-FROM node:26.13.0-bookworm-slim AS migration-engine
+FROM node:26.13.1-bookworm-slim AS migration-engine
 WORKDIR /build
 COPY package.json package-lock.json ./
 COPY packages ./packages
